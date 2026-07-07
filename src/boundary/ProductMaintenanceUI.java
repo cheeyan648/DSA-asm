@@ -4,8 +4,6 @@ import entity.Product;
 import java.util.Scanner;
 
 /**
- * 
- * 
  *
  * @author Kat Tan
  */
