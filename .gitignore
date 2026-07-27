@@ -1,0 +1,18 @@
+# Compiled output
+bin/
+build/
+dist/
+*.class
+
+# Generated runtime data files (recreated on first run from the
+# *Initializer classes in the dao package)
+*.dat
+
+# Build helper files
+srcs.txt
+
+# NetBeans / IDE local settings
+nbproject/private/
+.settings/
+.classpath
+.project
