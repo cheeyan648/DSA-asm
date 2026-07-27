@@ -1,8 +1,9 @@
 package control;
 
-import adt.ArrayList;
 import adt.ListInterface;
 import boundary.WalkInRegistrationBookingUI;
+import dao.WalkInGuestDAO;
+import dao.WalkInGuestInitializer;
 import entity.WalkInGuest;
 
 /**
@@ -12,8 +13,26 @@ import entity.WalkInGuest;
 public class WalkInRegistrationBookingMaintenance {
 
   private WalkInRegistrationBookingUI walkInRegistrationBookingUI = new WalkInRegistrationBookingUI();
-  private ListInterface<WalkInGuest> walkInQueue = new ArrayList<>();
+  private WalkInGuestDAO walkInGuestDAO = new WalkInGuestDAO();
+  private ListInterface<WalkInGuest> walkInQueue;
 
+  public WalkInRegistrationBookingMaintenance() {
+    // Load the saved queue from walkInGuests.dat. If there's nothing saved
+    // yet (first run), seed it with the sample guests so there is data to
+    // work with, then write that file out.
+    walkInQueue = walkInGuestDAO.retrieveFromFile();
+    if (walkInQueue.isEmpty()) {
+      walkInQueue = new WalkInGuestInitializer().initializeWalkInGuests();
+      walkInGuestDAO.saveToFile(walkInQueue);
+    }
+  }
+
+  // DATA PERSISTENCE: walkInQueue is loaded from walkInGuests.dat in the
+  // constructor above and written back by saveToFile() when you leave the
+  // module. Call walkInGuestDAO.saveToFile(walkInQueue) after any change
+  // (register / priority insert / serve) if you want each action saved
+  // immediately rather than only on exit.
+  //
   // TODO: developer to implement Walk-In Registration & Standard Booking logic
   //
   // REQUIRED ADT: List (adt/ListInterface + adt/ArrayList), already wired up
@@ -79,5 +98,8 @@ public class WalkInRegistrationBookingMaintenance {
           break;
       }
     } while (choice != 0);
+
+    // Persist the queue so any changes survive to the next run.
+    walkInGuestDAO.saveToFile(walkInQueue);
   }
 }

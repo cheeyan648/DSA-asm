@@ -35,9 +35,23 @@ public class MessageUI {
   }
 
   /**
+   * Shows an error for when the user just presses Enter without typing
+   * anything, then reminds them of the valid range.
+   *
+   * @param maxOption the highest valid menu option (options run 1..maxOption)
+   * @param exitLabel what option 0 does, e.g. "exit" or "go back"
+   */
+  public static void displayEmptyChoiceMessage(int maxOption, String exitLabel) {
+    System.out.println("\nChoice cannot be empty!");
+    System.out.println("Please enter a number from 1 to " + maxOption
+        + ", or 0 to " + exitLabel + ".");
+  }
+
+  /**
    * Reads a menu choice, re-prompting until the user enters a whole number
-   * in the range 0..maxOption. Non-numeric input (e.g. letters) is rejected
-   * with the same error instead of crashing. The screen is never cleared
+   * in the range 0..maxOption. Empty input gets a "cannot be empty" error;
+   * anything else invalid (letters, out-of-range numbers) gets the
+   * invalid-choice error instead of crashing. The screen is never cleared
    * while re-prompting, so the user can see what went wrong.
    *
    * @param scanner the Scanner to read from
@@ -50,6 +64,11 @@ public class MessageUI {
       System.out.print("Enter choice: ");
       String input = scanner.nextLine().trim();
 
+      if (input.isEmpty()) {
+        displayEmptyChoiceMessage(maxOption, exitLabel);
+        continue;
+      }
+
       try {
         int choice = Integer.parseInt(input);
         if (choice >= 0 && choice <= maxOption) {
@@ -57,7 +76,7 @@ public class MessageUI {
           return choice;
         }
       } catch (NumberFormatException e) {
-        // fall through to the same error message below
+        // fall through to the invalid-choice message below
       }
 
       displayInvalidChoiceMessage(maxOption, exitLabel);
