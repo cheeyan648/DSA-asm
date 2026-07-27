@@ -10,7 +10,8 @@ import java.util.Scanner;
  */
 public class TARUMTResortUI {
 
-  Scanner scanner = new Scanner(System.in);
+  // Shared with every other UI class - see MessageUI.scanner for why.
+  private Scanner scanner = MessageUI.scanner;
 
   private WalkInRegistrationBookingMaintenance walkInRegistrationBookingMaintenance = new WalkInRegistrationBookingMaintenance();
   private HousekeepingTaskLogMaintenance housekeepingTaskLogMaintenance = new HousekeepingTaskLogMaintenance();
@@ -18,17 +19,17 @@ public class TARUMTResortUI {
   private LoyaltyRewardsMaintenance loyaltyRewardsMaintenance = new LoyaltyRewardsMaintenance();
 
   public int getMenuChoice() {
+    MessageUI.clearScreen();
     System.out.println("\nTARUMT RESORT MANAGEMENT SYSTEM");
     System.out.println("1. Walk-In Registration & Standard Booking");
     System.out.println("2. Housekeeping Task Log");
     System.out.println("3. Front-Desk Service");
     System.out.println("4. Loyalty & Rewards");
     System.out.println("0. Quit");
-    System.out.print("Enter choice: ");
-    int choice = scanner.nextInt();
-    scanner.nextLine();
-    System.out.println();
-    return choice;
+
+    // Keeps re-prompting (without clearing) until a valid 0-4 is entered, so
+    // the user can see the error message and correct their input.
+    return MessageUI.readMenuChoice(scanner, 4, "exit");
   }
 
   public void runTARUMTResort() {
@@ -51,8 +52,6 @@ public class TARUMTResortUI {
         case 4:
           loyaltyRewardsMaintenance.runLoyaltyRewards();
           break;
-        default:
-          MessageUI.displayInvalidChoiceMessage();
       }
     } while (choice != 0);
   }

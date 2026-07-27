@@ -6,6 +6,8 @@ package adt;
  */
 
 import java.io.Serializable;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 public class ArrayList<T> implements ListInterface<T>, Serializable {
 
@@ -121,6 +123,30 @@ public class ArrayList<T> implements ListInterface<T>, Serializable {
   @Override
   public boolean isFull() {
     return false;
+  }
+
+  @Override
+  public Iterator<T> getIterator() {
+    return new ArrayListIterator();
+  }
+
+  private class ArrayListIterator implements Iterator<T> {
+    private int currentIndex = 0;
+
+    @Override
+    public boolean hasNext() {
+      return currentIndex < numberOfEntries;
+    }
+
+    @Override
+    public T next() {
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
+      T nextEntry = array[currentIndex];
+      currentIndex++;
+      return nextEntry;
+    }
   }
 
   private void doubleArray() {
