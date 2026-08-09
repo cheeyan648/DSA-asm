@@ -1,12 +1,22 @@
 package adt;
 
+import java.util.Comparator;
 import java.util.Iterator;
 
 /**
  * Positions in this list are 1-based: the first entry is at position 1 and the
  * last is at position getNumberOfEntries().
  *
- * @author Frank M. Carrano
+ * The core operations (add, remove, clear, replace, getEntry, contains,
+ * getNumberOfEntries, isEmpty, isFull, getIterator) are adapted from the
+ * course sample code by Frank M. Carrano.
+ *
+ * The additional operations below (getPosition, removeEntry, sort, filter,
+ * search, countIf) were added by Tan Chee Yan for the Walk-In Registration
+ * module.
+ *
+ * @author Frank M. Carrano (core operations)
+ * @author Tan Chee Yan (added operations)
  * @version 2.0
  */
 public interface ListInterface<T> {
@@ -108,4 +118,61 @@ public interface ListInterface<T> {
    * @return an iterator over the entries in the list
    */
   public Iterator<T> getIterator();
+
+  /**
+   * Task: Gets the position of the first entry in the list that equals a given
+   * entry.
+   *
+   * @param anEntry the object that is the desired entry
+   * @return the 1-based position of anEntry, or -1 if the list does not
+   * contain anEntry
+   */
+  public int getPosition(T anEntry);
+
+  /**
+   * Task: Removes the first entry in the list that equals a given entry.
+   * Entries originally at positions higher than the removed entry are at the
+   * next lower position within the list, and the list's size is decreased by 1.
+   *
+   * @param anEntry the object to be removed
+   * @return a reference to the removed entry, or null if the list does not
+   * contain anEntry
+   */
+  public T removeEntry(T anEntry);
+
+  /**
+   * Task: Arranges the entries in the list into the order defined by a given
+   * comparator. The list's size is unchanged.
+   *
+   * @param comparator defines the order the entries are arranged into
+   */
+  public void sort(Comparator<? super T> comparator);
+
+  /**
+   * Task: Creates a new list holding every entry in this list that satisfies a
+   * given condition, in their existing order. This list is unchanged.
+   *
+   * @param condition the condition an entry must satisfy to be included
+   * @return a new list of the entries that satisfy condition, which is empty
+   * if no entry satisfies it
+   */
+  public ListInterface<T> filter(Condition<? super T> condition);
+
+  /**
+   * Task: Retrieves the first entry in the list that satisfies a given
+   * condition.
+   *
+   * @param condition the condition an entry must satisfy to be retrieved
+   * @return a reference to the first entry that satisfies condition, or null
+   * if no entry satisfies it
+   */
+  public T search(Condition<? super T> condition);
+
+  /**
+   * Task: Counts the entries in the list that satisfy a given condition.
+   *
+   * @param condition the condition an entry must satisfy to be counted
+   * @return the integer number of entries that satisfy condition
+   */
+  public int countIf(Condition<? super T> condition);
 }

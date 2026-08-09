@@ -1,11 +1,20 @@
 package adt;
 
 /**
- * @author Frank M. Carrano
+ * The core operations (add, remove, clear, replace, getEntry, contains,
+ * getNumberOfEntries, isEmpty, isFull, getIterator) are adapted from the
+ * course sample code by Frank M. Carrano.
+ *
+ * The additional operations (getPosition, removeEntry, sort, filter, search,
+ * countIf) were added by Tan Chee Yan for the Walk-In Registration module.
+ *
+ * @author Frank M. Carrano (core operations)
+ * @author Tan Chee Yan (added operations)
  * @version 2.0
  */
 
 import java.io.Serializable;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
@@ -128,6 +137,147 @@ public class ArrayList<T> implements ListInterface<T>, Serializable {
   @Override
   public Iterator<T> getIterator() {
     return new ArrayListIterator();
+  }
+
+  @Override
+  public int getPosition(T anEntry) {
+    for (int index = 0; index < numberOfEntries; index++) {
+      if (anEntry.equals(array[index])) {
+        return index + 1;
+      }
+    }
+    return -1;
+  }
+
+  @Override
+  public T removeEntry(T anEntry) {
+    int position = getPosition(anEntry);
+    if (position == -1) {
+      return null;
+    }
+    return remove(position);
+  }
+
+  /**
+   * Sorts using merge sort, which is stable: entries the comparator considers
+   * equal keep the relative order they already had. That matters to the client
+   * because sorting by any other key (e.g. name) leaves guests who tie on that
+   * key still in their original arrival order.
+   *
+   * Merge sort is O(n log n) in every case, unlike the O(n^2) worst case of the
+   * simple exchange sorts.
+   */
+  @Override
+  public void sort(Comparator<? super T> comparator) {
+    if (comparator == null || numberOfEntries < 2) {
+      return;
+    }
+
+    T[] workspace = (T[]) new Object[numberOfEntries];
+    mergeSort(0, numberOfEntries - 1, workspace, comparator);
+  }
+
+  @Override
+  public ListInterface<T> filter(Condition<? super T> condition) {
+    ListInterface<T> matches = new ArrayList<>();
+    if (condition == null) {
+      return matches;
+    }
+
+    for (int index = 0; index < numberOfEntries; index++) {
+      if (condition.isSatisfiedBy(array[index])) {
+        matches.add(array[index]);
+      }
+    }
+    return matches;
+  }
+
+  @Override
+  public T search(Condition<? super T> condition) {
+    if (condition == null) {
+      return null;
+    }
+
+    for (int index = 0; index < numberOfEntries; index++) {
+      if (condition.isSatisfiedBy(array[index])) {
+        return array[index];
+      }
+    }
+    return null;
+  }
+
+  @Override
+  public int countIf(Condition<? super T> condition) {
+    if (condition == null) {
+      return 0;
+    }
+
+    int count = 0;
+    for (int index = 0; index < numberOfEntries; index++) {
+      if (condition.isSatisfiedBy(array[index])) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Recursively sorts array[first..last] by splitting it in half, sorting each
+   * half, then merging the two sorted halves back together.
+   */
+  private void mergeSort(int first, int last, T[] workspace,
+      Comparator<? super T> comparator) {
+    if (first >= last) {
+      return;
+    }
+
+    // Written this way rather than (first + last) / 2 so a large first + last
+    // cannot overflow int.
+    int middle = first + (last - first) / 2;
+
+    mergeSort(first, middle, workspace, comparator);
+    mergeSort(middle + 1, last, workspace, comparator);
+    merge(first, middle, last, workspace, comparator);
+  }
+
+  /**
+   * Merges the two already-sorted runs array[first..middle] and
+   * array[middle+1..last] into one sorted run in array[first..last].
+   */
+  private void merge(int first, int middle, int last, T[] workspace,
+      Comparator<? super T> comparator) {
+    int left = first;
+    int right = middle + 1;
+    int target = first;
+
+    while (left <= middle && right <= last) {
+      // <= 0 keeps the left run's entry first when the two tie, which is what
+      // makes this sort stable.
+      if (comparator.compare(array[left], array[right]) <= 0) {
+        workspace[target] = array[left];
+        left++;
+      } else {
+        workspace[target] = array[right];
+        right++;
+      }
+      target++;
+    }
+
+    while (left <= middle) {
+      workspace[target] = array[left];
+      left++;
+      target++;
+    }
+
+    while (right <= last) {
+      workspace[target] = array[right];
+      right++;
+      target++;
+    }
+
+    for (int index = first; index <= last; index++) {
+      array[index] = workspace[index];
+    }
   }
 
   private class ArrayListIterator implements Iterator<T> {
