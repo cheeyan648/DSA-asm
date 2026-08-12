@@ -44,71 +44,111 @@ public class WalkInRegistrationBookingUI {
   // MENUS
   // ==================================================================
 
-  public int getMenuChoice() {
+  /**
+   * Draws a framed menu screen, so every menu in this module looks the same and
+   * matches the system home page.
+   *
+   * @param title the menu's heading
+   * @param subtitle a short line under the heading explaining the menu, or null
+   * for none
+   * @param options the menu options in order, starting from option 1
+   * @param backLabel what option 0 does, e.g. "Back to main menu"
+   */
+  private void displayMenuScreen(String title, String subtitle, String[] options,
+      String backLabel) {
     MessageUI.clearScreen();
-    System.out.println("\nWALK-IN REGISTRATION & STANDARD BOOKING");
-    System.out.println("1. Guest registration");
-    System.out.println("2. Queue operations");
-    System.out.println("3. Search & filter");
-    System.out.println("4. Sorted listings");
-    System.out.println("5. Reports");
-    System.out.println("0. Back to main menu");
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxCentred(title);
+    if (subtitle != null) {
+      MessageUI.displayBoxCentred(subtitle);
+    }
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+
+    for (int i = 0; i < options.length; i++) {
+      MessageUI.displayMenuOption(i + 1, options[i]);
+    }
+
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, backLabel);
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
+  }
+
+  public int getMenuChoice() {
+    displayMenuScreen("WALK-IN REGISTRATION & STANDARD BOOKING",
+        "Module Menu",
+        new String[] {
+          "Guest registration",
+          "Queue operations",
+          "Search & filter",
+          "Sorted listings",
+          "Reports"
+        },
+        "Back to main menu");
 
     return MessageUI.readMenuChoice(scanner, 5, "go back to the main menu");
   }
 
   public int getRegistrationMenuChoice() {
-    MessageUI.clearScreen();
-    System.out.println("\nGUEST REGISTRATION");
-    System.out.println("1. Register normal walk-in (join back of queue)");
-    System.out.println("2. Register urgent walk-in (exception case)");
-    System.out.println("3. Undo last registration");
-    System.out.println("0. Back");
+    displayMenuScreen("GUEST REGISTRATION", null,
+        new String[] {
+          "Register normal walk-in (join back of queue)",
+          "Register urgent walk-in (exception case)",
+          "Undo last registration"
+        },
+        "Back");
 
     return MessageUI.readMenuChoice(scanner, 3, "go back");
   }
 
   public int getQueueMenuChoice() {
-    MessageUI.clearScreen();
-    System.out.println("\nQUEUE OPERATIONS");
-    System.out.println("1. Serve next guest");
-    System.out.println("2. Display current queue");
-    System.out.println("3. Cancel a waiting guest");
-    System.out.println("0. Back");
+    displayMenuScreen("QUEUE OPERATIONS", null,
+        new String[] {
+          "Serve next guest",
+          "Display current queue",
+          "Cancel a waiting guest"
+        },
+        "Back");
 
     return MessageUI.readMenuChoice(scanner, 3, "go back");
   }
 
   public int getSearchMenuChoice() {
-    MessageUI.clearScreen();
-    System.out.println("\nSEARCH & FILTER");
-    System.out.println("1. Search by guest ID");
-    System.out.println("2. Search by name (partial match)");
-    System.out.println("3. Filter by status");
-    System.out.println("4. Filter by guest type");
-    System.out.println("0. Back");
+    displayMenuScreen("SEARCH & FILTER", null,
+        new String[] {
+          "Search by guest ID",
+          "Search by name (partial match)",
+          "Filter by status",
+          "Filter by guest type"
+        },
+        "Back");
 
     return MessageUI.readMenuChoice(scanner, 4, "go back");
   }
 
   public int getSortMenuChoice() {
-    MessageUI.clearScreen();
-    System.out.println("\nSORTED LISTINGS");
-    System.out.println("1. By arrival time (earliest first)");
-    System.out.println("2. By guest name (A-Z)");
-    System.out.println("3. By waiting time (longest first)");
-    System.out.println("4. By service order (urgent first, then arrival)");
-    System.out.println("0. Back");
+    displayMenuScreen("SORTED LISTINGS", null,
+        new String[] {
+          "By arrival time (earliest first)",
+          "By guest name (A-Z)",
+          "By waiting time (longest first)",
+          "By service order (urgent first, then arrival)"
+        },
+        "Back");
 
     return MessageUI.readMenuChoice(scanner, 4, "go back");
   }
 
   public int getReportMenuChoice() {
-    MessageUI.clearScreen();
-    System.out.println("\nREPORTS");
-    System.out.println("1. Queue Performance Analysis Report");
-    System.out.println("2. Urgency Exception Audit Report");
-    System.out.println("0. Back");
+    displayMenuScreen("REPORTS", null,
+        new String[] {
+          "Queue Performance Analysis Report",
+          "Urgency Exception Audit Report"
+        },
+        "Back");
 
     return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
@@ -127,9 +167,9 @@ public class WalkInRegistrationBookingUI {
   public void startAction(String title) {
     MessageUI.clearScreen();
     System.out.println();
-    System.out.println("=".repeat(title.length() + 4));
-    System.out.println("  " + title);
-    System.out.println("=".repeat(title.length() + 4));
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxCentred(title);
+    MessageUI.displayBoxBottom();
   }
 
   // ==================================================================
@@ -320,10 +360,10 @@ public class WalkInRegistrationBookingUI {
 
     System.out.println("\nReason for urgency:");
     for (int i = 0; i < presets.length; i++) {
-      System.out.println((i + 1) + ". " + presets[i]);
+      System.out.printf("  [%d]  %s%n", i + 1, presets[i]);
     }
-    System.out.println((presets.length + 1) + ". Other (type your own)");
-    System.out.println("0. Cancel registration");
+    System.out.printf("  [%d]  Other (type your own)%n", presets.length + 1);
+    System.out.println("  [0]  Cancel registration");
 
     int choice = MessageUI.readMenuChoice(scanner, presets.length + 1, "cancel");
 
@@ -420,10 +460,10 @@ public class WalkInRegistrationBookingUI {
    */
   public String inputStatusFilter() {
     System.out.println("\nShow guests with which status?");
-    System.out.println("1. Waiting");
-    System.out.println("2. Served");
-    System.out.println("3. Cancelled");
-    System.out.println("0. Back");
+    System.out.println("  [1]  Waiting");
+    System.out.println("  [2]  Served");
+    System.out.println("  [3]  Cancelled");
+    System.out.println("  [0]  Back");
 
     int choice = MessageUI.readMenuChoice(scanner, 3, "go back");
 
@@ -446,9 +486,9 @@ public class WalkInRegistrationBookingUI {
    */
   public int inputTypeFilter() {
     System.out.println("\nShow guests of which type?");
-    System.out.println("1. Urgent (exception cases)");
-    System.out.println("2. Normal");
-    System.out.println("0. Back");
+    System.out.println("  [1]  Urgent (exception cases)");
+    System.out.println("  [2]  Normal");
+    System.out.println("  [0]  Back");
 
     return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
@@ -736,7 +776,10 @@ public class WalkInRegistrationBookingUI {
       return;
     }
 
-    System.out.println("\nNOW SERVING");
+    System.out.println();
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxCentred("NOW SERVING");
+    MessageUI.displayBoxBottom();
     displayGuest(guest);
   }
 
