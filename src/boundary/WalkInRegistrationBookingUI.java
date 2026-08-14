@@ -51,19 +51,28 @@ public class WalkInRegistrationBookingUI {
    * @param title the menu's heading
    * @param subtitle a short line under the heading explaining the menu, or null
    * for none
+   * @param breadcrumb the trail showing where this screen sits in the system
    * @param options the menu options in order, starting from option 1
    * @param backLabel what option 0 does, e.g. "Back to main menu"
    */
-  private void displayMenuScreen(String title, String subtitle, String[] options,
-      String backLabel) {
+  private void displayMenuScreen(String title, String subtitle, String breadcrumb,
+      String[] options, String backLabel) {
     MessageUI.clearScreen();
     System.out.println();
 
     MessageUI.displayBoxTop();
-    MessageUI.displayBoxCentred(title);
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred(spaced(title));
     if (subtitle != null) {
       MessageUI.displayBoxCentred(subtitle);
     }
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+
+    // Breadcrumb: shows where this screen sits, so the user always knows which
+    // part of the system they are in without having to remember how they got
+    // here.
+    MessageUI.displayBoxLine("  " + breadcrumb);
     MessageUI.displayBoxDivider();
     MessageUI.displayBoxBlank();
 
@@ -77,9 +86,35 @@ public class WalkInRegistrationBookingUI {
     MessageUI.displayBoxBottom();
   }
 
+  /**
+   * Spreads a heading out with spaces between its letters, which makes a short
+   * title read as a heading rather than as another line of text.
+   *
+   * Applied only to short headings - spacing out a long one would push it past
+   * the width of the frame.
+   *
+   * @param text the heading to space out
+   * @return the spaced heading, or the original text if it is too long
+   */
+  private String spaced(String text) {
+    if (text.length() > 30) {
+      return text;
+    }
+
+    StringBuilder spacedText = new StringBuilder();
+    for (int i = 0; i < text.length(); i++) {
+      if (i > 0) {
+        spacedText.append(' ');
+      }
+      spacedText.append(text.charAt(i));
+    }
+    return spacedText.toString();
+  }
+
   public int getMenuChoice() {
-    displayMenuScreen("WALK-IN REGISTRATION & STANDARD BOOKING",
-        "Module Menu",
+    displayMenuScreen("WALK-IN REGISTRATION",
+        "& S T A N D A R D   B O O K I N G",
+        "Main Menu  >  Walk-In Registration",
         new String[] {
           "Guest registration",
           "Queue operations",
@@ -94,6 +129,7 @@ public class WalkInRegistrationBookingUI {
 
   public int getRegistrationMenuChoice() {
     displayMenuScreen("GUEST REGISTRATION", null,
+        "Main Menu  >  Walk-In Registration  >  Guest Registration",
         new String[] {
           "Register normal walk-in (join back of queue)",
           "Register urgent walk-in (exception case)",
@@ -106,6 +142,7 @@ public class WalkInRegistrationBookingUI {
 
   public int getQueueMenuChoice() {
     displayMenuScreen("QUEUE OPERATIONS", null,
+        "Main Menu  >  Walk-In Registration  >  Queue Operations",
         new String[] {
           "Serve next guest",
           "Display current queue",
@@ -118,6 +155,7 @@ public class WalkInRegistrationBookingUI {
 
   public int getSearchMenuChoice() {
     displayMenuScreen("SEARCH & FILTER", null,
+        "Main Menu  >  Walk-In Registration  >  Search & Filter",
         new String[] {
           "Search by guest ID",
           "Search by name (partial match)",
@@ -131,6 +169,7 @@ public class WalkInRegistrationBookingUI {
 
   public int getSortMenuChoice() {
     displayMenuScreen("SORTED LISTINGS", null,
+        "Main Menu  >  Walk-In Registration  >  Sorted Listings",
         new String[] {
           "By arrival time (earliest first)",
           "By guest name (A-Z)",
@@ -144,6 +183,7 @@ public class WalkInRegistrationBookingUI {
 
   public int getReportMenuChoice() {
     displayMenuScreen("REPORTS", null,
+        "Main Menu  >  Walk-In Registration  >  Reports",
         new String[] {
           "Queue Performance Analysis Report",
           "Urgency Exception Audit Report"

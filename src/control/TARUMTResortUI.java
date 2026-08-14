@@ -34,25 +34,33 @@ public class TARUMTResortUI {
 
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
-    MessageUI.displayBoxCentred("TUNKU ABDUL RAHMAN UNIVERSITY");
-    MessageUI.displayBoxCentred("OF MANAGEMENT AND TECHNOLOGY");
+    MessageUI.displayBoxCentred("TUNKU ABDUL RAHMAN UNIVERSITY OF MANAGEMENT AND TECHNOLOGY");
     MessageUI.displayBoxBlank();
-    MessageUI.displayBoxCentred("T A R U M T   R E S O R T");
-    MessageUI.displayBoxCentred("Resort Management System");
+
+    // The resort name is drawn in block letters so it reads as the title of the
+    // screen at a glance, the way a heading would in a printed document.
+    MessageUI.displayBanner("TARUMT");
     MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("R E S O R T   M A N A G E M E N T   S Y S T E M");
+    MessageUI.displayBoxBlank();
+
     MessageUI.displayBoxDivider();
     MessageUI.displayBoxBlank();
-    MessageUI.displayBoxLine("MAIN MENU - please select a subsystem");
+    MessageUI.displayBoxLine("  MAIN MENU");
+    MessageUI.displayBoxLine("  Select a subsystem to continue.");
     MessageUI.displayBoxBlank();
-    MessageUI.displayMenuOption(1, "Walk-In Registration & Standard Booking");
-    MessageUI.displayMenuOption(2, "Housekeeping Task Log");
-    MessageUI.displayMenuOption(3, "Front-Desk Service");
-    MessageUI.displayMenuOption(4, "Loyalty & Rewards");
-    MessageUI.displayBoxBlank();
+    MessageUI.displaySubsystemOption(1, "Walk-In Registration & Standard Booking",
+        "Register guests, manage the waiting queue");
+    MessageUI.displaySubsystemOption(2, "Housekeeping Task Log",
+        "Record and track room cleaning tasks");
+    MessageUI.displaySubsystemOption(3, "Front-Desk Service",
+        "Handle guest requests at the counter");
+    MessageUI.displaySubsystemOption(4, "Loyalty & Rewards",
+        "Manage members, points and redemptions");
     MessageUI.displayMenuOption(0, "Quit the system");
     MessageUI.displayBoxBlank();
     MessageUI.displayBoxDivider();
-    MessageUI.displayBoxLine("Today: " + LocalDate.now().format(HOME_TIMESTAMP));
+    MessageUI.displayBoxLine("  Today: " + LocalDate.now().format(HOME_TIMESTAMP));
     MessageUI.displayBoxBottom();
 
     // Keeps re-prompting (without clearing) until a valid 0-4 is entered, so
@@ -71,10 +79,13 @@ public class TARUMTResortUI {
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
     MessageUI.displayBoxCentred("THANK YOU FOR USING");
-    MessageUI.displayBoxCentred("TARUMT RESORT MANAGEMENT SYSTEM");
     MessageUI.displayBoxBlank();
+    MessageUI.displayBanner("TARUMT");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("R E S O R T   M A N A G E M E N T   S Y S T E M");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
     MessageUI.displayBoxCentred("Have a pleasant day.");
-    MessageUI.displayBoxBlank();
     MessageUI.displayBoxBottom();
     System.out.println();
   }
