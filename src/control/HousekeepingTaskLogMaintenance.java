@@ -6,6 +6,7 @@ import adt.ArrayStack;
 import adt.StackInterface;
 import boundary.HousekeepingTaskLogUI;
 import dao.HousekeepingTaskDAO;
+import dao.HousekeepingTaskInitializer;
 import entity.HousekeepingTask;
 import utility.MessageUI;
 import java.time.LocalDateTime;
@@ -23,6 +24,13 @@ public class HousekeepingTaskLogMaintenance {
 
     // Restore next unique Task ID number
     nextTaskNumber = housekeepingTaskDAO.getNextTaskNumber();
+
+    // Seed sample records on first run (when no persisted data exists yet).
+    if (taskLog.isEmpty()) {
+      taskLog = new HousekeepingTaskInitializer().initializeHousekeepingTasks();
+      nextTaskNumber = taskLog.getNumberOfEntries() + 1;
+      housekeepingTaskDAO.saveToFile(taskLog, nextTaskNumber);
+    }
 
     // Rebuild rollback stack from saved records
     for (int i = 1; i <= taskLog.getNumberOfEntries(); i++) {
