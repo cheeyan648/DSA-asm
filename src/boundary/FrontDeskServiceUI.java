@@ -1,6 +1,7 @@
 package boundary;
 
 import adt.ListInterface;
+import entity.BillingRecord;
 import entity.Booking;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -32,15 +33,14 @@ public class FrontDeskServiceUI {
     System.out.printf("%-3s%s%n", "4.",
         "Search billing details by confirmation number");
     System.out.printf("%-3s%s%n", "5.", "Display all bookings");
+    System.out.printf("%-3s%s%n", "6.", "Booking summary report");
+    System.out.printf("%-3s%s%n", "7.", "Outstanding billing report");
     System.out.printf("%-3s%s%n", "0.", "Back to main menu");
 
     return MessageUI.readMenuChoice(
-        scanner, 5, "go back to the main menu");
+        scanner, 7, "go back to the main menu");
   }
 
-  /**
-   * Option 1 repeats the same task. Option 0 returns to the front-desk menu.
-   */
   public int getNextActionChoice() {
     System.out.println();
     System.out.printf("%-3s%s%n", "1.", "Continue with the same task");
@@ -129,6 +129,10 @@ public class FrontDeskServiceUI {
     }
   }
 
+  public double inputMinimumOutstandingAmount() {
+    return inputNonNegativeAmount("Minimum outstanding amount (RM): ");
+  }
+
   private String inputRequiredText(String prompt) {
     while (true) {
       System.out.print(prompt);
@@ -155,10 +159,24 @@ public class FrontDeskServiceUI {
     }
   }
 
-  /**
-   * Displays the complete guest and booking information found using the
-   * confirmation-number search index.
-   */
+  public LocalDate inputStartDate() {
+    return inputDate("Start date (YYYY-MM-DD): ");
+  }
+
+  public LocalDate inputEndDate(LocalDate startDate) {
+    while (true) {
+      LocalDate endDate =
+          inputDate("End date (YYYY-MM-DD): ");
+
+      if (!endDate.isBefore(startDate)) {
+        return endDate;
+      }
+
+      System.out.println(
+          "End date must be after or equal to the start date.");
+    }
+  }
+
   public void displayCompleteGuestInformation(
       Booking booking,
       double totalBill,
@@ -170,7 +188,8 @@ public class FrontDeskServiceUI {
     }
 
     double outstandingBalance = totalBill - amountPaid;
-    String paymentStatus = outstandingBalance <= 0 ? "PAID" : "OUTSTANDING";
+    String paymentStatus = outstandingBalance <= 0
+        ? "PAID" : "OUTSTANDING";
 
     System.out.println("\nCOMPLETE GUEST INFORMATION");
     System.out.println("==========================");
@@ -205,7 +224,8 @@ public class FrontDeskServiceUI {
     }
 
     double outstandingBalance = totalBill - amountPaid;
-    String paymentStatus = outstandingBalance <= 0 ? "PAID" : "OUTSTANDING";
+    String paymentStatus = outstandingBalance <= 0
+        ? "PAID" : "OUTSTANDING";
 
     System.out.println("\nBILLING DETAILS");
     System.out.println("===============");
@@ -280,6 +300,83 @@ public class FrontDeskServiceUI {
         booking.getCheckInDate(),
         booking.getCheckOutDate()
     );
+  }
+
+  public void displayBookingReport(
+      ListInterface<Booking> reportList) {
+
+    System.out.println("\nBOOKING REPORT");
+    System.out.println("==============");
+
+    if (reportList.isEmpty()) {
+      System.out.println("No booking records found.");
+      return;
+    }
+
+    System.out.printf(
+        "%-5s %-12s %-25s %-10s %-12s %-12s%n",
+        "No.",
+        "Confirm No.",
+        "Guest Name",
+        "Room",
+        "Check-in",
+        "Check-out"
+    );
+
+    for (int i = 1; i <= reportList.getNumberOfEntries(); i++) {
+      Booking booking = reportList.getEntry(i);
+
+      System.out.printf(
+          "%-5d %-12s %-25s %-10s %-12s %-12s%n",
+          i,
+          booking.getConfirmationNumber(),
+          booking.getGuestName(),
+          booking.getRoomNumber(),
+          booking.getCheckInDate(),
+          booking.getCheckOutDate()
+      );
+    }
+
+    System.out.println(
+        "\nTotal Bookings: " + reportList.getNumberOfEntries());
+  }
+
+  public void displayOutstandingBillingReport(
+      ListInterface<Booking> bookingList,
+      ListInterface<BillingRecord> billingList) {
+
+    System.out.println("\nOUTSTANDING BILLING REPORT");
+    System.out.println("==========================");
+
+    if (bookingList.isEmpty()) {
+      System.out.println("No outstanding billing records found.");
+      return;
+    }
+
+    System.out.printf(
+        "%-5s %-12s %-20s %-12s %-12s %-12s%n",
+        "No.",
+        "Confirm No.",
+        "Guest Name",
+        "Total Bill",
+        "Paid",
+        "Balance"
+    );
+
+    for (int i = 1; i <= bookingList.getNumberOfEntries(); i++) {
+      Booking booking = bookingList.getEntry(i);
+      BillingRecord billing = billingList.getEntry(i);
+
+      System.out.printf(
+          "%-5d %-12s %-20s RM %-9.2f RM %-9.2f RM %.2f%n",
+          i,
+          booking.getConfirmationNumber(),
+          booking.getGuestName(),
+          billing.getTotalBill(),
+          billing.getAmountPaid(),
+          billing.getOutstandingBalance()
+      );
+    }
   }
 
   public void displayMessage(String message) {
