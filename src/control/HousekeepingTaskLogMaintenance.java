@@ -138,6 +138,21 @@ public class HousekeepingTaskLogMaintenance {
         return;
       }
 
+      // Reject an update that does not actually change anything. Logging the
+      // status a room is already in would add a duplicate entry that clutters
+      // the task log and distorts the activity report.
+      if (currentTask != null && newStatus.equals(currentTask.getStatus())) {
+        housekeepingTaskLogUI.displayMessage(
+            "Room " + roomNumber + " is already marked as \"" + newStatus + "\"."
+                + "\nNo update logged - please choose a different status.");
+
+        int retryChoice = housekeepingTaskLogUI.getAfterUpdateChoice();
+        if (retryChoice == 0) {
+          return;
+        }
+        continue;
+      }
+
       // Step 5: Generate unique Task ID
       String taskId = generateUniqueTaskId();
 

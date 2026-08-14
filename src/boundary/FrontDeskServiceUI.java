@@ -23,36 +23,57 @@ public class FrontDeskServiceUI {
 
   public int getMenuChoice() {
     MessageUI.clearScreen();
+    System.out.println();
 
-    System.out.println("\nFRONT-DESK SERVICE");
-    System.out.println("==================");
-    System.out.printf("%-3s%s%n", "1.", "Create new booking");
-    System.out.printf("%-3s%s%n", "2.",
-        "Search complete guest information by confirmation number");
-    System.out.printf("%-3s%s%n", "3.", "Check room availability");
-    System.out.printf("%-3s%s%n", "4.",
-        "Search billing details by confirmation number");
-    System.out.printf("%-3s%s%n", "5.", "Display all bookings");
-    System.out.printf("%-3s%s%n", "6.", "Booking summary report");
-    System.out.printf("%-3s%s%n", "7.", "Outstanding billing report");
-    System.out.printf("%-3s%s%n", "0.", "Back to main menu");
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("F R O N T - D E S K   S E R V I C E");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Main Menu  >  Front-Desk Service");
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(1, "Create new booking");
+    MessageUI.displayMenuOption(2, "Search guest information by confirmation no.");
+    MessageUI.displayMenuOption(3, "Check room availability");
+    MessageUI.displayMenuOption(4, "Search billing details by confirmation no.");
+    MessageUI.displayMenuOption(5, "Display all bookings");
+    MessageUI.displayMenuOption(6, "Booking summary report");
+    MessageUI.displayMenuOption(7, "Outstanding billing report");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, "Back to main menu");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
 
     return MessageUI.readMenuChoice(
         scanner, 7, "go back to the main menu");
   }
 
+  /**
+   * Draws the framed title every action in this module starts with, matching
+   * the layout used across the rest of the system.
+   *
+   * @param title the name of the action being started
+   */
+  private void displayActionHeader(String title) {
+    MessageUI.clearScreen();
+    System.out.println();
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxCentred(title);
+    MessageUI.displayBoxBottom();
+  }
+
   public int getNextActionChoice() {
     System.out.println();
-    System.out.printf("%-3s%s%n", "1.", "Continue with the same task");
-    System.out.printf("%-3s%s%n", "0.", "Back to Front-Desk Service");
+    System.out.println("  [1]  Continue with the same task");
+    System.out.println("  [0]  Back to Front-Desk Service");
 
     return MessageUI.readMenuChoice(
         scanner, 1, "go back to Front-Desk Service");
   }
 
   public Booking inputBooking() {
-    System.out.println("\nCREATE NEW BOOKING");
-    System.out.println("==================");
+    displayActionHeader("CREATE NEW BOOKING");
 
     String confirmationNumber = inputConfirmationNumber();
     String guestName = inputRequiredText("Guest name: ");
@@ -191,8 +212,7 @@ public class FrontDeskServiceUI {
     String paymentStatus = outstandingBalance <= 0
         ? "PAID" : "OUTSTANDING";
 
-    System.out.println("\nCOMPLETE GUEST INFORMATION");
-    System.out.println("==========================");
+    displayActionHeader("COMPLETE GUEST INFORMATION");
     System.out.printf("%-22s: %s%n",
         "Confirmation number", booking.getConfirmationNumber());
     System.out.printf("%-22s: %s%n",
@@ -227,8 +247,7 @@ public class FrontDeskServiceUI {
     String paymentStatus = outstandingBalance <= 0
         ? "PAID" : "OUTSTANDING";
 
-    System.out.println("\nBILLING DETAILS");
-    System.out.println("===============");
+    displayActionHeader("BILLING DETAILS");
     System.out.printf("%-22s: %s%n",
         "Confirmation number", booking.getConfirmationNumber());
     System.out.printf("%-22s: %s%n",
@@ -251,8 +270,7 @@ public class FrontDeskServiceUI {
       LocalDate checkOutDate,
       boolean available) {
 
-    System.out.println("\nROOM AVAILABILITY RESULT");
-    System.out.println("========================");
+    displayActionHeader("ROOM AVAILABILITY RESULT");
     System.out.printf("%-18s: %s%n", "Room number", roomNumber);
     System.out.printf("%-18s: %s%n", "Check-in date", checkInDate);
     System.out.printf("%-18s: %s%n", "Check-out date", checkOutDate);
@@ -266,8 +284,7 @@ public class FrontDeskServiceUI {
       return;
     }
 
-    System.out.println("\nALL BOOKINGS");
-    System.out.println("============");
+    displayActionHeader("ALL BOOKINGS");
     System.out.printf("%-5s", "No.");
     displayBookingHeader();
 
@@ -305,8 +322,7 @@ public class FrontDeskServiceUI {
   public void displayBookingReport(
       ListInterface<Booking> reportList) {
 
-    System.out.println("\nBOOKING REPORT");
-    System.out.println("==============");
+    displayActionHeader("BOOKING REPORT");
 
     if (reportList.isEmpty()) {
       System.out.println("No booking records found.");
@@ -345,8 +361,7 @@ public class FrontDeskServiceUI {
       ListInterface<Booking> bookingList,
       ListInterface<BillingRecord> billingList) {
 
-    System.out.println("\nOUTSTANDING BILLING REPORT");
-    System.out.println("==========================");
+    displayActionHeader("OUTSTANDING BILLING REPORT");
 
     if (bookingList.isEmpty()) {
       System.out.println("No outstanding billing records found.");
@@ -354,7 +369,7 @@ public class FrontDeskServiceUI {
     }
 
     System.out.printf(
-        "%-5s %-12s %-20s %-12s %-12s %-12s%n",
+        "%-5s %-12s %-28s %-12s %-12s %-12s%n",
         "No.",
         "Confirm No.",
         "Guest Name",
@@ -368,7 +383,7 @@ public class FrontDeskServiceUI {
       BillingRecord billing = billingList.getEntry(i);
 
       System.out.printf(
-          "%-5d %-12s %-20s RM %-9.2f RM %-9.2f RM %.2f%n",
+          "%-5d %-12s %-28s RM %-9.2f RM %-9.2f RM %.2f%n",
           i,
           booking.getConfirmationNumber(),
           booking.getGuestName(),

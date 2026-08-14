@@ -18,25 +18,49 @@ public class HousekeepingTaskLogUI {
 
     public int getMenuChoice() {
         MessageUI.clearScreen();
+        System.out.println();
 
-        System.out.println("\nHOUSEKEEPING TASK LOG");
-        System.out.println("1. Log new task status update");
-        System.out.println("2. Rollback last status update");
-        System.out.println("3. Display task log");
-        System.out.println("4. Search Housekeeping Task");
-        System.out.println("5. Generate Room Status Report");
-        System.out.println("6. Generate Housekeeping Activity Report");
-        System.out.println("0. Back to main menu");
+        MessageUI.displayBoxTop();
+        MessageUI.displayBoxBlank();
+        MessageUI.displayBoxCentred("H O U S E K E E P I N G   T A S K   L O G");
+        MessageUI.displayBoxBlank();
+        MessageUI.displayBoxDivider();
+        MessageUI.displayBoxLine("  Main Menu  >  Housekeeping Task Log");
+        MessageUI.displayBoxDivider();
+        MessageUI.displayBoxBlank();
+        MessageUI.displayMenuOption(1, "Log new task status update");
+        MessageUI.displayMenuOption(2, "Rollback last status update");
+        MessageUI.displayMenuOption(3, "Display task log");
+        MessageUI.displayMenuOption(4, "Search Housekeeping Task");
+        MessageUI.displayMenuOption(5, "Generate Room Status Report");
+        MessageUI.displayMenuOption(6, "Generate Housekeeping Activity Report");
+        MessageUI.displayBoxBlank();
+        MessageUI.displayMenuOption(0, "Back to main menu");
+        MessageUI.displayBoxBlank();
+        MessageUI.displayBoxBottom();
 
         return MessageUI.readMenuChoice(scanner, 6, "go back to the main menu");
+    }
+
+    /**
+     * Draws the framed title every action in this module starts with, matching
+     * the layout used across the rest of the system.
+     *
+     * @param title the name of the action being started
+     */
+    private void displayActionHeader(String title) {
+        MessageUI.clearScreen();
+        System.out.println();
+        MessageUI.displayBoxTop();
+        MessageUI.displayBoxCentred(title);
+        MessageUI.displayBoxBottom();
     }
 
     // ==============================
     // 1. Log New Task Status Update
     // ==============================
     public void displayLogStatusUpdateHeader() {
-        MessageUI.clearScreen();
-        System.out.println("\nLOG NEW TASK STATUS UPDATE");
+        displayActionHeader("LOG NEW TASK STATUS UPDATE");
     }
 
     public String inputRoomNumber() {
@@ -68,19 +92,19 @@ public class HousekeepingTaskLogUI {
     }
 
     public int getUpdateChoice() {
-        System.out.println("\n1. Update Status");
-        System.out.println("0. Cancel");
+        System.out.println("\n  [1]  Update Status");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(scanner, 1, "cancel");
     }
 
     public String inputStatus() {
         System.out.println("\nSelect New Status:");
-        System.out.println("1. Dirty");
-        System.out.println("2. Cleaning In Progress");
-        System.out.println("3. Inspected");
-        System.out.println("4. Ready for Check-In");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  Dirty");
+        System.out.println("  [2]  Cleaning In Progress");
+        System.out.println("  [3]  Inspected");
+        System.out.println("  [4]  Ready for Check-In");
+        System.out.println("  [0]  Cancel");
 
         int statusChoice = MessageUI.readMenuChoice(scanner, 4, "cancel");
 
@@ -103,8 +127,8 @@ public class HousekeepingTaskLogUI {
     public int getAfterUpdateChoice() {
 
         System.out.println("\nWhat would you like to do next?");
-        System.out.println("1. Log Another Status Update");
-        System.out.println("0. Back to Housekeeping Task Log Menu");
+        System.out.println("  [1]  Log Another Status Update");
+        System.out.println("  [0]  Back to Housekeeping Task Log Menu");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -116,8 +140,7 @@ public class HousekeepingTaskLogUI {
     // 2. Rollback Last Status
     // ========================
     public void displayRollbackHeader() {
-        MessageUI.clearScreen();
-        System.out.println("\nROLLBACK LAST STATUS UPDATE");
+        displayActionHeader("ROLLBACK LAST STATUS UPDATE");
     }
 
     public void displayLastStatusUpdate(String taskId, String roomNumber, String status) {
@@ -139,8 +162,8 @@ public class HousekeepingTaskLogUI {
     }
 
     public int getRollbackConfirmation() {
-        System.out.println("\n1. Confirm Rollback");
-        System.out.println("0. Cancel");
+        System.out.println("\n  [1]  Confirm Rollback");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -150,8 +173,8 @@ public class HousekeepingTaskLogUI {
 
     public int getAfterRollbackChoice() {
         System.out.println("\nWhat would you like to do next?");
-        System.out.println("1. Rollback Another Status Update");
-        System.out.println("0. Back to Housekeeping Task Log Menu");
+        System.out.println("  [1]  Rollback Another Status Update");
+        System.out.println("  [0]  Back to Housekeeping Task Log Menu");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -221,12 +244,11 @@ public class HousekeepingTaskLogUI {
     // 4. Search Housekeeping Task
     // ===========================
     public int getSearchChoice() {
-        MessageUI.clearScreen();
-        System.out.println("\nSEARCH HOUSEKEEPING TASK");
-        System.out.println("1. Search by Task ID");
-        System.out.println("2. Search by Room Number");
-        System.out.println("3. Search by Status");
-        System.out.println("0. Back to Housekeeping Task Log Menu");
+        displayActionHeader("SEARCH HOUSEKEEPING TASK");
+        System.out.println("  [1]  Search by Task ID");
+        System.out.println("  [2]  Search by Room Number");
+        System.out.println("  [3]  Search by Status");
+        System.out.println("  [0]  Back to Housekeeping Task Log Menu");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -251,11 +273,11 @@ public class HousekeepingTaskLogUI {
 
     public String inputSearchStatus() {
         System.out.println("\nSelect Status:");
-        System.out.println("1. Dirty");
-        System.out.println("2. Cleaning In Progress");
-        System.out.println("3. Inspected");
-        System.out.println("4. Ready for Check-In");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  Dirty");
+        System.out.println("  [2]  Cleaning In Progress");
+        System.out.println("  [3]  Inspected");
+        System.out.println("  [4]  Ready for Check-In");
+        System.out.println("  [0]  Cancel");
 
         int choice = MessageUI.readMenuChoice(scanner, 4, "cancel");
         switch (choice) {
@@ -312,8 +334,8 @@ public class HousekeepingTaskLogUI {
 
     public int getAfterSearchChoice() {
         System.out.println("\nWhat would you like to do next?");
-        System.out.println("1. Search Again");
-        System.out.println("0. Back to Housekeeping Task Log Menu");
+        System.out.println("  [1]  Search Again");
+        System.out.println("  [0]  Back to Housekeeping Task Log Menu");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -325,16 +347,14 @@ public class HousekeepingTaskLogUI {
     // 5. Generate Room Status Report
     // ===============================
     public String getRoomStatusFilter() {
-        MessageUI.clearScreen();
-
-        System.out.println("\nGENERATE ROOM STATUS REPORT");
+        displayActionHeader("GENERATE ROOM STATUS REPORT");
         System.out.println("\nFilter by Status:");
-        System.out.println("1. All Statuses");
-        System.out.println("2. Dirty");
-        System.out.println("3. Cleaning In Progress");
-        System.out.println("4. Inspected");
-        System.out.println("5. Ready for Check-In");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  All Statuses");
+        System.out.println("  [2]  Dirty");
+        System.out.println("  [3]  Cleaning In Progress");
+        System.out.println("  [4]  Inspected");
+        System.out.println("  [5]  Ready for Check-In");
+        System.out.println("  [0]  Cancel");
 
         int choice = MessageUI.readMenuChoice(
                 scanner,
@@ -361,10 +381,10 @@ public class HousekeepingTaskLogUI {
 
     public int getRoomFilterChoice() {
         System.out.println("\nFilter by Room:");
-        System.out.println("1. All Rooms");
-        System.out.println("2. Specific Room");
-        System.out.println("3. Room Number Range");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  All Rooms");
+        System.out.println("  [2]  Specific Room");
+        System.out.println("  [3]  Room Number Range");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -398,9 +418,9 @@ public class HousekeepingTaskLogUI {
 
     public int getRoomSortChoice() {
         System.out.println("\nSort Room Number By:");
-        System.out.println("1. Ascending");
-        System.out.println("2. Descending");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  Ascending");
+        System.out.println("  [2]  Descending");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -509,8 +529,8 @@ public class HousekeepingTaskLogUI {
     public int getAfterRoomStatusReportChoice() {
 
         System.out.println("\nWhat would you like to do next?");
-        System.out.println("1. Generate Another Room Status Report");
-        System.out.println("0. Back to Housekeeping Task Log Menu");
+        System.out.println("  [1]  Generate Another Room Status Report");
+        System.out.println("  [0]  Back to Housekeeping Task Log Menu");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -522,13 +542,12 @@ public class HousekeepingTaskLogUI {
     // 6. Generate Housekeeping Activity Report
     // =========================================
     public int getActivityDateFilterChoice() {
-        MessageUI.clearScreen();
-        System.out.println("\nGENERATE HOUSEKEEPING ACTIVITY REPORT");
+        displayActionHeader("GENERATE HOUSEKEEPING ACTIVITY REPORT");
         System.out.println("\nFilter by Date:");
-        System.out.println("1. All Dates");
-        System.out.println("2. Specific Date");
-        System.out.println("3. Date Range");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  All Dates");
+        System.out.println("  [2]  Specific Date");
+        System.out.println("  [3]  Date Range");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(
                 scanner,
@@ -572,12 +591,12 @@ public class HousekeepingTaskLogUI {
 
     public String getActivityStatusFilter() {
         System.out.println("\nFilter by Status:");
-        System.out.println("1. All Statuses");
-        System.out.println("2. Dirty");
-        System.out.println("3. Cleaning In Progress");
-        System.out.println("4. Inspected");
-        System.out.println("5. Ready for Check-In");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  All Statuses");
+        System.out.println("  [2]  Dirty");
+        System.out.println("  [3]  Cleaning In Progress");
+        System.out.println("  [4]  Inspected");
+        System.out.println("  [5]  Ready for Check-In");
+        System.out.println("  [0]  Cancel");
 
         int choice = MessageUI.readMenuChoice(
                 scanner,
@@ -611,9 +630,9 @@ public class HousekeepingTaskLogUI {
 
     public int getActivitySortChoice() {
         System.out.println("\nSort Activities By:");
-        System.out.println("1. Oldest to Newest");
-        System.out.println("2. Newest to Oldest");
-        System.out.println("0. Cancel");
+        System.out.println("  [1]  Oldest to Newest");
+        System.out.println("  [2]  Newest to Oldest");
+        System.out.println("  [0]  Cancel");
 
         return MessageUI.readMenuChoice(
                 scanner,
