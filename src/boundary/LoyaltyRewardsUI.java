@@ -1,5 +1,13 @@
 package boundary;
 
+import adt.ListInterface;
+import entity.LoyaltyNotification;
+import entity.Member;
+import entity.Redemption;
+import entity.Reward;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.Iterator;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -12,47 +20,907 @@ public class LoyaltyRewardsUI {
   // Shared with every other UI class - see MessageUI.scanner for why.
   private Scanner scanner = MessageUI.scanner;
 
-  // Landing menu for this module. Only "0. Back" is wired up so far - the
-  // developer implementing this module should fill in cases 1-4 in
-  // LoyaltyRewardsMaintenance.runLoyaltyRewards() and can extend this menu
-  // with more options if needed.
   public int getMenuChoice() {
     MessageUI.clearScreen();
     System.out.println("\nLOYALTY & REWARDS");
     System.out.println("1. Register new member");
-    System.out.println("2. Check if a member exists");
-    System.out.println("3. Display members sorted by points");
-    System.out.println("4. Find members with expiring points");
+    System.out.println("2. Search member by ID");
+    System.out.println("3. Display all members");
+    System.out.println("4. Display members sorted by points");
+    System.out.println("5. Find members with expiring points");
+    System.out.println("6. Accumulate member points");
+    System.out.println("7. View rewards");
+    System.out.println("8. Request reward redemption");
+    System.out.println("9. Process next pending redemption");
+    System.out.println("10. View redemption history");
+    System.out.println("11. View member notifications");
+    System.out.println("12. View personalized promotion");
+    System.out.println("13. Management reports");
     System.out.println("0. Back to main menu");
 
-    // Keeps re-prompting (without clearing) until a valid 0-4 is entered, so
-    // the user can see the error message and correct their input.
-    return MessageUI.readMenuChoice(scanner, 4, "go back to the main menu");
+    return MessageUI.readMenuChoice(scanner, 13, "go back to the main menu");
   }
 
-  // TODO: developer to implement Loyalty & Rewards UI
-  //
-  // This is general member storage: members are added via add() and looked
-  // up with getEntry()/contains(). It also needs a custom sort
-  // (sortByPoints) and a filter/search pass (findExpiringPoints). Build the
-  // menu/input methods below; leave the sort/filter logic to the
-  // Maintenance class.
-  //
-  // Suggested methods to add (getMenuChoice() above is already done):
-  //   1. inputMember()
-  //      - Prompt for memberId, name, points, pointsExpiryDate.
-  //      - Return a new entity.Member(memberId, name, points, pointsExpiryDate).
-  //
-  //   2. inputMemberId() / inputCutoffDate()
-  //      - Small prompts for the lookup and expiring-points features -
-  //        keep these separate from inputMember() so the control layer can
-  //        call just what it needs.
-  //
-  //   3. displayMember(Member member)
-  //      - Print one member's details, or a "not found" message when null.
-  //
-  //   4. displayMembers(ListInterface<Member> list)
-  //      - Use list.getIterator() to print every member in whatever order
-  //        the list is currently in (e.g. after sortByPoints() reorders it,
-  //        or for the filtered expiring-points result).
+  /**
+   * Collects the details needed to register a new loyalty member.
+   *
+   * @return a new Member, or null if the user cancels during input
+   */
+  public Member inputMember() {
+    System.out.println("\nREGISTER NEW MEMBER");
+    System.out.println("===================");
+
+    String memberId = inputMemberId("Member ID: ");
+    if (memberId == null) {
+      return null;
+    }
+
+    String name = inputRequiredText("Name: ");
+    if (name == null) {
+      return null;
+    }
+
+    Integer points = inputNonNegativeInt("Points: ");
+    if (points == null) {
+      return null;
+    }
+
+    LocalDate pointsExpiryDate = inputOptionalDate(
+        "Points expiry date (YYYY-MM-DD, blank if none): ");
+    if (pointsExpiryDate == null && !skippedOptionalDate) {
+      return null;
+    }
+
+    String tier = inputTier();
+    if (tier == null) {
+      return null;
+    }
+
+    LocalDate joinDate = inputDate("Join date (YYYY-MM-DD): ");
+    if (joinDate == null) {
+      return null;
+    }
+
+    String contactNumber = inputContactNumber();
+    if (contactNumber == null) {
+      return null;
+    }
+
+    return new Member(memberId, name, points.intValue(), pointsExpiryDate,
+        tier, joinDate, contactNumber);
+  }
+
+  /**
+   * Reads a member ID for lookup. Returns null when the user enters 0 to cancel.
+   */
+  public String inputSearchMemberId() {
+    System.out.println("\nSEARCH MEMBER");
+    System.out.println("=============");
+    return inputMemberId("Enter member ID (0 to cancel): ");
+  }
+
+  /**
+   * Reads the member ID used by the points accumulation workflow.
+   */
+  public String inputAccumulateMemberId() {
+    System.out.println("\nACCUMULATE MEMBER POINTS");
+    System.out.println("========================");
+    return inputMemberId("Enter member ID (0 to cancel): ");
+  }
+
+  /**
+   * Reads the number of points earned in the current accumulation action.
+   * Returns null when the user enters 0 to cancel.
+   */
+  public Integer inputEarnedPoints() {
+    while (true) {
+      System.out.print("Points earned (0 to cancel): ");
+      String input = scanner.nextLine().trim();
+
+      if (input.isEmpty()) {
+        System.out.println("Points earned cannot be empty.");
+        continue;
+      }
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      try {
+        int value = Integer.parseInt(input);
+        if (value > 0) {
+          return value;
+        }
+        System.out.println("Earned points must be greater than zero.");
+      } catch (NumberFormatException e) {
+        System.out.println("Please enter a valid whole number.");
+      }
+    }
+  }
+
+  public void displayPointsAccumulationResult(Member member, int oldPoints,
+      int newPoints, String oldTier, String newTier, boolean upgraded) {
+    System.out.println("\nPOINTS ACCUMULATION RESULT");
+    System.out.println("==========================");
+    System.out.printf("Member ID   : %s%n", member.getMemberId());
+    System.out.printf("Name        : %s%n", member.getName());
+    System.out.printf("Old points  : %d%n", oldPoints);
+    System.out.printf("New points  : %d%n", newPoints);
+    System.out.printf("Current tier: %s%n", member.getTier());
+
+    if (upgraded) {
+      System.out.println();
+      System.out.println("Tier upgrade detected!");
+      System.out.printf("Previous tier: %s%n", oldTier);
+      System.out.printf("New tier     : %s%n", newTier);
+    } else {
+      System.out.println();
+      System.out.println("No tier upgrade. Current tier remains "
+          + member.getTier() + ".");
+    }
+  }
+
+  /**
+   * Reads the cutoff date used by the expiring-points listing.
+   */
+  public LocalDate inputCutoffDate() {
+    System.out.println("\nFIND MEMBERS WITH EXPIRING POINTS");
+    System.out.println("================================");
+    System.out.println("Members with points > 0 and an expiry date on or before");
+    System.out.println("the cutoff will be listed.");
+    return inputDate("Cutoff date (YYYY-MM-DD): ");
+  }
+
+  public void displayMember(Member member) {
+    if (member == null) {
+      displayMessage("Member not found.");
+      return;
+    }
+
+    System.out.println("\nMEMBER PROFILE");
+    System.out.println("==============");
+    System.out.printf("Member ID          : %s%n", member.getMemberId());
+    System.out.printf("Name               : %s%n", member.getName());
+    System.out.printf("Points             : %d%n", member.getPoints());
+    System.out.printf("Points expiry date : %s%n",
+        formatDate(member.getPointsExpiryDate()));
+    System.out.printf("Tier               : %s%n", member.getTier());
+    System.out.printf("Join date          : %s%n", formatDate(member.getJoinDate()));
+    System.out.printf("Contact number     : %s%n", member.getContactNumber());
+  }
+
+  public void displayMembers(ListInterface<Member> members, String title) {
+    System.out.println();
+    System.out.println(title);
+    System.out.println("-".repeat(title.length()));
+
+    if (members == null || members.isEmpty()) {
+      displayMessage("No members to display.");
+      return;
+    }
+
+    System.out.printf("%-4s %-10s %-25s %8s %-12s %-10s %-12s %-15s%n",
+        "No.", "Member ID", "Name", "Points", "Expiry", "Tier", "Join Date", "Contact");
+    System.out.println("-".repeat(110));
+
+    Iterator<Member> iterator = members.getIterator();
+    int row = 1;
+    while (iterator.hasNext()) {
+      Member member = iterator.next();
+      System.out.printf("%-4d %-10s %-25s %8d %-12s %-10s %-12s %-15s%n",
+          row,
+          member.getMemberId(),
+          member.getName(),
+          member.getPoints(),
+          formatDate(member.getPointsExpiryDate()),
+          member.getTier(),
+          formatDate(member.getJoinDate()),
+          member.getContactNumber());
+      row++;
+    }
+
+    System.out.println("-".repeat(110));
+    System.out.println("Total: " + members.getNumberOfEntries() + " member(s)");
+  }
+
+  public void displayMessage(String message) {
+    System.out.println("\n" + message);
+  }
+
+  public void displayRegistrationSuccess(Member member) {
+    displayMessage("Member registered successfully.");
+    displayMember(member);
+  }
+
+  public void displayDuplicateMemberMessage(String memberId) {
+    displayMessage("Registration failed: member ID \"" + memberId
+        + "\" is already registered.");
+  }
+
+  public void displayMemberExistsMessage(Member member) {
+    displayMessage("Member found.");
+    displayMember(member);
+  }
+
+  public void displayMemberNotFoundMessage(String memberId) {
+    displayMessage("No member found with ID \"" + memberId + "\".");
+  }
+
+  public String inputPromotionMemberId() {
+    System.out.println("\nVIEW PERSONALIZED PROMOTION");
+    System.out.println("===========================");
+    return inputMemberId("Enter member ID (0 to cancel): ");
+  }
+
+  public void displayPersonalizedPromotion(Member member, int membershipMonths,
+      String promotionTitle, String promotionDetails, String eligibilityReason) {
+    System.out.println("\nPERSONALIZED PROMOTION");
+    System.out.println("======================");
+    System.out.printf("Member ID           : %s%n", member.getMemberId());
+    System.out.printf("Name                : %s%n", member.getName());
+    System.out.printf("Tier                : %s%n", member.getTier());
+    System.out.printf("Points              : %d%n", member.getPoints());
+    System.out.printf("Membership duration : %d month(s)%n", membershipMonths);
+    System.out.println();
+    System.out.printf("Promotion title     : %s%n", promotionTitle);
+    System.out.printf("Promotion details   : %s%n", promotionDetails);
+    System.out.println();
+    System.out.printf("Eligibility         : %s%n", eligibilityReason);
+  }
+
+  public String inputRedemptionMemberId() {
+    System.out.println("\nREQUEST REWARD REDEMPTION");
+    System.out.println("=========================");
+    return inputMemberId("Enter member ID (0 to cancel): ");
+  }
+
+  public String inputRewardId() {
+    while (true) {
+      System.out.print("Enter reward ID (0 to cancel): ");
+      String input = scanner.nextLine().trim();
+
+      if (input.isEmpty()) {
+        System.out.println("Reward ID cannot be empty.");
+        continue;
+      }
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      return input;
+    }
+  }
+
+  public void displayMemberSummaryForRedemption(Member member) {
+    System.out.println();
+    System.out.printf("Member : %s (%s)%n", member.getMemberId(), member.getName());
+    System.out.printf("Points : %d%n", member.getPoints());
+  }
+
+  public void displayRewards(ListInterface<Reward> rewards) {
+    System.out.println("\nAVAILABLE REWARDS");
+    System.out.println("=================");
+    if (rewards == null || rewards.isEmpty()) {
+      displayMessage("No rewards available.");
+      return;
+    }
+
+    System.out.printf("%-8s %-30s %12s%n", "Reward ID", "Reward Name", "Points Req.");
+    System.out.println("-".repeat(54));
+
+    Iterator<Reward> iterator = rewards.getIterator();
+    while (iterator.hasNext()) {
+      Reward reward = iterator.next();
+      System.out.printf("%-8s %-30s %12d%n",
+          reward.getRewardId(),
+          reward.getRewardName(),
+          reward.getPointsRequired());
+    }
+    System.out.println("-".repeat(54));
+  }
+
+  public void displayInvalidRewardMessage(String rewardId) {
+    displayMessage("Reward \"" + rewardId + "\" was not found.");
+  }
+
+  public void displayInsufficientPointsMessage(int currentPoints, int requiredPoints) {
+    displayMessage("Insufficient points. Member has " + currentPoints
+        + " points but this reward requires " + requiredPoints + " points.");
+  }
+
+  public void displayRedemptionRequestResult(Redemption redemption, Reward reward,
+      Member member) {
+    System.out.println("\nREDEMPTION REQUEST CREATED");
+    System.out.println("==========================");
+    System.out.printf("Redemption ID : %s%n", redemption.getRedemptionId());
+    System.out.printf("Member ID     : %s%n", redemption.getMemberId());
+    System.out.printf("Reward        : %s (%s)%n", reward.getRewardName(), reward.getRewardId());
+    System.out.printf("Points needed : %d%n", redemption.getPointsUsed());
+    System.out.printf("Request date  : %s%n", redemption.getRequestDate());
+    System.out.printf("Status        : %s%n", redemption.getStatus());
+    System.out.println();
+    System.out.println("Note: points are not deducted yet. They will be deducted");
+    System.out.println("only when this request is successfully processed.");
+    System.out.printf("Member points remain: %d%n", member.getPoints());
+  }
+
+  public void displayEmptyPendingQueueMessage() {
+    displayMessage("No pending redemption requests to process.");
+  }
+
+  public void displayProcessRedemptionResult(Redemption redemption, Reward reward,
+      Member member, int oldPoints, int newPoints, String message) {
+    System.out.println("\nPROCESS PENDING REDEMPTION");
+    System.out.println("==========================");
+    System.out.printf("Redemption ID : %s%n", redemption.getRedemptionId());
+    System.out.printf("Member ID     : %s%n", redemption.getMemberId());
+    if (reward != null) {
+      System.out.printf("Reward        : %s (%s)%n",
+          reward.getRewardName(), reward.getRewardId());
+    } else {
+      System.out.printf("Reward ID     : %s%n", redemption.getRewardId());
+    }
+    System.out.printf("Points used   : %d%n", redemption.getPointsUsed());
+    System.out.printf("Status        : %s%n", redemption.getStatus());
+    System.out.println();
+    System.out.println(message);
+
+    if (member != null && Redemption.STATUS_COMPLETED.equals(redemption.getStatus())) {
+      System.out.printf("Member points : %d -> %d%n", oldPoints, newPoints);
+    } else if (member != null) {
+      System.out.printf("Member points : %d (unchanged)%n", member.getPoints());
+    }
+  }
+
+  public void displayRedemptions(ListInterface<Redemption> redemptions, String title) {
+    System.out.println();
+    System.out.println(title);
+    System.out.println("-".repeat(title.length()));
+
+    if (redemptions == null || redemptions.isEmpty()) {
+      displayMessage("No redemption records to display.");
+      return;
+    }
+
+    System.out.printf("%-4s %-10s %-10s %-8s %8s %-12s %-10s%n",
+        "No.", "Redeem ID", "Member ID", "Reward", "Points", "Request Date", "Status");
+    System.out.println("-".repeat(78));
+
+    Iterator<Redemption> iterator = redemptions.getIterator();
+    int row = 1;
+    while (iterator.hasNext()) {
+      Redemption redemption = iterator.next();
+      System.out.printf("%-4d %-10s %-10s %-8s %8d %-12s %-10s%n",
+          row,
+          redemption.getRedemptionId(),
+          redemption.getMemberId(),
+          redemption.getRewardId(),
+          redemption.getPointsUsed(),
+          formatDate(redemption.getRequestDate()),
+          redemption.getStatus());
+      row++;
+    }
+
+    System.out.println("-".repeat(78));
+    System.out.println("Total: " + redemptions.getNumberOfEntries() + " record(s)");
+  }
+
+  public String inputNotificationMemberId() {
+    System.out.println("\nVIEW MEMBER NOTIFICATIONS");
+    System.out.println("=========================");
+    return inputMemberId("Enter member ID (0 to cancel): ");
+  }
+
+  public int getNotificationFilterChoice() {
+    System.out.println("\nNotification filter:");
+    System.out.println("1. All notifications");
+    System.out.println("2. Unread only");
+    System.out.println("3. By notification type");
+    System.out.println("0. Cancel");
+    return MessageUI.readMenuChoice(scanner, 3, "cancel");
+  }
+
+  public String inputNotificationType() {
+    while (true) {
+      System.out.println("\nNotification type:");
+      System.out.println("1. EXPIRING_POINTS");
+      System.out.println("2. REDEMPTION");
+      System.out.println("3. TIER_UPGRADE");
+      System.out.println("0. Cancel");
+
+      int choice = MessageUI.readMenuChoice(scanner, 3, "cancel");
+      switch (choice) {
+        case 0:
+          return null;
+        case 1:
+          return "EXPIRING_POINTS";
+        case 2:
+          return "REDEMPTION";
+        case 3:
+          return "TIER_UPGRADE";
+        default:
+          return null;
+      }
+    }
+  }
+
+  public void displayNotifications(ListInterface<LoyaltyNotification> notifications,
+      String memberId, int filterChoice, String typeFilter) {
+    System.out.println("\nMEMBER NOTIFICATIONS");
+    System.out.println("====================");
+    System.out.printf("Member ID : %s%n", memberId);
+    System.out.printf("Filter    : %s%n", describeNotificationFilter(filterChoice, typeFilter));
+    System.out.println();
+
+    if (notifications == null || notifications.isEmpty()) {
+      displayMessage("No notifications found for this member and filter.");
+      return;
+    }
+
+    System.out.printf("%-4s %-10s %-18s %-12s %-6s %s%n",
+        "No.", "Notify ID", "Type", "Created", "Read", "Message");
+    System.out.println("-".repeat(110));
+
+    Iterator<LoyaltyNotification> iterator = notifications.getIterator();
+    int row = 1;
+    while (iterator.hasNext()) {
+      LoyaltyNotification notification = iterator.next();
+      System.out.printf("%-4d %-10s %-18s %-12s %-6s %s%n",
+          row,
+          notification.getNotificationId(),
+          notification.getType(),
+          formatDate(notification.getCreatedDate()),
+          notification.isRead() ? "YES" : "NO",
+          notification.getMessage());
+      row++;
+    }
+
+    System.out.println("-".repeat(110));
+    System.out.println("Total: " + notifications.getNumberOfEntries() + " notification(s)");
+  }
+
+  private String describeNotificationFilter(int filterChoice, String typeFilter) {
+    if (filterChoice == 2) {
+      return "Unread only";
+    }
+    if (filterChoice == 3) {
+      return "Type = " + typeFilter;
+    }
+    return "All";
+  }
+
+  private boolean skippedOptionalDate;
+
+  private String inputMemberId(String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.isEmpty()) {
+        System.out.println("Member ID cannot be empty.");
+        continue;
+      }
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      return input;
+    }
+  }
+
+  private String inputRequiredText(String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.isEmpty()) {
+        System.out.println("This field cannot be empty. Enter 0 to cancel.");
+        continue;
+      }
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      return input;
+    }
+  }
+
+  private Integer inputNonNegativeInt(String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.isEmpty()) {
+        System.out.println("This field cannot be empty.");
+        continue;
+      }
+
+      try {
+        int value = Integer.parseInt(input);
+        if (value >= 0) {
+          return value;
+        }
+        System.out.println("Points cannot be negative.");
+      } catch (NumberFormatException e) {
+        System.out.println("Please enter a whole number.");
+      }
+    }
+  }
+
+  private String inputTier() {
+    while (true) {
+      System.out.print("Tier (Silver/Gold/Platinum/Diamond, blank for Silver): ");
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      if (input.isEmpty()) {
+        return "Silver";
+      }
+
+      if (input.equalsIgnoreCase("Silver")
+          || input.equalsIgnoreCase("Gold")
+          || input.equalsIgnoreCase("Platinum")
+          || input.equalsIgnoreCase("Diamond")) {
+        return capitalizeTier(input);
+      }
+
+      System.out.println("Tier must be Silver, Gold, Platinum, or Diamond.");
+    }
+  }
+
+  private String capitalizeTier(String tier) {
+    if (tier.equalsIgnoreCase("Diamond")) {
+      return "Diamond";
+    }
+    if (tier.equalsIgnoreCase("Gold")) {
+      return "Gold";
+    }
+    if (tier.equalsIgnoreCase("Platinum")) {
+      return "Platinum";
+    }
+    return "Silver";
+  }
+
+  private LocalDate inputDate(String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      try {
+        return LocalDate.parse(input);
+      } catch (DateTimeParseException e) {
+        System.out.println("Please enter a valid date in YYYY-MM-DD format.");
+      }
+    }
+  }
+
+  private LocalDate inputOptionalDate(String prompt) {
+    skippedOptionalDate = false;
+
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      if (input.isEmpty()) {
+        skippedOptionalDate = true;
+        return null;
+      }
+
+      try {
+        return LocalDate.parse(input);
+      } catch (DateTimeParseException e) {
+        System.out.println("Please enter a valid date in YYYY-MM-DD format.");
+      }
+    }
+  }
+
+  private String inputContactNumber() {
+    while (true) {
+      System.out.print("Contact number (9-10 digits, starts with 0): ");
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        return null;
+      }
+
+      if (input.isEmpty()) {
+        System.out.println("Contact number cannot be empty.");
+        continue;
+      }
+
+      String digitsOnly = input.replaceAll("[^0-9]", "");
+      if (digitsOnly.length() < 9 || digitsOnly.length() > 10) {
+        System.out.println("Contact number must contain 9 to 10 digits.");
+        continue;
+      }
+
+      if (!digitsOnly.startsWith("0")) {
+        System.out.println("Contact number must start with 0.");
+        continue;
+      }
+
+      return input;
+    }
+  }
+
+  private String formatDate(LocalDate date) {
+    return date == null ? "-" : date.toString();
+  }
+
+  private boolean reportInputCancelled;
+
+  public boolean wasReportInputCancelled() {
+    return reportInputCancelled;
+  }
+
+  public int getReportMenuChoice() {
+    MessageUI.clearScreen();
+    System.out.println("\nMANAGEMENT REPORTS");
+    System.out.println("1. Loyalty Membership & Tier Performance Report");
+    System.out.println("2. Redemption Analysis Report");
+    System.out.println("0. Back to Loyalty & Rewards menu");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
+  }
+
+  public void displayReportHeader(String reportTitle) {
+    System.out.println();
+    System.out.println(reportTitle);
+    System.out.println("=".repeat(reportTitle.length()));
+    System.out.println("Generated on: " + LocalDate.now());
+    System.out.println();
+  }
+
+  public void displayReportFooter() {
+    System.out.println();
+    System.out.println("-".repeat(78));
+    System.out.println("End of report");
+    System.out.println();
+  }
+
+  public void displayReportSection(String title) {
+    System.out.println(title);
+    System.out.println("-".repeat(title.length()));
+  }
+
+  public void displayReportLine(String label, String value) {
+    System.out.printf("  %-34s: %s%n", label, value);
+  }
+
+  public String inputMembershipReportTierFilter() {
+    System.out.println("\nTier filter:");
+    System.out.println("0. All tiers");
+    System.out.println("1. Silver");
+    System.out.println("2. Gold");
+    System.out.println("3. Platinum");
+    System.out.println("4. Diamond");
+    System.out.println("9. Cancel report");
+
+    while (true) {
+      System.out.print("Enter choice: ");
+      String input = scanner.nextLine().trim();
+      if (input.equals("9")) {
+        return null;
+      }
+      try {
+        int choice = Integer.parseInt(input);
+        switch (choice) {
+          case 0:
+            return "ALL";
+          case 1:
+            return "Silver";
+          case 2:
+            return "Gold";
+          case 3:
+            return "Platinum";
+          case 4:
+            return "Diamond";
+          default:
+            System.out.println("Please enter a number from 0 to 4, or 9 to cancel.");
+        }
+      } catch (NumberFormatException e) {
+        System.out.println("Please enter a valid number.");
+      }
+    }
+  }
+
+  public String inputRedemptionReportStatusFilter() {
+    System.out.println("\nStatus filter:");
+    System.out.println("0. All statuses");
+    System.out.println("1. PENDING");
+    System.out.println("2. COMPLETED");
+    System.out.println("3. REJECTED");
+    System.out.println("9. Cancel report");
+
+    while (true) {
+      System.out.print("Enter choice: ");
+      String input = scanner.nextLine().trim();
+      if (input.equals("9")) {
+        return null;
+      }
+      try {
+        int choice = Integer.parseInt(input);
+        switch (choice) {
+          case 0:
+            return "ALL";
+          case 1:
+            return Redemption.STATUS_PENDING;
+          case 2:
+            return Redemption.STATUS_COMPLETED;
+          case 3:
+            return Redemption.STATUS_REJECTED;
+          default:
+            System.out.println("Please enter a number from 0 to 3, or 9 to cancel.");
+        }
+      } catch (NumberFormatException e) {
+        System.out.println("Please enter a valid number.");
+      }
+    }
+  }
+
+  public Integer inputOptionalReportPoints(String prompt) {
+    reportInputCancelled = false;
+
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        reportInputCancelled = true;
+        return null;
+      }
+
+      if (input.isEmpty()) {
+        return null;
+      }
+
+      try {
+        int value = Integer.parseInt(input);
+        if (value >= 0) {
+          return value;
+        }
+        System.out.println("Points cannot be negative.");
+      } catch (NumberFormatException e) {
+        System.out.println("Please enter a valid whole number.");
+      }
+    }
+  }
+
+  public LocalDate inputOptionalReportDate(String prompt) {
+    reportInputCancelled = false;
+
+    while (true) {
+      System.out.print(prompt);
+      String input = scanner.nextLine().trim();
+
+      if (input.equals("0")) {
+        reportInputCancelled = true;
+        return null;
+      }
+
+      if (input.isEmpty()) {
+        return null;
+      }
+
+      try {
+        return LocalDate.parse(input);
+      } catch (DateTimeParseException e) {
+        System.out.println("Please enter a valid date in YYYY-MM-DD format.");
+      }
+    }
+  }
+
+  public void displayMembershipTierPerformanceReport(String filterDescription,
+      ListInterface<Member> members, int totalMembers, int totalPoints,
+      double averagePoints, int silverCount, int goldCount, int platinumCount,
+      int diamondCount, int nearNextTierCount, Member highestPointsMember) {
+    displayReportSection("FILTER CRITERIA");
+    System.out.println("  " + filterDescription);
+    System.out.println();
+
+    displayReportSection("MEMBER LISTING");
+    if (members == null || members.isEmpty()) {
+      displayMessage("No members matched the selected criteria.");
+    } else {
+      System.out.printf("%-10s %-22s %-10s %8s %-12s %-12s%n",
+          "Member ID", "Name", "Tier", "Points", "Join Date", "Expiry");
+      System.out.println("-".repeat(86));
+
+      Iterator<Member> iterator = members.getIterator();
+      while (iterator.hasNext()) {
+        Member member = iterator.next();
+        System.out.printf("%-10s %-22s %-10s %8d %-12s %-12s%n",
+            member.getMemberId(),
+            member.getName(),
+            member.getTier(),
+            member.getPoints(),
+            formatDate(member.getJoinDate()),
+            formatDate(member.getPointsExpiryDate()));
+      }
+      System.out.println("-".repeat(86));
+    }
+
+    System.out.println();
+    displayReportSection("SUMMARY METRICS");
+    displayReportLine("Total matching members", String.valueOf(totalMembers));
+    displayReportLine("Total points", String.valueOf(totalPoints));
+    displayReportLine("Average points", String.format("%.2f", averagePoints));
+    displayReportLine("Silver members", String.valueOf(silverCount));
+    displayReportLine("Gold members", String.valueOf(goldCount));
+    displayReportLine("Platinum members", String.valueOf(platinumCount));
+    displayReportLine("Diamond members", String.valueOf(diamondCount));
+    displayReportLine("Members near next tier", String.valueOf(nearNextTierCount));
+
+    if (highestPointsMember == null) {
+      displayReportLine("Highest-points member", "-");
+    } else {
+      displayReportLine("Highest-points member",
+          highestPointsMember.getMemberId() + " ("
+              + highestPointsMember.getPoints() + " pts)");
+    }
+  }
+
+  public void displayRedemptionAnalysisReport(String filterDescription,
+      ListInterface<Redemption> redemptions, String[] memberNames,
+      String[] memberTiers, String[] rewardNames, int totalMatches,
+      int completedCount, int pendingCount, int rejectedCount,
+      int totalCompletedPoints, double averageCompletedPoints,
+      int highestCompletedPoints) {
+    displayReportSection("FILTER CRITERIA");
+    System.out.println("  " + filterDescription);
+    System.out.println();
+
+    displayReportSection("REDEMPTION LISTING");
+    if (redemptions == null || redemptions.isEmpty()) {
+      displayMessage("No redemptions matched the selected criteria.");
+    } else {
+      System.out.printf("%-10s %-10s %-18s %-10s %-22s %8s %-12s %-10s%n",
+          "Redeem ID", "Member ID", "Member Name", "Tier", "Reward",
+          "Points", "Date", "Status");
+      System.out.println("-".repeat(112));
+
+      for (int position = 1; position <= redemptions.getNumberOfEntries(); position++) {
+        Redemption redemption = redemptions.getEntry(position);
+        int index = position - 1;
+        System.out.printf("%-10s %-10s %-18s %-10s %-22s %8d %-12s %-10s%n",
+            redemption.getRedemptionId(),
+            redemption.getMemberId(),
+            memberNames[index],
+            memberTiers[index],
+            rewardNames[index],
+            redemption.getPointsUsed(),
+            formatDate(redemption.getRequestDate()),
+            redemption.getStatus());
+      }
+      System.out.println("-".repeat(112));
+    }
+
+    System.out.println();
+    displayReportSection("SUMMARY METRICS");
+    displayReportLine("Total matching redemptions", String.valueOf(totalMatches));
+    displayReportLine("Completed", String.valueOf(completedCount));
+    displayReportLine("Pending", String.valueOf(pendingCount));
+    displayReportLine("Rejected", String.valueOf(rejectedCount));
+    displayReportLine("Total points successfully redeemed",
+        String.valueOf(totalCompletedPoints));
+    displayReportLine("Average completed redemption",
+        String.format("%.2f", averageCompletedPoints));
+    displayReportLine("Highest completed redemption",
+        completedCount == 0
+            ? "-"
+            : String.valueOf(highestCompletedPoints) + " pts");
+  }
 }

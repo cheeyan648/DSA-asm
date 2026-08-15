@@ -14,6 +14,10 @@ public class Booking implements Serializable {
   private String roomNumber;
   private LocalDate checkInDate;
   private LocalDate checkOutDate;
+  // Links this booking to a loyalty member (entity.Member.memberId) so the
+  // Loyalty & Rewards module can award points for stays. Null/blank for
+  // walk-in guests who are not loyalty members.
+  private String memberId;
 
   public Booking() {
   }
@@ -25,6 +29,12 @@ public class Booking implements Serializable {
     this.roomNumber = roomNumber;
     this.checkInDate = checkInDate;
     this.checkOutDate = checkOutDate;
+  }
+
+  public Booking(String confirmationNumber, String guestName, String roomNumber,
+      LocalDate checkInDate, LocalDate checkOutDate, String memberId) {
+    this(confirmationNumber, guestName, roomNumber, checkInDate, checkOutDate);
+    this.memberId = memberId;
   }
 
   public String getConfirmationNumber() {
@@ -67,6 +77,14 @@ public class Booking implements Serializable {
     this.checkOutDate = checkOutDate;
   }
 
+  public String getMemberId() {
+    return memberId;
+  }
+
+  public void setMemberId(String memberId) {
+    this.memberId = memberId;
+  }
+
   @Override
   public int hashCode() {
     return Objects.hashCode(confirmationNumber);
@@ -86,7 +104,7 @@ public class Booking implements Serializable {
 
   @Override
   public String toString() {
-    return String.format("%-10s %-20s %-8s %-12s %-12s",
-        confirmationNumber, guestName, roomNumber, checkInDate, checkOutDate);
+    return String.format("%-10s %-20s %-8s %-12s %-12s %-10s",
+        confirmationNumber, guestName, roomNumber, checkInDate, checkOutDate, memberId);
   }
 }
