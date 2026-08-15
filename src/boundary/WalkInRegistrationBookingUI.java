@@ -269,11 +269,11 @@ public class WalkInRegistrationBookingUI {
    */
   private String inputName() {
     while (true) {
-      System.out.print("Enter guest name     : ");
+      System.out.print("Enter guest name     (0 to cancel): ");
       if (!scanner.hasNextLine()) {
         return null;
       }
-      String name = scanner.nextLine().trim();
+      String name = MessageUI.readLine(scanner);
 
       if (name.isEmpty()) {
         displayMessage("Name cannot be empty!");
@@ -322,11 +322,11 @@ public class WalkInRegistrationBookingUI {
    */
   private String inputContactNumber() {
     while (true) {
-      System.out.print("Enter contact number : ");
+      System.out.print("Enter contact number (0 to cancel): ");
       if (!scanner.hasNextLine()) {
         return null;
       }
-      String contactNumber = scanner.nextLine().trim();
+      String contactNumber = MessageUI.readLine(scanner);
 
       if (contactNumber.isEmpty()) {
         displayMessage("Contact number cannot be empty!");
@@ -415,11 +415,11 @@ public class WalkInRegistrationBookingUI {
     }
 
     while (true) {
-      System.out.print("Enter reason         : ");
+      System.out.print("Enter reason         (0 to cancel): ");
       if (!scanner.hasNextLine()) {
         return null;
       }
-      String reason = scanner.nextLine().trim();
+      String reason = MessageUI.readLine(scanner);
 
       if (reason.isEmpty()) {
         displayMessage("Reason cannot be empty!");
@@ -445,7 +445,7 @@ public class WalkInRegistrationBookingUI {
       if (!scanner.hasNextLine()) {
         return null;
       }
-      String guestId = scanner.nextLine().trim().toUpperCase();
+      String guestId = MessageUI.readLine(scanner).toUpperCase();
 
       if (guestId.isEmpty()) {
         displayMessage("Guest ID cannot be empty!");
@@ -479,7 +479,7 @@ public class WalkInRegistrationBookingUI {
       if (!scanner.hasNextLine()) {
         return null;
       }
-      String text = scanner.nextLine().trim();
+      String text = MessageUI.readLine(scanner);
 
       if (text.isEmpty()) {
         displayMessage("Search text cannot be empty!");
@@ -576,7 +576,7 @@ public class WalkInRegistrationBookingUI {
       if (!scanner.hasNextLine()) {
         return 0;
       }
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         displayMessage("Position cannot be empty!");
@@ -609,7 +609,7 @@ public class WalkInRegistrationBookingUI {
       if (!scanner.hasNextLine()) {
         return false;
       }
-      String answer = scanner.nextLine().trim().toUpperCase();
+      String answer = MessageUI.readLine(scanner).toUpperCase();
 
       if (answer.equals("Y") || answer.equals("YES")) {
         return true;
@@ -762,7 +762,7 @@ public class WalkInRegistrationBookingUI {
       if (!scanner.hasNextLine()) {
         return PAGE_QUIT;
       }
-      String input = scanner.nextLine().trim().toUpperCase();
+      String input = MessageUI.readLine(scanner).toUpperCase();
 
       if (input.isEmpty()) {
         displayMessage("Please enter N, P, a page number, or Q.");

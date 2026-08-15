@@ -63,10 +63,17 @@ public class HousekeepingTaskLogUI {
         displayActionHeader("LOG NEW TASK STATUS UPDATE");
     }
 
+    /**
+     * @return the room number, or null if the user enters 0 to cancel
+     */
     public String inputRoomNumber() {
         while (true) {
-            System.out.print("Enter Room Number: ");
-            String roomNumber = scanner.nextLine().trim();
+            System.out.print("Enter Room Number (0 to cancel): ");
+            String roomNumber = MessageUI.readLine(scanner);
+
+            if (roomNumber.equals("0")) {
+                return null;
+            }
 
             if (roomNumber.isEmpty()) {
                 System.out.println("Room number cannot be empty.");
@@ -256,10 +263,17 @@ public class HousekeepingTaskLogUI {
                 "go back to the Housekeeping Task Log menu");
     }
 
+    /**
+     * @return the task ID, or null if the user enters 0 to cancel
+     */
     public String inputSearchTaskId() {
         while (true) {
-            System.out.print("Enter Task ID: ");
-            String taskId = scanner.nextLine().trim().toUpperCase();
+            System.out.print("Enter Task ID (0 to cancel): ");
+            String taskId = MessageUI.readLine(scanner).toUpperCase();
+
+            if (taskId.equals("0")) {
+                return null;
+            }
 
             if (taskId.isEmpty()) {
                 System.out.println("Task ID cannot be empty.");
@@ -397,7 +411,7 @@ public class HousekeepingTaskLogUI {
 
             System.out.print(prompt);
 
-            String input = scanner.nextLine().trim();
+            String input = MessageUI.readLine(scanner);
 
             if (input.isEmpty()) {
 
@@ -565,7 +579,7 @@ public class HousekeepingTaskLogUI {
 
             System.out.print(prompt);
 
-            String input = scanner.nextLine().trim();
+            String input = MessageUI.readLine(scanner);
 
             if (input.isEmpty()) {
 
@@ -754,7 +768,11 @@ public class HousekeepingTaskLogUI {
     // ================
     public void pressEnterToContinue() {
         System.out.print("\nPress Enter to continue...");
-        scanner.nextLine();
+        // hasNextLine() guards against input being exhausted (e.g. piped input
+        // or Ctrl+D), which would otherwise throw NoSuchElementException here.
+        if (scanner.hasNextLine()) {
+            scanner.nextLine();
+        }
     }
 
     public void displayMessage(String message) {

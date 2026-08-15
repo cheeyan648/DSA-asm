@@ -22,23 +22,49 @@ public class LoyaltyRewardsUI {
 
   public int getMenuChoice() {
     MessageUI.clearScreen();
-    System.out.println("\nLOYALTY & REWARDS");
-    System.out.println("1. Register new member");
-    System.out.println("2. Search member by ID");
-    System.out.println("3. Display all members");
-    System.out.println("4. Display members sorted by points");
-    System.out.println("5. Find members with expiring points");
-    System.out.println("6. Accumulate member points");
-    System.out.println("7. View rewards");
-    System.out.println("8. Request reward redemption");
-    System.out.println("9. Process next pending redemption");
-    System.out.println("10. View redemption history");
-    System.out.println("11. View member notifications");
-    System.out.println("12. View personalized promotion");
-    System.out.println("13. Management reports");
-    System.out.println("0. Back to main menu");
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("L O Y A L T Y   &   R E W A R D S");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Main Menu  >  Loyalty & Rewards");
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(1, "Register new member");
+    MessageUI.displayMenuOption(2, "Search member by ID");
+    MessageUI.displayMenuOption(3, "Display all members");
+    MessageUI.displayMenuOption(4, "Display members sorted by points");
+    MessageUI.displayMenuOption(5, "Find members with expiring points");
+    MessageUI.displayMenuOption(6, "Accumulate member points");
+    MessageUI.displayMenuOption(7, "View rewards");
+    MessageUI.displayMenuOption(8, "Request reward redemption");
+    MessageUI.displayMenuOption(9, "Process next pending redemption");
+    MessageUI.displayMenuOption(10, "View redemption history");
+    MessageUI.displayMenuOption(11, "View member notifications");
+    MessageUI.displayMenuOption(12, "View personalized promotion");
+    MessageUI.displayMenuOption(13, "Management reports");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, "Back to main menu");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
 
     return MessageUI.readMenuChoice(scanner, 13, "go back to the main menu");
+  }
+
+  /**
+   * Draws the framed title every action in this module starts with, matching
+   * the layout used across the rest of the system.
+   *
+   * @param title the name of the action being started
+   */
+  private void displayActionHeader(String title) {
+    MessageUI.clearScreen();
+    System.out.println();
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxCentred(title);
+    MessageUI.displayBoxBottom();
   }
 
   /**
@@ -47,26 +73,29 @@ public class LoyaltyRewardsUI {
    * @return a new Member, or null if the user cancels during input
    */
   public Member inputMember() {
-    System.out.println("\nREGISTER NEW MEMBER");
-    System.out.println("===================");
+    displayActionHeader("REGISTER NEW MEMBER");
 
-    String memberId = inputMemberId("Member ID: ");
+    System.out.println("Enter 0 at any prompt to cancel.");
+    System.out.println();
+
+    String memberId = inputMemberId("Member ID (0 to cancel): ");
     if (memberId == null) {
       return null;
     }
 
-    String name = inputRequiredText("Name: ");
+    String name = inputRequiredText("Name (0 to cancel): ");
     if (name == null) {
       return null;
     }
 
+    // No "0 to cancel" here: 0 is a valid starting points balance.
     Integer points = inputNonNegativeInt("Points: ");
     if (points == null) {
       return null;
     }
 
     LocalDate pointsExpiryDate = inputOptionalDate(
-        "Points expiry date (YYYY-MM-DD, blank if none): ");
+        "Points expiry date (YYYY-MM-DD, blank if none, 0 to cancel): ");
     if (pointsExpiryDate == null && !skippedOptionalDate) {
       return null;
     }
@@ -76,7 +105,7 @@ public class LoyaltyRewardsUI {
       return null;
     }
 
-    LocalDate joinDate = inputDate("Join date (YYYY-MM-DD): ");
+    LocalDate joinDate = inputDate("Join date (YYYY-MM-DD, 0 to cancel): ");
     if (joinDate == null) {
       return null;
     }
@@ -94,8 +123,7 @@ public class LoyaltyRewardsUI {
    * Reads a member ID for lookup. Returns null when the user enters 0 to cancel.
    */
   public String inputSearchMemberId() {
-    System.out.println("\nSEARCH MEMBER");
-    System.out.println("=============");
+    displayActionHeader("SEARCH MEMBER");
     return inputMemberId("Enter member ID (0 to cancel): ");
   }
 
@@ -103,8 +131,7 @@ public class LoyaltyRewardsUI {
    * Reads the member ID used by the points accumulation workflow.
    */
   public String inputAccumulateMemberId() {
-    System.out.println("\nACCUMULATE MEMBER POINTS");
-    System.out.println("========================");
+    displayActionHeader("ACCUMULATE MEMBER POINTS");
     return inputMemberId("Enter member ID (0 to cancel): ");
   }
 
@@ -115,7 +142,7 @@ public class LoyaltyRewardsUI {
   public Integer inputEarnedPoints() {
     while (true) {
       System.out.print("Points earned (0 to cancel): ");
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         System.out.println("Points earned cannot be empty.");
@@ -164,11 +191,10 @@ public class LoyaltyRewardsUI {
    * Reads the cutoff date used by the expiring-points listing.
    */
   public LocalDate inputCutoffDate() {
-    System.out.println("\nFIND MEMBERS WITH EXPIRING POINTS");
-    System.out.println("================================");
+    displayActionHeader("FIND MEMBERS WITH EXPIRING POINTS");
     System.out.println("Members with points > 0 and an expiry date on or before");
     System.out.println("the cutoff will be listed.");
-    return inputDate("Cutoff date (YYYY-MM-DD): ");
+    return inputDate("Cutoff date (YYYY-MM-DD, 0 to cancel): ");
   }
 
   public void displayMember(Member member) {
@@ -227,6 +253,20 @@ public class LoyaltyRewardsUI {
     System.out.println("\n" + message);
   }
 
+  /**
+   * Waits for the user to press Enter so output stays on screen instead of
+   * being wiped by the clearScreen() at the top of the next menu. Matches the
+   * pause used by the other modules.
+   */
+  public void pressEnterToContinue() {
+    System.out.print("\nPress Enter to continue...");
+    // hasNextLine() guards against input being exhausted (e.g. piped input or
+    // Ctrl+D), which would otherwise throw NoSuchElementException here.
+    if (scanner.hasNextLine()) {
+      scanner.nextLine();
+    }
+  }
+
   public void displayRegistrationSuccess(Member member) {
     displayMessage("Member registered successfully.");
     displayMember(member);
@@ -247,8 +287,7 @@ public class LoyaltyRewardsUI {
   }
 
   public String inputPromotionMemberId() {
-    System.out.println("\nVIEW PERSONALIZED PROMOTION");
-    System.out.println("===========================");
+    displayActionHeader("VIEW PERSONALIZED PROMOTION");
     return inputMemberId("Enter member ID (0 to cancel): ");
   }
 
@@ -269,15 +308,14 @@ public class LoyaltyRewardsUI {
   }
 
   public String inputRedemptionMemberId() {
-    System.out.println("\nREQUEST REWARD REDEMPTION");
-    System.out.println("=========================");
+    displayActionHeader("REQUEST REWARD REDEMPTION");
     return inputMemberId("Enter member ID (0 to cancel): ");
   }
 
   public String inputRewardId() {
     while (true) {
       System.out.print("Enter reward ID (0 to cancel): ");
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         System.out.println("Reward ID cannot be empty.");
@@ -407,8 +445,7 @@ public class LoyaltyRewardsUI {
   }
 
   public String inputNotificationMemberId() {
-    System.out.println("\nVIEW MEMBER NOTIFICATIONS");
-    System.out.println("=========================");
+    displayActionHeader("VIEW MEMBER NOTIFICATIONS");
     return inputMemberId("Enter member ID (0 to cancel): ");
   }
 
@@ -495,7 +532,7 @@ public class LoyaltyRewardsUI {
   private String inputMemberId(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         System.out.println("Member ID cannot be empty.");
@@ -513,7 +550,7 @@ public class LoyaltyRewardsUI {
   private String inputRequiredText(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         System.out.println("This field cannot be empty. Enter 0 to cancel.");
@@ -531,7 +568,7 @@ public class LoyaltyRewardsUI {
   private Integer inputNonNegativeInt(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.isEmpty()) {
         System.out.println("This field cannot be empty.");
@@ -552,8 +589,9 @@ public class LoyaltyRewardsUI {
 
   private String inputTier() {
     while (true) {
-      System.out.print("Tier (Silver/Gold/Platinum/Diamond, blank for Silver): ");
-      String input = scanner.nextLine().trim();
+      System.out.print(
+          "Tier (Silver/Gold/Platinum/Diamond, blank for Silver, 0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         return null;
@@ -590,7 +628,7 @@ public class LoyaltyRewardsUI {
   private LocalDate inputDate(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         return null;
@@ -609,7 +647,7 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         return null;
@@ -630,8 +668,9 @@ public class LoyaltyRewardsUI {
 
   private String inputContactNumber() {
     while (true) {
-      System.out.print("Contact number (9-10 digits, starts with 0): ");
-      String input = scanner.nextLine().trim();
+      System.out.print(
+          "Contact number (9-10 digits, starts with 0; enter 0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         return null;
@@ -669,10 +708,23 @@ public class LoyaltyRewardsUI {
 
   public int getReportMenuChoice() {
     MessageUI.clearScreen();
-    System.out.println("\nMANAGEMENT REPORTS");
-    System.out.println("1. Loyalty Membership & Tier Performance Report");
-    System.out.println("2. Redemption Analysis Report");
-    System.out.println("0. Back to Loyalty & Rewards menu");
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("M A N A G E M E N T   R E P O R T S");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Main Menu  >  Loyalty & Rewards  >  Management Reports");
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(1, "Loyalty Membership & Tier Performance Report");
+    MessageUI.displayMenuOption(2, "Redemption Analysis Report");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, "Back to Loyalty & Rewards menu");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
+
     return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
 
@@ -711,7 +763,9 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       System.out.print("Enter choice: ");
-      String input = scanner.nextLine().trim();
+      // readLine() returns "9" at end of input so a closed console cancels the
+      // report instead of throwing NoSuchElementException.
+      String input = MessageUI.readLine(scanner, "9");
       if (input.equals("9")) {
         return null;
       }
@@ -747,7 +801,8 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       System.out.print("Enter choice: ");
-      String input = scanner.nextLine().trim();
+      // As above: end of input cancels the report rather than crashing.
+      String input = MessageUI.readLine(scanner, "9");
       if (input.equals("9")) {
         return null;
       }
@@ -776,7 +831,7 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         reportInputCancelled = true;
@@ -804,7 +859,7 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
 
       if (input.equals("0")) {
         reportInputCancelled = true;

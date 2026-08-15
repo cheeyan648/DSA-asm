@@ -19,6 +19,12 @@ public class FrontDeskServiceUI {
   private static final String BOOKING_FORMAT =
       "%-12s %-25s %-10s %-12s %-12s%n";
 
+  /**
+   * Returned by inputNonNegativeAmount() when the user cancels. Negative, so
+   * it can never be mistaken for a real amount.
+   */
+  public static final double CANCELLED_AMOUNT = -1;
+
   private final Scanner scanner = MessageUI.scanner;
 
   public int getMenuChoice() {
@@ -72,14 +78,40 @@ public class FrontDeskServiceUI {
         scanner, 1, "go back to Front-Desk Service");
   }
 
+  /**
+   * Collects the details needed to create a booking.
+   *
+   * @return the new Booking, or null if the user cancels at any prompt
+   */
   public Booking inputBooking() {
     displayActionHeader("CREATE NEW BOOKING");
+    System.out.println("Enter 0 at any prompt to cancel.");
+    System.out.println();
 
     String confirmationNumber = inputConfirmationNumber();
-    String guestName = inputRequiredText("Guest name: ");
+    if (confirmationNumber == null) {
+      return null;
+    }
+
+    String guestName = inputRequiredText("Guest name (0 to cancel): ");
+    if (guestName == null) {
+      return null;
+    }
+
     String roomNumber = inputRoomNumber();
+    if (roomNumber == null) {
+      return null;
+    }
+
     LocalDate checkInDate = inputCheckInDate();
+    if (checkInDate == null) {
+      return null;
+    }
+
     LocalDate checkOutDate = inputCheckOutDate(checkInDate);
+    if (checkOutDate == null) {
+      return null;
+    }
 
     return new Booking(
         confirmationNumber,
@@ -90,10 +122,19 @@ public class FrontDeskServiceUI {
     );
   }
 
+  /**
+   * Reads a confirmation number.
+   *
+   * @return the 8-digit number, or null if the user enters 0 to cancel
+   */
   public String inputConfirmationNumber() {
     while (true) {
-      System.out.print("Confirmation number (8 digits): ");
-      String confirmationNumber = scanner.nextLine().trim();
+      System.out.print("Confirmation number (8 digits, 0 to cancel): ");
+      String confirmationNumber = MessageUI.readLine(scanner);
+
+      if (confirmationNumber.equals("0")) {
+        return null;
+      }
 
       if (confirmationNumber.matches("\\d{8}")) {
         return confirmationNumber;
@@ -104,18 +145,32 @@ public class FrontDeskServiceUI {
     }
   }
 
+  /**
+   * @return the room number, or null if the user enters 0 to cancel
+   */
   public String inputRoomNumber() {
-    return inputRequiredText("Room number: ").toUpperCase();
+    String roomNumber = inputRequiredText("Room number (0 to cancel): ");
+    return roomNumber == null ? null : roomNumber.toUpperCase();
   }
 
+  /**
+   * @return the check-in date, or null if the user enters 0 to cancel
+   */
   public LocalDate inputCheckInDate() {
-    return inputDate("Check-in date (YYYY-MM-DD): ");
+    return inputDate("Check-in date (YYYY-MM-DD, 0 to cancel): ");
   }
 
+  /**
+   * @return the check-out date, or null if the user enters 0 to cancel
+   */
   public LocalDate inputCheckOutDate(LocalDate checkInDate) {
     while (true) {
       LocalDate checkOutDate =
-          inputDate("Check-out date (YYYY-MM-DD): ");
+          inputDate("Check-out date (YYYY-MM-DD, 0 to cancel): ");
+
+      if (checkOutDate == null) {
+        return null;
+      }
 
       if (checkOutDate.isAfter(checkInDate)) {
         return checkOutDate;
@@ -126,10 +181,22 @@ public class FrontDeskServiceUI {
     }
   }
 
+  /**
+   * Reads a non-negative amount.
+   *
+   * 0 is a valid amount here rather than a cancel key, so cancelling uses -1
+   * and is reported through the returned value being negative.
+   *
+   * @return the amount entered, or CANCELLED_AMOUNT if the user cancels
+   */
   public double inputNonNegativeAmount(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
+
+      if (input.equals("-1")) {
+        return CANCELLED_AMOUNT;
+      }
 
       if (input.isEmpty()) {
         System.out.println("Amount cannot be empty.");
@@ -151,13 +218,21 @@ public class FrontDeskServiceUI {
   }
 
   public double inputMinimumOutstandingAmount() {
-    return inputNonNegativeAmount("Minimum outstanding amount (RM): ");
+    return inputNonNegativeAmount(
+        "Minimum outstanding amount (RM, -1 to cancel): ");
   }
 
+  /**
+   * @return the text entered, or null if the user enters 0 to cancel
+   */
   private String inputRequiredText(String prompt) {
     while (true) {
       System.out.print(prompt);
-      String input = scanner.nextLine().trim();
+      String input = MessageUI.readLine(scanner);
+
+      if (input.equals("0")) {
+        return null;
+      }
 
       if (!input.isEmpty()) {
         return input;
@@ -167,12 +242,20 @@ public class FrontDeskServiceUI {
     }
   }
 
+  /**
+   * @return the date entered, or null if the user enters 0 to cancel
+   */
   private LocalDate inputDate(String prompt) {
     while (true) {
       System.out.print(prompt);
+      String input = MessageUI.readLine(scanner);
+
+      if (input.equals("0")) {
+        return null;
+      }
 
       try {
-        return LocalDate.parse(scanner.nextLine().trim());
+        return LocalDate.parse(input);
       } catch (DateTimeParseException e) {
         System.out.println(
             "Please enter a valid date in YYYY-MM-DD format.");
@@ -180,14 +263,24 @@ public class FrontDeskServiceUI {
     }
   }
 
+  /**
+   * @return the start date, or null if the user enters 0 to cancel
+   */
   public LocalDate inputStartDate() {
-    return inputDate("Start date (YYYY-MM-DD): ");
+    return inputDate("Start date (YYYY-MM-DD, 0 to cancel): ");
   }
 
+  /**
+   * @return the end date, or null if the user enters 0 to cancel
+   */
   public LocalDate inputEndDate(LocalDate startDate) {
     while (true) {
       LocalDate endDate =
-          inputDate("End date (YYYY-MM-DD): ");
+          inputDate("End date (YYYY-MM-DD, 0 to cancel): ");
+
+      if (endDate == null) {
+        return null;
+      }
 
       if (!endDate.isBefore(startDate)) {
         return endDate;

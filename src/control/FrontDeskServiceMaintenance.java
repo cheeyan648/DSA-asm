@@ -173,6 +173,13 @@ public class FrontDeskServiceMaintenance {
         Booking booking =
                 frontDeskServiceUI.inputBooking();
 
+        // null means the user entered 0 to cancel at one of the prompts.
+        if (booking == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Booking creation cancelled.");
+            return;
+        }
+
         String confirmationNumber =
                 booking.getConfirmationNumber();
 
@@ -316,6 +323,13 @@ public class FrontDeskServiceMaintenance {
                 frontDeskServiceUI
                         .inputConfirmationNumber();
 
+        // null means the user entered 0 to cancel.
+        if (confirmationNumber == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Search cancelled.");
+            return;
+        }
+
         /*
          * Search booking using BST.
          */
@@ -409,6 +423,13 @@ public class FrontDeskServiceMaintenance {
         String confirmationNumber =
                 frontDeskServiceUI
                         .inputConfirmationNumber();
+
+        // null means the user entered 0 to cancel.
+        if (confirmationNumber == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Search cancelled.");
+            return;
+        }
 
         /*
          * Search booking using BST.
@@ -537,14 +558,33 @@ public class FrontDeskServiceMaintenance {
                 frontDeskServiceUI
                         .inputRoomNumber();
 
+        // null means the user entered 0 to cancel.
+        if (roomNumber == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Availability check cancelled.");
+            return;
+        }
+
         LocalDate checkInDate =
                 frontDeskServiceUI
                         .inputCheckInDate();
+
+        if (checkInDate == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Availability check cancelled.");
+            return;
+        }
 
         LocalDate checkOutDate =
                 frontDeskServiceUI
                         .inputCheckOutDate(
                                 checkInDate);
+
+        if (checkOutDate == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Availability check cancelled.");
+            return;
+        }
 
         boolean available =
                 isRoomAvailable(
@@ -605,6 +645,13 @@ public class FrontDeskServiceMaintenance {
                 frontDeskServiceUI
                         .inputRoomNumber();
 
+        // null means the user entered 0 to cancel.
+        if (roomNumber == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Report cancelled.");
+            return;
+        }
+
         /*
          * Second filtering criterion.
          */
@@ -612,10 +659,22 @@ public class FrontDeskServiceMaintenance {
                 frontDeskServiceUI
                         .inputStartDate();
 
+        if (startDate == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Report cancelled.");
+            return;
+        }
+
         LocalDate endDate =
                 frontDeskServiceUI
                         .inputEndDate(
                                 startDate);
+
+        if (endDate == null) {
+            frontDeskServiceUI.displayMessage(
+                    "Report cancelled.");
+            return;
+        }
 
         /*
          * Temporary list for the report.
@@ -766,6 +825,13 @@ public class FrontDeskServiceMaintenance {
         double minimumAmount =
                 frontDeskServiceUI
                         .inputMinimumOutstandingAmount();
+
+        // Negative means the user cancelled at the prompt.
+        if (minimumAmount == FrontDeskServiceUI.CANCELLED_AMOUNT) {
+            frontDeskServiceUI.displayMessage(
+                    "Report cancelled.");
+            return;
+        }
 
         /*
          * Temporary lists for the report.

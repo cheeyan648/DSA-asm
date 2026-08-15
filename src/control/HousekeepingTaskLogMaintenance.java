@@ -112,6 +112,12 @@ public class HousekeepingTaskLogMaintenance {
       // Step 1: Input room number
       String roomNumber = housekeepingTaskLogUI.inputRoomNumber();
 
+      // null means the user entered 0 to cancel.
+      if (roomNumber == null) {
+        housekeepingTaskLogUI.displayMessage("Operation cancelled.");
+        return;
+      }
+
       // Step 2: Search latest housekeeping record
       HousekeepingTask currentTask = findLatestTaskByRoom(roomNumber);
 
@@ -309,10 +315,17 @@ public class HousekeepingTaskLogMaintenance {
       switch (searchChoice) {
         case 1:
           searchTaskId = housekeepingTaskLogUI.inputSearchTaskId();
+          // null means the user entered 0 to cancel.
+          if (searchTaskId == null) {
+            continue;
+          }
           searchDescription = "Task ID = " + searchTaskId;
           break;
         case 2:
           searchRoomNumber = housekeepingTaskLogUI.inputRoomNumber();
+          if (searchRoomNumber == null) {
+            continue;
+          }
           searchDescription = "Room Number = " + searchRoomNumber;
           break;
         case 3:
@@ -480,6 +493,10 @@ public class HousekeepingTaskLogMaintenance {
       // Specific Room
       if (roomFilterChoice == 2) {
         specificRoom = housekeepingTaskLogUI.inputRoomNumber();
+        // null means the user entered 0 to cancel.
+        if (specificRoom == null) {
+          continue;
+        }
       }
 
       // Room Number Range
@@ -730,6 +747,10 @@ public class HousekeepingTaskLogMaintenance {
       // Specific Room
       if (roomFilterChoice == 2) {
         specificRoom = housekeepingTaskLogUI.inputRoomNumber();
+        // null means the user entered 0 to cancel.
+        if (specificRoom == null) {
+          continue;
+        }
       }
 
       // Room Number Range

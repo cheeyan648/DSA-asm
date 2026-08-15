@@ -197,6 +197,37 @@ public class MessageUI {
   }
 
   /**
+   * Reads one trimmed line of input, returning "0" once the input has ended.
+   *
+   * A plain scanner.nextLine() throws NoSuchElementException at end of input -
+   * which happens when the user closes the console, or when input is piped in
+   * and runs out. Every prompt in the system treats "0" as cancel, so returning
+   * it here unwinds the current action instead of crashing the program.
+   *
+   * @param scanner the Scanner to read from
+   * @return the trimmed line, or "0" if there is no more input
+   */
+  public static String readLine(Scanner scanner) {
+    return readLine(scanner, "0");
+  }
+
+  /**
+   * Reads one trimmed line of input, returning a caller-chosen value once the
+   * input has ended. Used by the few prompts whose cancel key is not "0".
+   *
+   * @param scanner the Scanner to read from
+   * @param endOfInputValue what to return when there is no more input
+   * @return the trimmed line, or endOfInputValue if there is no more input
+   */
+  public static String readLine(Scanner scanner, String endOfInputValue) {
+    if (!scanner.hasNextLine()) {
+      System.out.println();
+      return endOfInputValue;
+    }
+    return scanner.nextLine().trim();
+  }
+
+  /**
    * Shows an invalid-choice error that also tells the user the valid range,
    * e.g. "Please enter a number from 1 to 4, or 0 to exit."
    *
@@ -232,11 +263,20 @@ public class MessageUI {
    * @param scanner the Scanner to read from
    * @param maxOption the highest valid menu option (options run 1..maxOption)
    * @param exitLabel what option 0 does, e.g. "exit" or "go back"
-   * @return a valid choice between 0 and maxOption
+   * @return a valid choice between 0 and maxOption, or 0 if input has ended
    */
   public static int readMenuChoice(Scanner scanner, int maxOption, String exitLabel) {
     while (true) {
       System.out.print("Enter choice: ");
+
+      // No more input - the user closed the console or input was piped in and
+      // ran out. Reading on would throw NoSuchElementException, so 0 is
+      // returned instead to back out of the menu the same way a typed 0 does.
+      if (!scanner.hasNextLine()) {
+        System.out.println();
+        return 0;
+      }
+
       String input = scanner.nextLine().trim();
 
       if (input.isEmpty()) {
