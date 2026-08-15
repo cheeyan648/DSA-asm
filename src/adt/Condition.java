@@ -11,6 +11,7 @@ package adt;
  *
  * @author Tan Chee Yan
  */
+@FunctionalInterface
 public interface Condition<T> {
 
   /**

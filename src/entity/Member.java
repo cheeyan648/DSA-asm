@@ -13,6 +13,9 @@ public class Member implements Serializable {
   private String name;
   private int points;
   private LocalDate pointsExpiryDate;
+  private String tier = "Silver";
+  private LocalDate joinDate;
+  private String contactNumber;
 
   public Member() {
   }
@@ -22,6 +25,17 @@ public class Member implements Serializable {
     this.name = name;
     this.points = points;
     this.pointsExpiryDate = pointsExpiryDate;
+  }
+
+  public Member(String memberId, String name, int points, LocalDate pointsExpiryDate,
+      String tier, LocalDate joinDate, String contactNumber) {
+    this.memberId = memberId;
+    this.name = name;
+    this.points = points;
+    this.pointsExpiryDate = pointsExpiryDate;
+    this.tier = tier;
+    this.joinDate = joinDate;
+    this.contactNumber = contactNumber;
   }
 
   public String getMemberId() {
@@ -56,6 +70,30 @@ public class Member implements Serializable {
     this.pointsExpiryDate = pointsExpiryDate;
   }
 
+  public String getTier() {
+    return tier;
+  }
+
+  public void setTier(String tier) {
+    this.tier = tier;
+  }
+
+  public LocalDate getJoinDate() {
+    return joinDate;
+  }
+
+  public void setJoinDate(LocalDate joinDate) {
+    this.joinDate = joinDate;
+  }
+
+  public String getContactNumber() {
+    return contactNumber;
+  }
+
+  public void setContactNumber(String contactNumber) {
+    this.contactNumber = contactNumber;
+  }
+
   @Override
   public int hashCode() {
     return Objects.hashCode(memberId);
@@ -75,6 +113,6 @@ public class Member implements Serializable {
 
   @Override
   public String toString() {
-    return String.format("%-10s %-25s %8d %-12s", memberId, name, points, pointsExpiryDate);
+    return String.format("%-10s %-25s %8d %-12s %-10s", memberId, name, points, pointsExpiryDate, tier);
   }
 }
