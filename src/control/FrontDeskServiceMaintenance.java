@@ -218,7 +218,14 @@ public class FrontDeskServiceMaintenance {
         double totalBill =
                 frontDeskServiceUI
                         .inputNonNegativeAmount(
-                                "Total bill (RM): ");
+                                "Total bill (RM, -1 to cancel): ");
+
+        // If the user cancels during billing input, do not create a partial booking.
+        if (totalBill == FrontDeskServiceUI.CANCELLED_AMOUNT) {
+            frontDeskServiceUI.displayMessage(
+                    "Booking creation cancelled.");
+            return;
+        }
 
         double amountPaid;
 
@@ -227,7 +234,14 @@ public class FrontDeskServiceMaintenance {
             amountPaid =
                     frontDeskServiceUI
                             .inputNonNegativeAmount(
-                                    "Amount paid (RM): ");
+                                    "Amount paid (RM, -1 to cancel): ");
+
+            // If the user cancels, leave all ADTs unchanged.
+            if (amountPaid == FrontDeskServiceUI.CANCELLED_AMOUNT) {
+                frontDeskServiceUI.displayMessage(
+                        "Booking creation cancelled.");
+                return;
+            }
 
             if (amountPaid > totalBill) {
 
@@ -340,37 +354,17 @@ public class FrontDeskServiceMaintenance {
         if (booking == null) {
 
             frontDeskServiceUI
-                    .displayCompleteGuestInformation(
-                            null,
-                            0,
-                            0);
+                    .displayCompleteGuestInformation(null);
 
             return;
         }
 
         /*
-         * Search corresponding billing record.
+         * Guest Information only displays guest and booking details.
+         * Billing information is handled by Search Billing Details.
          */
-        BillingRecord billingRecord =
-                searchBillingRecord(
-                        confirmationNumber);
-
-        if (billingRecord == null) {
-
-            frontDeskServiceUI
-                    .displayCompleteGuestInformation(
-                            booking,
-                            0,
-                            0);
-
-            return;
-        }
-
         frontDeskServiceUI
-                .displayCompleteGuestInformation(
-                        booking,
-                        billingRecord.getTotalBill(),
-                        billingRecord.getAmountPaid());
+                .displayCompleteGuestInformation(booking);
     }
 
     // ============================================================
@@ -996,6 +990,135 @@ public class FrontDeskServiceMaintenance {
     }
 
     // ============================================================
+    // SEARCH MENU
+    // ============================================================
+
+    /**
+     * Runs the Search Information submenu.
+     *
+     * Users can choose whether to search guest information
+     * or billing details.
+     */
+    private void runSearchMenu() {
+
+        int searchChoice;
+
+        do {
+
+            searchChoice =
+                    frontDeskServiceUI
+                            .getSearchMenuChoice();
+
+            switch (searchChoice) {
+
+                case 1:
+
+                    do {
+
+                        MessageUI.clearScreen();
+                        searchCompleteGuestInformation();
+
+                    } while (
+                            frontDeskServiceUI
+                                    .getNextActionChoice()
+                            == 1);
+
+                    break;
+
+                case 2:
+
+                    do {
+
+                        MessageUI.clearScreen();
+                        searchBillingDetails();
+
+                    } while (
+                            frontDeskServiceUI
+                                    .getNextActionChoice()
+                            == 1);
+
+                    break;
+
+                case 0:
+
+                    break;
+
+                default:
+
+                    frontDeskServiceUI.displayMessage(
+                            "Invalid search choice.");
+
+                    break;
+            }
+
+        } while (searchChoice != 0);
+    }
+
+    // ============================================================
+    // REPORT MENU
+    // ============================================================
+
+    /**
+     * Runs the Reports submenu.
+     *
+     * Users can choose which report to generate from one page.
+     */
+    private void runReportsMenu() {
+
+        int reportChoice;
+
+        do {
+
+            reportChoice =
+                    frontDeskServiceUI
+                            .getReportMenuChoice();
+
+            switch (reportChoice) {
+
+                case 1:
+
+                    do {
+
+                        MessageUI.clearScreen();
+                        generateBookingReport();
+
+                    } while (
+                            frontDeskServiceUI
+                                    .getNextActionChoice()
+                            == 1);
+
+                    break;
+
+                case 2:
+
+                    do {
+
+                        MessageUI.clearScreen();
+                        generateOutstandingBillingReport();
+
+                    } while (
+                            frontDeskServiceUI
+                                    .getNextActionChoice()
+                            == 1);
+
+                    break;
+
+                case 0:
+
+                    break;
+
+                default:
+
+                    frontDeskServiceUI.displayMessage(
+                            "Invalid report choice.");
+
+                    break;
+            }
+
+        } while (reportChoice != 0);
+    }
+
+    // ============================================================
     // MAIN FRONT-DESK LOOP
     // ============================================================
 
@@ -1030,15 +1153,7 @@ public class FrontDeskServiceMaintenance {
 
                 case 2:
 
-                    do {
-
-                        MessageUI.clearScreen();
-                        searchCompleteGuestInformation();
-
-                    } while (
-                            frontDeskServiceUI
-                                    .getNextActionChoice()
-                            == 1);
+                    runSearchMenu();
 
                     break;
 
@@ -1061,7 +1176,7 @@ public class FrontDeskServiceMaintenance {
                     do {
 
                         MessageUI.clearScreen();
-                        searchBillingDetails();
+                        displayAllBookings();
 
                     } while (
                             frontDeskServiceUI
@@ -1072,43 +1187,7 @@ public class FrontDeskServiceMaintenance {
 
                 case 5:
 
-                    do {
-
-                        MessageUI.clearScreen();
-                        displayAllBookings();
-
-                    } while (
-                            frontDeskServiceUI
-                                    .getNextActionChoice()
-                            == 1);
-
-                    break;
-
-                case 6:
-
-                    do {
-
-                        MessageUI.clearScreen();
-                        generateBookingReport();
-
-                    } while (
-                            frontDeskServiceUI
-                                    .getNextActionChoice()
-                            == 1);
-
-                    break;
-
-                case 7:
-
-                    do {
-
-                        MessageUI.clearScreen();
-                        generateOutstandingBillingReport();
-
-                    } while (
-                            frontDeskServiceUI
-                                    .getNextActionChoice()
-                            == 1);
+                    runReportsMenu();
 
                     break;
 
