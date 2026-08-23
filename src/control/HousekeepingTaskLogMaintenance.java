@@ -3,6 +3,7 @@ package control;
 import adt.ArrayList;
 import adt.ListInterface;
 import adt.ArrayStack;
+import adt.Condition;
 import adt.StackInterface;
 import boundary.HousekeepingTaskLogUI;
 import dao.HousekeepingTaskDAO;
@@ -12,12 +13,16 @@ import utility.MessageUI;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.LocalDate;
+import java.util.Comparator;
 
 /**
  * @author Kat Tan
  */
 public class HousekeepingTaskLogMaintenance {
 
+  private static final int ROWS_PER_PAGE = 20;
+
+  /** Loads saved tasks and prepares the rollback history. */
   public HousekeepingTaskLogMaintenance() {
     // Load saved housekeeping records
     taskLog = housekeepingTaskDAO.retrieveFromFile();
@@ -48,6 +53,7 @@ public class HousekeepingTaskLogMaintenance {
 
   private int nextTaskNumber;
 
+  /** Runs the Housekeeping Task Log menu until the user exits it. */
   public void runHousekeepingTaskLog() {
     int choice;
     do {
@@ -66,10 +72,7 @@ public class HousekeepingTaskLogMaintenance {
           searchHousekeepingTask();
           break;
         case 5:
-          generateRoomStatusReport();
-          break;
-        case 6:
-          generateHousekeepingActivityReport();
+          runReportsMenu();
           break;
         case 0:
           break;
@@ -78,12 +81,14 @@ public class HousekeepingTaskLogMaintenance {
     housekeepingTaskDAO.saveToFile(taskLog, nextTaskNumber);
   }
 
+  /** Creates the next unique task ID. */
   private String generateUniqueTaskId() {
     String taskId = String.format("HT%04d", nextTaskNumber);
     nextTaskNumber++;
     return taskId;
   }
 
+  /** Finds the newest status record for the selected room. */
   private HousekeepingTask findLatestTaskByRoom(String roomNumber) {
     for (int i = taskLog.getNumberOfEntries(); i >= 1; i--) {
       HousekeepingTask task = taskLog.getEntry(i);
@@ -94,6 +99,7 @@ public class HousekeepingTaskLogMaintenance {
     return null;
   }
 
+  /** Removes a task record from the task log by its ID. */
   private boolean removeTaskFromLog(String taskId) {
     for (int i = taskLog.getNumberOfEntries(); i >= 1; i--) {
       HousekeepingTask task = taskLog.getEntry(i);
@@ -105,6 +111,66 @@ public class HousekeepingTaskLogMaintenance {
     return false;
   }
 
+  /** Runs the submenu that lets the user choose a housekeeping report. */
+  private void runReportsMenu() {
+    int choice;
+    do {
+      choice = housekeepingTaskLogUI.getReportMenuChoice();
+      switch (choice) {
+        case 1:
+          generateRoomStatusReport();
+          break;
+        case 2:
+          generateHousekeepingActivityReport();
+          break;
+        case 0:
+          break;
+      }
+    } while (choice != 0);
+  }
+
+  /**
+   * Checks whether a new status follows the required housekeeping workflow.
+   */
+  private boolean isValidStatusTransition(String currentStatus, String newStatus) {
+    if (currentStatus == null) {
+      return true;
+    }
+
+    switch (currentStatus) {
+      case "Dirty":
+        return newStatus.equals("Cleaning In Progress");
+      case "Cleaning In Progress":
+        return newStatus.equals("Inspected");
+      case "Inspected":
+        return newStatus.equals("Ready for Check-In");
+      case "Ready for Check-In":
+        return newStatus.equals("Dirty");
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Explains the next status that is allowed for a room.
+   */
+  private String getExpectedNextStatus(String currentStatus) {
+    if (currentStatus.equals("Ready for Check-In")) {
+      return "Dirty";
+    }
+    if (currentStatus.equals("Dirty")) {
+      return "Cleaning In Progress";
+    }
+    if (currentStatus.equals("Cleaning In Progress")) {
+      return "Inspected";
+    }
+    if (currentStatus.equals("Inspected")) {
+      return "Ready for Check-In";
+    }
+    return null;
+  }
+
+  /** Records the next valid housekeeping status for a room. */
   public void logStatusUpdate() {
     while (true) {
       housekeepingTaskLogUI.displayLogStatusUpdateHeader();
@@ -121,27 +187,31 @@ public class HousekeepingTaskLogMaintenance {
       // Step 2: Search latest housekeeping record
       HousekeepingTask currentTask = findLatestTaskByRoom(roomNumber);
 
-      // Step 3: If room already has housekeeping record
+      String newStatus;
+
+      // Step 3: Existing rooms automatically move to the next status.
       if (currentTask != null) {
         housekeepingTaskLogUI.displayCurrentStatus(roomNumber, currentTask.getStatus());
-        int updateChoice = housekeepingTaskLogUI.getUpdateChoice();
-        // User chooses cancel
+        newStatus = getExpectedNextStatus(currentTask.getStatus());
+        if (newStatus == null) {
+          housekeepingTaskLogUI.displayMessage("Unable to determine the next status for this room.");
+          return;
+        }
+
+        int updateChoice = housekeepingTaskLogUI.getUpdateChoice(newStatus);
         if (updateChoice == 0) {
           housekeepingTaskLogUI.displayMessage("Operation cancelled.");
           return;
         }
       } else {
-        // No existing housekeeping record
+        // A new room may be recorded at any current status.
         housekeepingTaskLogUI.displayNoExistingRecord(roomNumber);
-      }
+        newStatus = housekeepingTaskLogUI.inputStatus();
 
-      // Step 4: Select new status
-      String newStatus = housekeepingTaskLogUI.inputStatus();
-
-      // Cancel status selection
-      if (newStatus == null) {
-        housekeepingTaskLogUI.displayMessage("Operation cancelled.");
-        return;
+        if (newStatus == null) {
+          housekeepingTaskLogUI.displayMessage("Operation cancelled.");
+          return;
+        }
       }
 
       // Reject an update that does not actually change anything. Logging the
@@ -151,6 +221,19 @@ public class HousekeepingTaskLogMaintenance {
         housekeepingTaskLogUI.displayMessage(
             "Room " + roomNumber + " is already marked as \"" + newStatus + "\"."
                 + "\nNo update logged - please choose a different status.");
+
+        int retryChoice = housekeepingTaskLogUI.getAfterUpdateChoice();
+        if (retryChoice == 0) {
+          return;
+        }
+        continue;
+      }
+
+      String currentStatus = currentTask == null ? null : currentTask.getStatus();
+      if (!isValidStatusTransition(currentStatus, newStatus)) {
+        housekeepingTaskLogUI.displayMessage(
+            "Invalid status transition. The next status must be: "
+                + getExpectedNextStatus(currentStatus) + ".");
 
         int retryChoice = housekeepingTaskLogUI.getAfterUpdateChoice();
         if (retryChoice == 0) {
@@ -186,6 +269,7 @@ public class HousekeepingTaskLogMaintenance {
     }
   }
 
+  /** Removes the most recently logged status update after confirmation. */
   public void rollbackLastStatus() {
     while (true) {
       housekeepingTaskLogUI.displayRollbackHeader();
@@ -270,6 +354,7 @@ public class HousekeepingTaskLogMaintenance {
     }
   }
 
+  /** Displays every saved housekeeping task in chronological order. */
   public void displayTaskLog() {
     if (taskLog.getNumberOfEntries() == 0) {
       housekeepingTaskLogUI.displayEmptyTaskLog();
@@ -277,19 +362,81 @@ public class HousekeepingTaskLogMaintenance {
       return;
     }
 
-    housekeepingTaskLogUI.displayTaskLogHeader();
-    for (int i = 1; i <= taskLog.getNumberOfEntries(); i++) {
-      HousekeepingTask task = taskLog.getEntry(i);
-      housekeepingTaskLogUI.displayTaskLogRow(
-          task.getTaskId(),
-          task.getRoomNumber(),
-          task.getStatus(),
-          task.getTimestamp());
+    int totalRecords = taskLog.getNumberOfEntries();
+    int totalPages = (totalRecords + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+    int currentPage = 1;
+
+    while (true) {
+      int firstRow = (currentPage - 1) * ROWS_PER_PAGE + 1;
+      int lastRow = Math.min(currentPage * ROWS_PER_PAGE, totalRecords);
+
+      housekeepingTaskLogUI.displayTaskLogHeader();
+      for (int i = firstRow; i <= lastRow; i++) {
+        HousekeepingTask task = taskLog.getEntry(i);
+        housekeepingTaskLogUI.displayTaskLogRow(
+            task.getTaskId(),
+            task.getRoomNumber(),
+            task.getStatus(),
+            task.getTimestamp());
+      }
+      housekeepingTaskLogUI.displayTaskLogFooter(totalRecords);
+      housekeepingTaskLogUI.displayPageInfo(firstRow, lastRow, totalRecords, currentPage, totalPages);
+
+      if (totalPages == 1) {
+        housekeepingTaskLogUI.pressEnterToContinue();
+        return;
+      }
+
+      int nextPage = housekeepingTaskLogUI.getPageChoice(currentPage, totalPages);
+      if (nextPage == 0) {
+        return;
+      }
+      currentPage = nextPage;
     }
-    housekeepingTaskLogUI.displayTaskLogFooter(taskLog.getNumberOfEntries());
-    housekeepingTaskLogUI.pressEnterToContinue();
   }
 
+  /** Searches for the first housekeeping task that matches the given Task ID using the List ADT search operation. */
+  private HousekeepingTask searchTaskById(String taskId) {
+    return taskLog.search(new Condition<HousekeepingTask>() {
+      @Override
+      public boolean isSatisfiedBy(HousekeepingTask task) {
+        return task.getTaskId().equalsIgnoreCase(taskId);
+      }
+    });
+  }
+
+  /** Searches all housekeeping tasks for a given room number using the List ADT filter operation. */
+  private ListInterface<HousekeepingTask> searchTasksByRoom(String roomNumber) {
+    return taskLog.filter(new Condition<HousekeepingTask>() {
+      @Override
+      public boolean isSatisfiedBy(HousekeepingTask task) {
+        return task.getRoomNumber().equals(roomNumber);
+      }
+    });
+  }
+
+  /** Searches all housekeeping tasks for a given status using the List ADT filter operation. */
+  private ListInterface<HousekeepingTask> searchTasksByStatus(String status) {
+    return taskLog.filter(new Condition<HousekeepingTask>() {
+      @Override
+      public boolean isSatisfiedBy(HousekeepingTask task) {
+        return status.equalsIgnoreCase("ALL")
+            || task.getStatus().equalsIgnoreCase(status);
+      }
+    });
+  }
+
+  /** Counts housekeeping tasks with the selected status using the List ADT countIf operation. */
+  private int countStatusInList(ListInterface<HousekeepingTask> taskList, String status) {
+    return taskList.countIf(new Condition<HousekeepingTask>() {
+      @Override
+      public boolean isSatisfiedBy(HousekeepingTask task) {
+        return task.getStatus().equalsIgnoreCase(status);
+      }
+    });
+  }
+
+  /** Searches task records by task ID, room number, or status. */
   public void searchHousekeepingTask() {
     while (true) {
       // Check whether there are records to search
@@ -314,18 +461,55 @@ public class HousekeepingTaskLogMaintenance {
       // Get search value based on selected criterion
       switch (searchChoice) {
         case 1:
-          searchTaskId = housekeepingTaskLogUI.inputSearchTaskId();
-          // null means the user entered 0 to cancel.
+          // Step 1: Validate that the entered Task ID exists using the List ADT search operation.
+          while (true) {
+            searchTaskId = housekeepingTaskLogUI.inputSearchTaskId();
+
+            // null means the user entered 0 to cancel.
+            if (searchTaskId == null) {
+              break;
+            }
+
+            if (searchTaskById(searchTaskId) == null) {
+              housekeepingTaskLogUI.displayMessage(
+                  "No housekeeping task record found for Task ID " + searchTaskId
+                      + ". Please enter another Task ID.");
+              continue;
+            }
+
+            break;
+          }
+
           if (searchTaskId == null) {
             continue;
           }
+
           searchDescription = "Task ID = " + searchTaskId;
           break;
         case 2:
-          searchRoomNumber = housekeepingTaskLogUI.inputRoomNumber();
+          // Step 2: Validate that the entered Room Number exists using the List ADT filter operation.
+          while (true) {
+            searchRoomNumber = housekeepingTaskLogUI.inputRoomNumber();
+
+            // null means the user entered 0 to cancel.
+            if (searchRoomNumber == null) {
+              break;
+            }
+
+            if (searchTasksByRoom(searchRoomNumber).getNumberOfEntries() == 0) {
+              housekeepingTaskLogUI.displayMessage(
+                  "No housekeeping task records found for Room Number " + searchRoomNumber
+                      + ". Please enter another Room Number.");
+              continue;
+            }
+
+            break;
+          }
+
           if (searchRoomNumber == null) {
             continue;
           }
+
           searchDescription = "Room Number = " + searchRoomNumber;
           break;
         case 3:
@@ -333,45 +517,92 @@ public class HousekeepingTaskLogMaintenance {
           if (searchStatus == null) {
             continue;
           }
-          searchDescription = "Status = " + searchStatus;
+          searchDescription = searchStatus.equalsIgnoreCase("ALL")
+              ? "Status = All Statuses"
+              : "Status = " + searchStatus;
           break;
       }
 
-      housekeepingTaskLogUI.displaySearchResultHeader(searchDescription);
-      int totalFound = 0;
+      ListInterface<HousekeepingTask> searchResults;
 
-      // Linear Search
-      for (int i = 1; i <= taskLog.getNumberOfEntries(); i++) {
-        HousekeepingTask task = taskLog.getEntry(i);
-        boolean match = false;
-        switch (searchChoice) {
-          case 1:
-            match = task.getTaskId().equalsIgnoreCase(searchTaskId);
-            break;
-          case 2:
-            match = task.getRoomNumber().equals(searchRoomNumber);
-            break;
-          case 3:
-            match = task.getStatus().equalsIgnoreCase(searchStatus);
-            break;
+      // Apply the selected search using the List ADT search/filter operations.
+      if (searchChoice == 1) {
+        searchResults = new ArrayList<>();
+        HousekeepingTask task = searchTaskById(searchTaskId);
+        if (task != null) {
+          searchResults.add(task);
+        }
+      } else if (searchChoice == 2) {
+        searchResults = searchTasksByRoom(searchRoomNumber);
+
+        // Sort room search results by date so the latest status is identified from the last record.
+        searchResults.sort(Comparator.comparing(HousekeepingTask::getTimestamp));
+      } else {
+        searchResults = searchTasksByStatus(searchStatus);
+      }
+
+      int totalFound = searchResults.getNumberOfEntries();
+      int totalPages = (totalFound + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+      int currentPage = 1;
+
+      // Display search results using the same pagination style as the task log and reports.
+      while (true) {
+        int firstRow = (currentPage - 1) * ROWS_PER_PAGE + 1;
+        int lastRow = Math.min(currentPage * ROWS_PER_PAGE, totalFound);
+
+        housekeepingTaskLogUI.displaySearchResultHeader(searchDescription);
+
+        for (int i = firstRow; i <= lastRow; i++) {
+          HousekeepingTask task = searchResults.getEntry(i);
+          housekeepingTaskLogUI.displayTaskLogRow(
+              task.getTaskId(),
+              task.getRoomNumber(),
+              task.getStatus(),
+              task.getTimestamp());
         }
 
-        if (match) {
-          housekeepingTaskLogUI.displayTaskLogRow(task.getTaskId(), task.getRoomNumber(), task.getStatus(),
-              task.getTimestamp());
-          totalFound++;
-          // Task ID is unique, so no need to continue searching
-          if (searchChoice == 1) {
-            break;
+        if (totalFound == 0) {
+          if (searchChoice == 2) {
+            housekeepingTaskLogUI.displayMessage(
+                "No housekeeping task records found for Room Number " + searchRoomNumber + ".");
+          } else if (searchChoice == 3) {
+            housekeepingTaskLogUI.displayMessage(
+                "No housekeeping task records found for Status " + searchStatus + ".");
+          } else {
+            housekeepingTaskLogUI.displayMessage(
+                "No housekeeping task record found for Task ID " + searchTaskId + ".");
           }
         }
+
+        housekeepingTaskLogUI.displaySearchResultFooter(totalFound);
+
+        // Do not display pagination information when no search records are found.
+        if (totalFound == 0) {
+          break;
+        }
+
+        housekeepingTaskLogUI.displayPageInfo(firstRow, lastRow, totalFound, currentPage, totalPages);
+
+        if (totalPages <= 1) {
+          break;
+        }
+
+        int nextPage = housekeepingTaskLogUI.getPageChoice(currentPage, totalPages);
+        if (nextPage == 0) {
+          break;
+        }
+        currentPage = nextPage;
       }
 
-      if (totalFound == 0) {
-        housekeepingTaskLogUI.displayMessage("No matching housekeeping task records found.");
+      // Display the latest status once after all search pages have been viewed.
+      if (searchChoice == 2 && totalFound > 0) {
+        HousekeepingTask currentTask = searchResults.getEntry(totalFound);
+        housekeepingTaskLogUI.displayCurrentRoomStatus(
+            currentTask.getRoomNumber(),
+            currentTask.getStatus(),
+            currentTask.getTimestamp());
       }
 
-      housekeepingTaskLogUI.displaySearchResultFooter(totalFound);
       int nextChoice = housekeepingTaskLogUI.getAfterSearchChoice();
 
       if (nextChoice == 0) {
@@ -380,6 +611,7 @@ public class HousekeepingTaskLogMaintenance {
     }
   }
 
+  /** Builds a list containing only the latest task for each room. */
   private ListInterface<HousekeepingTask> buildCurrentRoomList() {
     ListInterface<HousekeepingTask> currentRoomList = new ArrayList<>();
     // Traverse from newest to oldest
@@ -402,65 +634,30 @@ public class HousekeepingTaskLogMaintenance {
     return currentRoomList;
   }
 
-  private boolean matchesStatusFilter(HousekeepingTask task, String statusFilter) {
-    if (statusFilter.equals("ALL")) {
-      return true;
-    }
-    return task.getStatus()
-        .equalsIgnoreCase(statusFilter);
-  }
+  /** Checks whether a task matches the selected status filter. */
 
-  private boolean matchesRoomFilter(HousekeepingTask task, int roomFilterChoice, String specificRoom, int startRoom,
-      int endRoom) {
-    switch (roomFilterChoice) {
-      case 1:
-        // All Rooms
-        return true;
-      case 2:
-        // Specific Room
-        return task.getRoomNumber().equals(specificRoom);
-      case 3:
-        // Room Number Range
-        int roomNumber = Integer.parseInt(task.getRoomNumber());
-        return roomNumber >= startRoom && roomNumber <= endRoom;
-      default:
-        return false;
+  /** Checks whether a task matches the selected room filter. */
+
+  /** Sorts room records by room number using the List ADT sort operation. */
+  private void sortRoomList(ListInterface<HousekeepingTask> roomList, int sortChoice) {
+    // Ascending: room number, then latest timestamp, then Task ID.
+    if (sortChoice == 1) {
+      roomList.sort(
+          Comparator.comparingInt((HousekeepingTask task) -> Integer.parseInt(task.getRoomNumber()))
+              .thenComparing(HousekeepingTask::getTimestamp)
+              .thenComparing(HousekeepingTask::getTaskId));
+    }
+    // Descending: room number, then latest timestamp, then Task ID.
+    else {
+      roomList.sort(
+          Comparator.comparingInt((HousekeepingTask task) -> Integer.parseInt(task.getRoomNumber()))
+              .reversed()
+              .thenComparing(HousekeepingTask::getTimestamp, Comparator.reverseOrder())
+              .thenComparing(HousekeepingTask::getTaskId, Comparator.reverseOrder()));
     }
   }
 
-  private void bubbleSortRoomList(ListInterface<HousekeepingTask> roomList, int sortChoice) {
-    int numberOfRooms = roomList.getNumberOfEntries();
-    for (int i = 1; i < numberOfRooms; i++) {
-      boolean swapped = false;
-
-      for (int j = 1; j <= numberOfRooms - i; j++) {
-        HousekeepingTask firstTask = roomList.getEntry(j);
-        HousekeepingTask secondTask = roomList.getEntry(j + 1);
-        int firstRoom = Integer.parseInt(firstTask.getRoomNumber());
-        int secondRoom = Integer.parseInt(secondTask.getRoomNumber());
-        boolean shouldSwap = false;
-        // Ascending
-        if (sortChoice == 1 && firstRoom > secondRoom) {
-          shouldSwap = true;
-        }
-        // Descending
-        else if (sortChoice == 2 && firstRoom < secondRoom) {
-          shouldSwap = true;
-        }
-
-        if (shouldSwap) {
-          roomList.replace(j, secondTask);
-          roomList.replace(j + 1, firstTask);
-          swapped = true;
-        }
-      }
-      // No swap means list is already sorted
-      if (!swapped) {
-        break;
-      }
-    }
-  }
-
+  /** Generates a report showing the latest status of matching rooms. */
   public void generateRoomStatusReport() {
     while (true) {
       // Step 1: Check available records
@@ -492,10 +689,23 @@ public class HousekeepingTaskLogMaintenance {
 
       // Specific Room
       if (roomFilterChoice == 2) {
-        specificRoom = housekeepingTaskLogUI.inputRoomNumber();
-        // null means the user entered 0 to cancel.
-        if (specificRoom == null) {
-          continue;
+        boolean validSpecificRoom = false;
+        while (!validSpecificRoom) {
+          specificRoom = housekeepingTaskLogUI.inputRoomNumber();
+          // null means the user entered 0 to cancel.
+          if (specificRoom == null) {
+            return;
+          }
+
+          // Step 4a: Validate that the selected Room Number exists using the List ADT filter operation.
+          ListInterface<HousekeepingTask> roomRecords = searchTasksByRoom(specificRoom);
+          if (roomRecords.getNumberOfEntries() == 0) {
+            housekeepingTaskLogUI.displayMessage(
+                "No housekeeping records found for Room Number " + specificRoom
+                    + ". Please enter another Room Number.");
+          } else {
+            validSpecificRoom = true;
+          }
         }
       }
 
@@ -503,10 +713,35 @@ public class HousekeepingTaskLogMaintenance {
       else if (roomFilterChoice == 3) {
         boolean validRange = false;
         while (!validRange) {
-          startRoom = housekeepingTaskLogUI.inputRoomRange("Enter Starting Room Number: ");
-          endRoom = housekeepingTaskLogUI.inputRoomRange("Enter Ending Room Number: ");
+          Integer startRoomInput = housekeepingTaskLogUI.inputRoomRange("Enter Starting Room Number: ");
+          if (startRoomInput == null) {
+            return;
+          }
+          Integer endRoomInput = housekeepingTaskLogUI.inputRoomRange("Enter Ending Room Number: ");
+          if (endRoomInput == null) {
+            return;
+          }
+          startRoom = startRoomInput;
+          endRoom = endRoomInput;
           if (startRoom <= endRoom) {
-            validRange = true;
+            // Step 4b: Validate that the selected Room Number Range contains existing records using the List ADT filter operation.
+            final int selectedStartRoom = startRoom;
+            final int selectedEndRoom = endRoom;
+            ListInterface<HousekeepingTask> rangeRecords = taskLog.filter(new Condition<HousekeepingTask>() {
+              @Override
+              public boolean isSatisfiedBy(HousekeepingTask task) {
+                int roomNumber = Integer.parseInt(task.getRoomNumber());
+                return roomNumber >= selectedStartRoom && roomNumber <= selectedEndRoom;
+              }
+            });
+
+            if (rangeRecords.getNumberOfEntries() == 0) {
+              housekeepingTaskLogUI.displayMessage(
+                  "No housekeeping records found for Room Range " + startRoom + " - " + endRoom
+                      + ". Please enter another Room Range.");
+            } else {
+              validRange = true;
+            }
           } else {
             housekeepingTaskLogUI
                 .displayMessage("Starting room number cannot be greater " + "than ending room number.");
@@ -514,26 +749,46 @@ public class HousekeepingTaskLogMaintenance {
         }
       }
 
-      // Step 5: Apply Multiple Criteria Filters
-      ListInterface<HousekeepingTask> filteredRoomList = new ArrayList<>();
-      for (int i = 1; i <= currentRoomList.getNumberOfEntries(); i++) {
-        HousekeepingTask task = currentRoomList.getEntry(i);
-        boolean statusMatch = matchesStatusFilter(task, statusFilter);
-        boolean roomMatch = matchesRoomFilter(task, roomFilterChoice, specificRoom, startRoom, endRoom);
-        // Both criteria must match
-        if (statusMatch && roomMatch) {
-          filteredRoomList.add(task);
-        }
+      // Step 5: Apply Status Filter using the List ADT filter operation.
+      ListInterface<HousekeepingTask> filteredRoomList = currentRoomList;
+      if (!statusFilter.equals("ALL")) {
+        filteredRoomList = filteredRoomList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            return task.getStatus().equalsIgnoreCase(statusFilter);
+          }
+        });
       }
 
-      // Step 6: Sort Order
+      // Step 6: Apply Room Filter using the List ADT filter operation.
+      if (roomFilterChoice == 2) {
+        final String selectedRoom = specificRoom;
+        filteredRoomList = filteredRoomList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            return task.getRoomNumber().equals(selectedRoom);
+          }
+        });
+      } else if (roomFilterChoice == 3) {
+        final int selectedStartRoom = startRoom;
+        final int selectedEndRoom = endRoom;
+        filteredRoomList = filteredRoomList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            int roomNumber = Integer.parseInt(task.getRoomNumber());
+            return roomNumber >= selectedStartRoom && roomNumber <= selectedEndRoom;
+          }
+        });
+      }
+
+      // Step 7: Sort Order
       int sortChoice = housekeepingTaskLogUI.getRoomSortChoice();
       if (sortChoice == 0) {
         return;
       }
 
-      // Step 7: Bubble Sort
-      bubbleSortRoomList(filteredRoomList, sortChoice);
+      // Step 8: Sort using the List ADT sort operation.
+      sortRoomList(filteredRoomList, sortChoice);
 
       // Step 8: Prepare Report Descriptions
       String statusDescription;
@@ -563,13 +818,12 @@ public class HousekeepingTaskLogMaintenance {
         sortDescription = "Room Number Descending";
       }
 
-      // Step 9: Display Report Header
-      housekeepingTaskLogUI.displayRoomStatusReportHeader(statusDescription, roomDescription, sortDescription);
-
       // Step 10: Handle No Matching Records
       if (filteredRoomList.getNumberOfEntries() == 0) {
+        housekeepingTaskLogUI.displayRoomStatusReportHeader(statusDescription, roomDescription, sortDescription);
         housekeepingTaskLogUI.displayNoMatchingRooms();
         housekeepingTaskLogUI.displayRoomStatusReportFooter(0);
+        housekeepingTaskLogUI.displayRoomStatusReportEnd();
         int nextChoice = housekeepingTaskLogUI.getAfterRoomStatusReportChoice();
         if (nextChoice == 0) {
           return;
@@ -578,38 +832,41 @@ public class HousekeepingTaskLogMaintenance {
         continue;
       }
 
-      // Step 11: Display Report Rows
-      int dirtyCount = 0;
-      int cleaningCount = 0;
-      int inspectedCount = 0;
-      int readyCount = 0;
-      for (int i = 1; i <= filteredRoomList.getNumberOfEntries(); i++) {
-        HousekeepingTask task = filteredRoomList.getEntry(i);
-        housekeepingTaskLogUI.displayRoomStatusReportRow(task.getRoomNumber(), task.getStatus(), task.getTaskId(),
-            task.getTimestamp());
-        // Count current statuses
-        switch (task.getStatus()) {
-          case "Dirty":
-            dirtyCount++;
-            break;
-          case "Cleaning In Progress":
-            cleaningCount++;
-            break;
-          case "Inspected":
-            inspectedCount++;
-            break;
-          case "Ready for Check-In":
-            readyCount++;
-            break;
+      // Step 11: Count current statuses for the report summary using the List ADT countIf operation.
+      int dirtyCount = countStatusInList(filteredRoomList, "Dirty");
+      int cleaningCount = countStatusInList(filteredRoomList, "Cleaning In Progress");
+      int inspectedCount = countStatusInList(filteredRoomList, "Inspected");
+      int readyCount = countStatusInList(filteredRoomList, "Ready for Check-In");
+
+      int totalRooms = filteredRoomList.getNumberOfEntries();
+      int totalPages = (totalRooms + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+      int currentPage = 1;
+      while (true) {
+        int firstRow = (currentPage - 1) * ROWS_PER_PAGE + 1;
+        int lastRow = Math.min(currentPage * ROWS_PER_PAGE, totalRooms);
+
+        housekeepingTaskLogUI.displayRoomStatusReportHeader(statusDescription, roomDescription, sortDescription);
+        for (int i = firstRow; i <= lastRow; i++) {
+          HousekeepingTask task = filteredRoomList.getEntry(i);
+          housekeepingTaskLogUI.displayRoomStatusReportRow(task.getRoomNumber(), task.getStatus(), task.getTaskId(),
+              task.getTimestamp());
         }
-      }
+        housekeepingTaskLogUI.displayRoomStatusReportFooter(totalRooms);
+        housekeepingTaskLogUI.displayPageInfo(firstRow, lastRow, totalRooms, currentPage, totalPages);
 
-      // Step 12: Report Footer
-      housekeepingTaskLogUI.displayRoomStatusReportFooter(filteredRoomList.getNumberOfEntries());
+        if (statusFilter.equals("ALL")) {
+          housekeepingTaskLogUI.displayRoomStatusSummary(dirtyCount, cleaningCount, inspectedCount, readyCount, totalRooms);
+        }
+        housekeepingTaskLogUI.displayRoomStatusReportEnd();
 
-      // Step 13: Status Summary, Only for All Statuses
-      if (statusFilter.equals("ALL")) {
-        housekeepingTaskLogUI.displayRoomStatusSummary(dirtyCount, cleaningCount, inspectedCount, readyCount);
+        if (totalPages == 1) {
+          break;
+        }
+        int nextPage = housekeepingTaskLogUI.getPageChoice(currentPage, totalPages);
+        if (nextPage == 0) {
+          break;
+        }
+        currentPage = nextPage;
       }
 
       // Step 14: Generate Another / Back
@@ -621,54 +878,27 @@ public class HousekeepingTaskLogMaintenance {
     }
   }
 
-  private boolean matchesDateFilter(HousekeepingTask task, int dateFilterChoice, LocalDate specificDate,
-      LocalDate startDate, LocalDate endDate) {
-    LocalDate taskDate = task.getTimestamp().toLocalDate();
-    switch (dateFilterChoice) {
-      case 1:
-        // All Dates
-        return true;
-      case 2:
-        // Specific Date
-        return taskDate.equals(specificDate);
-      case 3:
-        // Date Range
-        return !taskDate.isBefore(startDate) && !taskDate.isAfter(endDate);
-      default:
-        return false;
+  /** Checks whether a task timestamp matches the selected date filter. */
+
+  /** Sorts activity records by timestamp using the List ADT sort operation. */
+  private void sortActivityList(ListInterface<HousekeepingTask> activityList, int sortChoice) {
+    // Oldest to Newest: timestamp, then room number, then Task ID.
+    if (sortChoice == 1) {
+      activityList.sort(
+          Comparator.comparing(HousekeepingTask::getTimestamp)
+              .thenComparingInt(task -> Integer.parseInt(task.getRoomNumber()))
+              .thenComparing(HousekeepingTask::getTaskId));
+    }
+    // Newest to Oldest: timestamp, then room number, then Task ID.
+    else {
+      activityList.sort(
+          Comparator.comparing(HousekeepingTask::getTimestamp, Comparator.reverseOrder())
+              .thenComparingInt(task -> Integer.parseInt(task.getRoomNumber()))
+              .thenComparing(HousekeepingTask::getTaskId));
     }
   }
 
-  private void bubbleSortActivityList(ListInterface<HousekeepingTask> activityList, int sortChoice) {
-    int numberOfActivities = activityList.getNumberOfEntries();
-    for (int i = 1; i < numberOfActivities; i++) {
-      boolean swapped = false;
-      for (int j = 1; j <= numberOfActivities - i; j++) {
-        HousekeepingTask firstTask = activityList.getEntry(j);
-        HousekeepingTask secondTask = activityList.getEntry(j + 1);
-        boolean shouldSwap = false;
-
-        // Oldest to Newest
-        if (sortChoice == 1 && firstTask.getTimestamp().isAfter(secondTask.getTimestamp())) {
-          shouldSwap = true;
-        }
-
-        // Newest to Oldest
-        else if (sortChoice == 2 && firstTask.getTimestamp().isBefore(secondTask.getTimestamp())) {
-          shouldSwap = true;
-        }
-        if (shouldSwap) {
-          activityList.replace(j, secondTask);
-          activityList.replace(j + 1, firstTask);
-          swapped = true;
-        }
-      }
-      if (!swapped) {
-        break;
-      }
-    }
-  }
-
+  /** Counts the different room numbers in an activity list. */
   private int countUniqueRooms(ListInterface<HousekeepingTask> activityList) {
     ListInterface<String> uniqueRooms = new ArrayList<>();
     for (int i = 1; i <= activityList.getNumberOfEntries(); i++) {
@@ -689,6 +919,7 @@ public class HousekeepingTaskLogMaintenance {
     return uniqueRooms.getNumberOfEntries();
   }
 
+  /** Generates a filtered report of housekeeping status updates. */
   public void generateHousekeepingActivityReport() {
     while (true) {
       // Step 1: Check Available Activities
@@ -712,6 +943,9 @@ public class HousekeepingTaskLogMaintenance {
       // Specific Date
       if (dateFilterChoice == 2) {
         specificDate = housekeepingTaskLogUI.inputActivityDate("Enter Date (dd/MM/yyyy): ");
+        if (specificDate == null) {
+          return;
+        }
       }
 
       // Date Range
@@ -719,7 +953,13 @@ public class HousekeepingTaskLogMaintenance {
         boolean validDateRange = false;
         while (!validDateRange) {
           startDate = housekeepingTaskLogUI.inputActivityDate("Enter Start Date (dd/MM/yyyy): ");
+          if (startDate == null) {
+            return;
+          }
           endDate = housekeepingTaskLogUI.inputActivityDate("Enter End Date (dd/MM/yyyy): ");
+          if (endDate == null) {
+            return;
+          }
           if (!startDate.isAfter(endDate)) {
             validDateRange = true;
           } else {
@@ -746,10 +986,24 @@ public class HousekeepingTaskLogMaintenance {
 
       // Specific Room
       if (roomFilterChoice == 2) {
-        specificRoom = housekeepingTaskLogUI.inputRoomNumber();
-        // null means the user entered 0 to cancel.
-        if (specificRoom == null) {
-          continue;
+        boolean validSpecificRoom = false;
+        while (!validSpecificRoom) {
+          specificRoom = housekeepingTaskLogUI.inputRoomNumber();
+
+          // null means the user entered 0 to cancel.
+          if (specificRoom == null) {
+            return;
+          }
+
+          // Validate that the selected Room Number exists.
+          ListInterface<HousekeepingTask> roomRecords = searchTasksByRoom(specificRoom);
+          if (roomRecords.getNumberOfEntries() == 0) {
+            housekeepingTaskLogUI.displayMessage(
+                "No housekeeping records found for Room Number " + specificRoom
+                    + ". Please enter another Room Number.");
+          } else {
+            validSpecificRoom = true;
+          }
         }
       }
 
@@ -757,8 +1011,16 @@ public class HousekeepingTaskLogMaintenance {
       else if (roomFilterChoice == 3) {
         boolean validRoomRange = false;
         while (!validRoomRange) {
-          startRoom = housekeepingTaskLogUI.inputRoomRange("Enter Starting Room Number: ");
-          endRoom = housekeepingTaskLogUI.inputRoomRange("Enter Ending Room Number: ");
+          Integer startRoomInput = housekeepingTaskLogUI.inputRoomRange("Enter Starting Room Number: ");
+          if (startRoomInput == null) {
+            return;
+          }
+          Integer endRoomInput = housekeepingTaskLogUI.inputRoomRange("Enter Ending Room Number: ");
+          if (endRoomInput == null) {
+            return;
+          }
+          startRoom = startRoomInput;
+          endRoom = endRoomInput;
           if (startRoom <= endRoom) {
             validRoomRange = true;
           } else {
@@ -774,22 +1036,61 @@ public class HousekeepingTaskLogMaintenance {
         return;
       }
 
-      // Step 6: Apply Multiple Criteria Filters
-      ListInterface<HousekeepingTask> filteredActivityList = new ArrayList<>();
-      for (int i = 1; i <= taskLog.getNumberOfEntries(); i++) {
-        HousekeepingTask task = taskLog.getEntry(i);
-        boolean dateMatch = matchesDateFilter(task, dateFilterChoice, specificDate, startDate, endDate);
-        boolean statusMatch = matchesStatusFilter(task, statusFilter);
-        boolean roomMatch = matchesRoomFilter(task, roomFilterChoice, specificRoom, startRoom, endRoom);
-
-        // ALL THREE criteria must match
-        if (dateMatch && statusMatch && roomMatch) {
-          filteredActivityList.add(task);
-        }
+      // Step 6: Apply Date Filter using the List ADT filter operation.
+      ListInterface<HousekeepingTask> filteredActivityList = taskLog;
+      if (dateFilterChoice == 2) {
+        final LocalDate selectedDate = specificDate;
+        filteredActivityList = filteredActivityList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            return task.getTimestamp().toLocalDate().equals(selectedDate);
+          }
+        });
+      } else if (dateFilterChoice == 3) {
+        final LocalDate selectedStartDate = startDate;
+        final LocalDate selectedEndDate = endDate;
+        filteredActivityList = filteredActivityList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            LocalDate taskDate = task.getTimestamp().toLocalDate();
+            return !taskDate.isBefore(selectedStartDate) && !taskDate.isAfter(selectedEndDate);
+          }
+        });
       }
 
-      // Step 7: Bubble Sort by Date / Time
-      bubbleSortActivityList(filteredActivityList, sortChoice);
+      // Step 7: Apply Status Filter using the List ADT filter operation.
+      if (!statusFilter.equals("ALL")) {
+        filteredActivityList = filteredActivityList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            return task.getStatus().equalsIgnoreCase(statusFilter);
+          }
+        });
+      }
+
+      // Step 8: Apply Room Filter using the List ADT filter operation.
+      if (roomFilterChoice == 2) {
+        final String selectedRoom = specificRoom;
+        filteredActivityList = filteredActivityList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            return task.getRoomNumber().equals(selectedRoom);
+          }
+        });
+      } else if (roomFilterChoice == 3) {
+        final int selectedStartRoom = startRoom;
+        final int selectedEndRoom = endRoom;
+        filteredActivityList = filteredActivityList.filter(new Condition<HousekeepingTask>() {
+          @Override
+          public boolean isSatisfiedBy(HousekeepingTask task) {
+            int roomNumber = Integer.parseInt(task.getRoomNumber());
+            return roomNumber >= selectedStartRoom && roomNumber <= selectedEndRoom;
+          }
+        });
+      }
+
+      // Step 9: Sort by Date / Time using the List ADT sort operation.
+      sortActivityList(filteredActivityList, sortChoice);
 
       // Step 8: Prepare Report Descriptions
       DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -833,14 +1134,13 @@ public class HousekeepingTaskLogMaintenance {
         sortDescription = "Newest to Oldest";
       }
 
-      // Step 9: Display Report Header
-      housekeepingTaskLogUI.displayActivityReportHeader(dateDescription, statusDescription, roomDescription,
-          sortDescription);
-
       // Step 10: No Matching Activities
       if (filteredActivityList.getNumberOfEntries() == 0) {
+        housekeepingTaskLogUI.displayActivityReportHeader(dateDescription, statusDescription, roomDescription,
+            sortDescription);
         housekeepingTaskLogUI.displayNoMatchingActivities();
         housekeepingTaskLogUI.displayActivityReportFooter(0, 0);
+        housekeepingTaskLogUI.displayActivityReportEnd();
         int nextChoice = housekeepingTaskLogUI.getAfterActivityReportChoice();
         if (nextChoice == 0) {
           return;
@@ -849,41 +1149,43 @@ public class HousekeepingTaskLogMaintenance {
         continue;
       }
 
-      // Step 11: Count Activity Types
-      int dirtyCount = 0;
-      int cleaningCount = 0;
-      int inspectedCount = 0;
-      int readyCount = 0;
-
-      // Step 12: Display Activity Rows
-      for (int i = 1; i <= filteredActivityList.getNumberOfEntries(); i++) {
-        HousekeepingTask task = filteredActivityList.getEntry(i);
-        housekeepingTaskLogUI.displayTaskLogRow(task.getTaskId(), task.getRoomNumber(), task.getStatus(),
-            task.getTimestamp());
-        switch (task.getStatus()) {
-          case "Dirty":
-            dirtyCount++;
-            break;
-          case "Cleaning In Progress":
-            cleaningCount++;
-            break;
-          case "Inspected":
-            inspectedCount++;
-            break;
-          case "Ready for Check-In":
-            readyCount++;
-            break;
-        }
-      }
+      // Step 11: Count Activity Types using the List ADT countIf operation.
+      int dirtyCount = countStatusInList(filteredActivityList, "Dirty");
+      int cleaningCount = countStatusInList(filteredActivityList, "Cleaning In Progress");
+      int inspectedCount = countStatusInList(filteredActivityList, "Inspected");
+      int readyCount = countStatusInList(filteredActivityList, "Ready for Check-In");
 
       // Step 13: Count Unique Rooms Involved
       int roomsInvolved = countUniqueRooms(filteredActivityList);
 
-      // Step 14: Report Footer
-      housekeepingTaskLogUI.displayActivityReportFooter(filteredActivityList.getNumberOfEntries(), roomsInvolved);
+      int totalActivities = filteredActivityList.getNumberOfEntries();
+      int totalPages = (totalActivities + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+      int currentPage = 1;
+      while (true) {
+        int firstRow = (currentPage - 1) * ROWS_PER_PAGE + 1;
+        int lastRow = Math.min(currentPage * ROWS_PER_PAGE, totalActivities);
 
-      // Step 15: Activity Summary
-      housekeepingTaskLogUI.displayActivitySummary(dirtyCount, cleaningCount, inspectedCount, readyCount);
+        housekeepingTaskLogUI.displayActivityReportHeader(dateDescription, statusDescription, roomDescription,
+            sortDescription);
+        for (int i = firstRow; i <= lastRow; i++) {
+          HousekeepingTask task = filteredActivityList.getEntry(i);
+          housekeepingTaskLogUI.displayTaskLogRow(task.getTaskId(), task.getRoomNumber(), task.getStatus(),
+              task.getTimestamp());
+        }
+        housekeepingTaskLogUI.displayActivityReportFooter(totalActivities, roomsInvolved);
+        housekeepingTaskLogUI.displayPageInfo(firstRow, lastRow, totalActivities, currentPage, totalPages);
+        housekeepingTaskLogUI.displayActivitySummary(dirtyCount, cleaningCount, inspectedCount, readyCount);
+        housekeepingTaskLogUI.displayActivityReportEnd();
+
+        if (totalPages == 1) {
+          break;
+        }
+        int nextPage = housekeepingTaskLogUI.getPageChoice(currentPage, totalPages);
+        if (nextPage == 0) {
+          break;
+        }
+        currentPage = nextPage;
+      }
 
       // Step 16: Generate Another / Back
       int nextChoice = housekeepingTaskLogUI.getAfterActivityReportChoice();
