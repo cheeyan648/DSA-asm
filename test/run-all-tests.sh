@@ -13,21 +13,26 @@
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT" || exit 1
 
-echo "Compiling application..."
+# Compile for Java 17 rather than whatever JDK happens to be first on PATH.
+# A newer JDK produces class files an older JVM refuses to load
+# (UnsupportedClassVersionError), and NetBeans may well launch a different
+# Java than the shell does. 17 matches the JDK installed alongside the
+# project and comfortably exceeds the "Java 8 or above" the assignment needs.
+RELEASE=17
+
+echo "Compiling application (targeting Java $RELEASE)..."
 rm -rf build/classes
 mkdir -p build/classes
-if ! javac -d build/classes $(find src -name "*.java") 2>&1 | grep -v "^Note:"; then
-  :
-fi
+javac --release "$RELEASE" -d build/classes $(find src -name "*.java") 2>&1 | grep -v "^Note:"
 if [ ! -f build/classes/control/TARUMTResortUI.class ]; then
   echo "APPLICATION FAILED TO COMPILE"
   exit 1
 fi
 
-echo "Compiling tests..."
+echo "Compiling tests (targeting Java $RELEASE)..."
 rm -rf build/test
 mkdir -p build/test
-javac -d build/test -cp build/classes test/*.java 2>&1 | grep -v "^Note:"
+javac --release "$RELEASE" -d build/test -cp build/classes test/*.java 2>&1 | grep -v "^Note:"
 if [ ! -f build/test/UnitTests.class ]; then
   echo "TESTS FAILED TO COMPILE"
   exit 1

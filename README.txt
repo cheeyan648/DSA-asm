@@ -16,13 +16,31 @@ OPTION A - NetBeans (recommended)
 
 OPTION B - Command line
   Compile:
-      javac -d build/classes $(find src -name "*.java")
+      javac --release 17 -d build/classes $(find src -name "*.java")
 
       Windows PowerShell:
-      javac -d build\classes (Get-ChildItem -Recurse -Filter *.java src).FullName
+      javac --release 17 -d build\classes (Get-ChildItem -Recurse -Filter *.java src).FullName
 
   Run:
       java -cp build/classes control.TARUMTResortUI
+
+  WHY --release 17
+      If you compile with a newer JDK than the one that runs the program, the
+      run fails with:
+
+          UnsupportedClassVersionError: ... has been compiled by a more recent
+          version of the Java Runtime (classfile version 70.0), this version
+          of the Java Runtime only recognizes class file versions up to 61.0
+
+      That means the class files are newer than the JVM. It happens easily
+      when several JDKs are installed and the IDE launches a different one
+      than the terminal. Compiling with --release 17 produces class files any
+      Java 17 or newer runtime accepts. If your JVM is older still, lower the
+      number - the code needs nothing beyond Java 8.
+
+      NetBeans does not have this problem: nbproject/project.properties
+      already pins javac.source and javac.target, so building with F6 is
+      always consistent.
 
 REQUIREMENTS
   Java 8 or above (developed and tested on JDK 26).

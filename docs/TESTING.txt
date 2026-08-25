@@ -17,8 +17,12 @@ while integrating four modules. Do NOT paste any of it into the report.
       bash test/run-all-tests.sh
 
   One layer at a time:
-      javac -d build/classes $(find src -name "*.java")
-      javac -d build/test -cp build/classes test/*.java
+      javac --release 17 -d build/classes $(find src -name "*.java")
+      javac --release 17 -d build/test -cp build/classes test/*.java
+
+  The --release 17 matters: compiling with a newer JDK than the one that runs
+  the classes gives UnsupportedClassVersionError. run-all-tests.sh passes it
+  for you.
 
       java -cp "build/classes;build/test" UnitTests
       java -cp "build/classes;build/test" IntegrationTests
