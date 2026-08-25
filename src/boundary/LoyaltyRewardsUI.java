@@ -68,20 +68,6 @@ public class LoyaltyRewardsUI {
   }
 
   /**
-   * Draws the framed title every action in this module starts with, matching
-   * the layout used across the rest of the system.
-   *
-   * @param title the name of the action being started
-   */
-  private void displayActionHeader(String title) {
-    MessageUI.clearScreen();
-    System.out.println();
-    MessageUI.displayBoxTop();
-    MessageUI.displayBoxCentred(title);
-    MessageUI.displayBoxBottom();
-  }
-
-  /**
    * Collects the manual registration details for a new loyalty member.
    * Loyalty ID and join date are assigned by the control class.
    *
@@ -93,35 +79,8 @@ public class LoyaltyRewardsUI {
     System.out.println("Enter 0 at any prompt to cancel.");
     System.out.println();
 
-    String memberId = inputMemberId("Member ID (0 to cancel): ");
-    if (memberId == null) {
-      return null;
-    }
-
     String name = inputRequiredText("Name (0 to cancel): ");
     if (name == null) {
-      return null;
-    }
-
-    // No "0 to cancel" here: 0 is a valid starting points balance.
-    Integer points = inputNonNegativeInt("Points: ");
-    if (points == null) {
-      return null;
-    }
-
-    LocalDate pointsExpiryDate = inputOptionalDate(
-        "Points expiry date (YYYY-MM-DD, blank if none, 0 to cancel): ");
-    if (pointsExpiryDate == null && !skippedOptionalDate) {
-      return null;
-    }
-
-    String tier = inputTier();
-    if (tier == null) {
-      return null;
-    }
-
-    LocalDate joinDate = inputDate("Join date (YYYY-MM-DD, 0 to cancel): ");
-    if (joinDate == null) {
       return null;
     }
 
