@@ -40,19 +40,82 @@ public class FrontDeskServiceUI {
     MessageUI.displayBoxDivider();
     MessageUI.displayBoxBlank();
     MessageUI.displayMenuOption(1, "Create new booking");
-    MessageUI.displayMenuOption(2, "Search guest information by confirmation no.");
+    MessageUI.displayMenuOption(2, "Search information");
     MessageUI.displayMenuOption(3, "Check room availability");
-    MessageUI.displayMenuOption(4, "Search billing details by confirmation no.");
-    MessageUI.displayMenuOption(5, "Display all bookings");
-    MessageUI.displayMenuOption(6, "Booking summary report");
-    MessageUI.displayMenuOption(7, "Outstanding billing report");
+    MessageUI.displayMenuOption(4, "Display all bookings");
+    MessageUI.displayMenuOption(5, "Reports");
     MessageUI.displayBoxBlank();
     MessageUI.displayMenuOption(0, "Back to main menu");
     MessageUI.displayBoxBlank();
     MessageUI.displayBoxBottom();
 
     return MessageUI.readMenuChoice(
-        scanner, 7, "go back to the main menu");
+        scanner, 5, "go back to the main menu");
+  }
+
+  /**
+   * Displays the Search Information submenu.
+   *
+   * Keeps guest and billing searches under one menu so the
+   * user can choose the type of information to search.
+   *
+   * @return the selected search option
+   */
+  public int getSearchMenuChoice() {
+    MessageUI.clearScreen();
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("S E A R C H   I N F O R M A T I O N");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine(
+        "  Main Menu  >  Front-Desk Service  >  Search Information");
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+
+    MessageUI.displayMenuOption(1, "Search guest information");
+    MessageUI.displayMenuOption(2, "Search billing details");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, "Back to Front-Desk Service");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
+
+    return MessageUI.readMenuChoice(
+        scanner, 2, "go back to Front-Desk Service");
+  }
+
+  /**
+   * Displays the Reports submenu.
+   *
+   * Keeps related report functions on the same page so the user can
+   * choose which report to generate.
+   *
+   * @return the selected report option
+   */
+  public int getReportMenuChoice() {
+    MessageUI.clearScreen();
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("R E P O R T S");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Main Menu  >  Front-Desk Service  >  Reports");
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+
+    MessageUI.displayMenuOption(1, "Booking summary report");
+    MessageUI.displayMenuOption(2, "Outstanding billing report");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayMenuOption(0, "Back to Front-Desk Service");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxBottom();
+
+    return MessageUI.readMenuChoice(
+        scanner, 2, "go back to Front-Desk Service");
   }
 
   /**
@@ -203,15 +266,23 @@ public class FrontDeskServiceUI {
         continue;
       }
 
+      // Accept only non-negative numbers with up to 2 decimal places.
+      if (!input.matches("\\d+(\\.\\d{1,2})?")) {
+        System.out.println(
+                "Please enter a valid amount (e.g. 100 or 100.50).");
+        continue;
+      }
+
       try {
         double amount = Double.parseDouble(input);
 
-        if (amount >= 0) {
+        if (Double.isFinite(amount) && amount >= 0) {
           return amount;
         }
 
         System.out.println("Amount cannot be negative.");
       } catch (NumberFormatException e) {
+        // This is unlikely after regex validation, but keeps the method safe.
         System.out.println("Please enter a valid amount.");
       }
     }
@@ -291,21 +362,22 @@ public class FrontDeskServiceUI {
     }
   }
 
-  public void displayCompleteGuestInformation(
-      Booking booking,
-      double totalBill,
-      double amountPaid) {
+  /**
+   * Displays guest and booking information.
+   *
+   * Billing information is intentionally excluded because it is handled
+   * by the separate Billing Details search.
+   *
+   * @param booking the booking to display
+   */
+  public void displayCompleteGuestInformation(Booking booking) {
 
     if (booking == null) {
       System.out.println("\nBooking not found.");
       return;
     }
 
-    double outstandingBalance = totalBill - amountPaid;
-    String paymentStatus = outstandingBalance <= 0
-        ? "PAID" : "OUTSTANDING";
-
-    displayActionHeader("COMPLETE GUEST INFORMATION");
+    displayActionHeader("GUEST INFORMATION");
     System.out.printf("%-22s: %s%n",
         "Confirmation number", booking.getConfirmationNumber());
     System.out.printf("%-22s: %s%n",
@@ -316,14 +388,6 @@ public class FrontDeskServiceUI {
         "Check-in date", booking.getCheckInDate());
     System.out.printf("%-22s: %s%n",
         "Check-out date", booking.getCheckOutDate());
-    System.out.printf("%-22s: RM %.2f%n",
-        "Total bill", totalBill);
-    System.out.printf("%-22s: RM %.2f%n",
-        "Amount paid", amountPaid);
-    System.out.printf("%-22s: RM %.2f%n",
-        "Outstanding balance", outstandingBalance);
-    System.out.printf("%-22s: %s%n",
-        "Payment status", paymentStatus);
   }
 
   public void displayBillingDetails(
@@ -345,8 +409,6 @@ public class FrontDeskServiceUI {
         "Confirmation number", booking.getConfirmationNumber());
     System.out.printf("%-22s: %s%n",
         "Guest name", booking.getGuestName());
-    System.out.printf("%-22s: %s%n",
-        "Room number", booking.getRoomNumber());
     System.out.printf("%-22s: RM %.2f%n",
         "Total bill", totalBill);
     System.out.printf("%-22s: RM %.2f%n",
