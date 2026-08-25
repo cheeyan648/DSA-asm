@@ -22,6 +22,7 @@ public class HousekeepingTaskDAO {
 
         private int nextTaskNumber = 1;
 
+        /** Saves the task log and next task number to the data file. */
         public void saveToFile(ListInterface<HousekeepingTask> taskLog, int nextTaskNumber) {
                 try (ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream(fileName))) {
                         // Save the whole Housekeeping List ADT
@@ -39,6 +40,7 @@ public class HousekeepingTaskDAO {
         }
 
         @SuppressWarnings("unchecked")
+        /** Loads saved task records, or returns an empty log on the first run. */
         public ListInterface<HousekeepingTask> retrieveFromFile() {
                 ListInterface<HousekeepingTask> taskLog = new ArrayList<>();
                 File file = new File(fileName);
@@ -78,12 +80,13 @@ public class HousekeepingTaskDAO {
                 return taskLog;
         }
 
+        /** Finds the next task number from task IDs in an older data file. */
         private int determineNextTaskNumber(ListInterface<HousekeepingTask> taskLog) {
                 int highestNumber = 0;
                 for (int i = 1; i <= taskLog.getNumberOfEntries(); i++) {
                         HousekeepingTask task = taskLog.getEntry(i);
                         String taskId = task.getTaskId();
-                        if (taskId != null && taskId.matches("HT\\d{4}")) {
+                        if (taskId != null && taskId.matches("HT\\d{4,}")) {
                                 try {
                                         int number = Integer.parseInt(taskId.substring(2));
                                         if (number > highestNumber) {
@@ -97,6 +100,7 @@ public class HousekeepingTaskDAO {
                 return highestNumber + 1;
         }
 
+        /** Returns the next available task number. */
         public int getNextTaskNumber() {
                 return nextTaskNumber;
         }
