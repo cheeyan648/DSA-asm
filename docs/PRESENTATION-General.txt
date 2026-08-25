@@ -387,13 +387,13 @@ ONE OPEN QUESTION - ASK YOUR TUTOR
   [ ] Your @author comment at the top of every class you wrote (Coding Std 3)
 
   NOT REQUIRED - do not waste time on these
-  [ ] Unit tests. The specification does not ask for them anywhere: they are
-      absent from the deliverables (page 5), from the report template (page 8,
-      which is Part A + control classes + screenshots only), and from the three
-      assessment criteria (page 4). Module 1 was tested during development and
-      the test file was then removed, because it earned no marks and had no
-      place in the report. Do not add one. Testing your own work is still
-      worth doing - just do not treat the harness as a deliverable.
+  [ ] Test files in the REPORT. The specification does not ask for tests
+      anywhere: they are absent from the deliverables (page 5), from the report
+      template (page 8, which is Part A + control classes + screenshots only),
+      and from the three assessment criteria (page 4). The test/ folder in the
+      project is for the team's own use - it earns no marks and must NOT be
+      pasted into the report PDF. Keeping it in the project folder is harmless
+      since it sits outside src/ and does not compile into the application.
   [ ] An overview of the application or your subsystem in the documentation.
       Spec page 20 Q2 answers this explicitly: NO.
   [ ] A database. Spec §4.3: not required.
