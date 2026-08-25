@@ -1,9 +1,22 @@
 package adt;
 
 import java.util.Comparator;
+import java.util.Iterator;
 
 /**
- * @author Frank M. Carrano
+ * Positions in this list are 1-based: the first entry is at position 1 and the
+ * last is at position getNumberOfEntries().
+ *
+ * The core operations (add, remove, clear, replace, getEntry, contains,
+ * getNumberOfEntries, isEmpty, isFull, getIterator) are adapted from the
+ * course sample code by Frank M. Carrano.
+ *
+ * The additional operations below (getPosition, removeEntry, sort, filter,
+ * search, countIf) were added by Tan Chee Yan for the Walk-In Registration
+ * module.
+ *
+ * @author Frank M. Carrano (core operations)
+ * @author Tan Chee Yan (added operations)
  * @version 2.0
  */
 public interface ListInterface<T> {
@@ -26,8 +39,7 @@ public interface ListInterface<T> {
    * new entry
    * @param newEntry the object to be added as a new entry
    * @return true if the addition is successful, or false if either the list is
-   * full, newPosition < 1, or
-   *          newPosition > getNumberOfEntries()+1
+   * full, newPosition &lt; 1, or newPosition &gt; getNumberOfEntries()+1
    */
   public boolean add(int newPosition, T newEntry);
 
@@ -39,8 +51,7 @@ public interface ListInterface<T> {
    * @param givenPosition an integer that indicates the position of the entry to
    * be removed
    * @return a reference to the removed entry or null, if either the list was
-   * empty, givenPosition < 1, or
-   *          givenPosition > getNumberOfEntries()
+   * empty, givenPosition &lt; 1, or givenPosition &gt; getNumberOfEntries()
    */
   public T remove(int givenPosition);
 
@@ -57,7 +68,7 @@ public interface ListInterface<T> {
    * @param newEntry the object that will replace the entry at the position
    * givenPosition
    * @return true if the replacement occurs, or false if either the list is
-   * empty, givenPosition < 1, or givenPosition > getNumberOfEntries()
+   * empty, givenPosition &lt; 1, or givenPosition &gt; getNumberOfEntries()
    */
   public boolean replace(int givenPosition, T newEntry);
 
@@ -67,7 +78,7 @@ public interface ListInterface<T> {
    * @param givenPosition an integer that indicates the position of the desired
    * entry
    * @return a reference to the indicated entry or null, if either the list is
-   * empty, givenPosition < 1, or givenPosition > getNumberOfEntries()
+   * empty, givenPosition &lt; 1, or givenPosition &gt; getNumberOfEntries()
    */
   public T getEntry(int givenPosition);
 
@@ -106,7 +117,28 @@ public interface ListInterface<T> {
    *
    * @return an iterator over the entries in the list
    */
-  public java.util.Iterator<T> getIterator();
+  public Iterator<T> getIterator();
+
+  /**
+   * Task: Gets the position of the first entry in the list that equals a given
+   * entry.
+   *
+   * @param anEntry the object that is the desired entry
+   * @return the 1-based position of anEntry, or -1 if the list does not
+   * contain anEntry
+   */
+  public int getPosition(T anEntry);
+
+  /**
+   * Task: Removes the first entry in the list that equals a given entry.
+   * Entries originally at positions higher than the removed entry are at the
+   * next lower position within the list, and the list's size is decreased by 1.
+   *
+   * @param anEntry the object to be removed
+   * @return a reference to the removed entry, or null if the list does not
+   * contain anEntry
+   */
+  public T removeEntry(T anEntry);
 
   /**
    * Task: Arranges the entries in the list into the order defined by a given

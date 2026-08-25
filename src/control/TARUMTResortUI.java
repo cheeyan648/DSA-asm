@@ -2,6 +2,8 @@ package control;
 
 import utility.MessageUI;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Scanner;
 
 /**
@@ -18,18 +20,74 @@ public class TARUMTResortUI {
   private FrontDeskServiceMaintenance frontDeskServiceMaintenance = new FrontDeskServiceMaintenance();
   private LoyaltyRewardsMaintenance loyaltyRewardsMaintenance = new LoyaltyRewardsMaintenance();
 
+  private static final DateTimeFormatter HOME_TIMESTAMP =
+      DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy");
+
+  /**
+   * Draws the home page: the system banner, the four subsystems on offer, and
+   * the current date, all inside one frame so the main menu reads as a single
+   * screen rather than a loose list of print statements.
+   */
   public int getMenuChoice() {
     MessageUI.clearScreen();
-    System.out.println("\nTARUMT RESORT MANAGEMENT SYSTEM");
-    System.out.println("1. Walk-In Registration & Standard Booking");
-    System.out.println("2. Housekeeping Task Log");
-    System.out.println("3. Front-Desk Service");
-    System.out.println("4. Loyalty & Rewards");
-    System.out.println("0. Quit");
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("TUNKU ABDUL RAHMAN UNIVERSITY OF MANAGEMENT AND TECHNOLOGY");
+    MessageUI.displayBoxBlank();
+
+    // The resort name is drawn in block letters so it reads as the title of the
+    // screen at a glance, the way a heading would in a printed document.
+    MessageUI.displayBanner("TARUMT");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("R E S O R T   M A N A G E M E N T   S Y S T E M");
+    MessageUI.displayBoxBlank();
+
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxLine("  MAIN MENU");
+    MessageUI.displayBoxLine("  Select a subsystem to continue.");
+    MessageUI.displayBoxBlank();
+    MessageUI.displaySubsystemOption(1, "Walk-In Registration & Standard Booking",
+        "Register guests, manage the waiting queue");
+    MessageUI.displaySubsystemOption(2, "Housekeeping Task Log",
+        "Record and track room cleaning tasks");
+    MessageUI.displaySubsystemOption(3, "Front-Desk Service",
+        "Handle guest requests at the counter");
+    MessageUI.displaySubsystemOption(4, "Loyalty & Rewards",
+        "Manage members, points and redemptions");
+    MessageUI.displayMenuOption(0, "Quit the system");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Today: " + LocalDate.now().format(HOME_TIMESTAMP));
+    MessageUI.displayBoxBottom();
 
     // Keeps re-prompting (without clearing) until a valid 0-4 is entered, so
     // the user can see the error message and correct their input.
     return MessageUI.readMenuChoice(scanner, 4, "exit");
+  }
+
+  /**
+   * Draws the closing screen, framed to match the home page so the system opens
+   * and closes the same way.
+   */
+  private void displayExitScreen() {
+    MessageUI.clearScreen();
+    System.out.println();
+
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("THANK YOU FOR USING");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBanner("TARUMT");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("R E S O R T   M A N A G E M E N T   S Y S T E M");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxCentred("Have a pleasant day.");
+    MessageUI.displayBoxBottom();
+    System.out.println();
   }
 
   public void runTARUMTResort() {
@@ -38,7 +96,7 @@ public class TARUMTResortUI {
       choice = getMenuChoice();
       switch (choice) {
         case 0:
-          MessageUI.displayExitMessage();
+          displayExitScreen();
           break;
         case 1:
           walkInRegistrationBookingMaintenance.runWalkInRegistrationBooking();

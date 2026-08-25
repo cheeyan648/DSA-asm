@@ -1,7 +1,15 @@
 package adt;
 
 /**
- * @author Frank M. Carrano
+ * The core operations (add, remove, clear, replace, getEntry, contains,
+ * getNumberOfEntries, isEmpty, isFull, getIterator) are adapted from the
+ * course sample code by Frank M. Carrano.
+ *
+ * The additional operations (getPosition, removeEntry, sort, filter, search,
+ * countIf) were added by Tan Chee Yan for the Walk-In Registration module.
+ *
+ * @author Frank M. Carrano (core operations)
+ * @author Tan Chee Yan (added operations)
  * @version 2.0
  */
 
@@ -131,9 +139,30 @@ public class ArrayList<T> implements ListInterface<T>, Serializable {
     return new ArrayListIterator();
   }
 
+  @Override
+  public int getPosition(T anEntry) {
+    for (int index = 0; index < numberOfEntries; index++) {
+      if (anEntry.equals(array[index])) {
+        return index + 1;
+      }
+    }
+    return -1;
+  }
+
+  @Override
+  public T removeEntry(T anEntry) {
+    int position = getPosition(anEntry);
+    if (position == -1) {
+      return null;
+    }
+    return remove(position);
+  }
+
   /**
    * Sorts using merge sort, which is stable: entries the comparator considers
-   * equal keep the relative order they already had.
+   * equal keep the relative order they already had. That matters to the client
+   * because sorting by any other key (e.g. name) leaves guests who tie on that
+   * key still in their original arrival order.
    *
    * Merge sort is O(n log n) in every case, unlike the O(n^2) worst case of the
    * simple exchange sorts.

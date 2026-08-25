@@ -119,6 +119,13 @@ public class LoyaltyRewardsMaintenance {
           runReportMenu();
           break;
       }
+
+      // Holds the result on screen until the user is ready, so the next menu's
+      // clearScreen() cannot wipe it before it has been read. The report menu
+      // pauses on its own screens, and option 0 is leaving anyway.
+      if (choice != 0 && choice != 13) {
+        loyaltyRewardsUI.pressEnterToContinue();
+      }
     } while (choice != 0);
   }
 
@@ -914,6 +921,12 @@ public class LoyaltyRewardsMaintenance {
         case 2:
           generateRedemptionAnalysisReport();
           break;
+      }
+
+      // Same reason as the main loop: a report is worth nothing if the next
+      // menu wipes it before it has been read.
+      if (choice != 0) {
+        loyaltyRewardsUI.pressEnterToContinue();
       }
     } while (choice != 0);
   }
