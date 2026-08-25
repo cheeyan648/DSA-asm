@@ -29,40 +29,68 @@ public class MessageUI {
    * tall, which is the smallest size that still reads clearly as large type on
    * a console. Only the characters the system's banners actually need are
    * defined - the letters A-Z, the space, and the hyphen.
+   *
+   * Held as two parallel arrays rather than a map: BANNER_KEYS[i] is the
+   * character, and BANNER_GLYPHS[i] holds its five rows. A plain array is used
+   * because the assignment does not permit any class from the Java Collections
+   * Framework, and because a fixed 28-entry alphabet that never changes at
+   * runtime does not need a dynamic structure to hold it.
    */
-  private static final java.util.Map<Character, String[]> BANNER_FONT = buildBannerFont();
+  private static final char[] BANNER_KEYS = {
+      'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+      'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+      ' ', '-'
+  };
 
-  private static java.util.Map<Character, String[]> buildBannerFont() {
-    java.util.Map<Character, String[]> font = new java.util.HashMap<>();
-    font.put('A', new String[] {" ### ", "#   #", "#####", "#   #", "#   #"});
-    font.put('B', new String[] {"#### ", "#   #", "#### ", "#   #", "#### "});
-    font.put('C', new String[] {" ####", "#    ", "#    ", "#    ", " ####"});
-    font.put('D', new String[] {"#### ", "#   #", "#   #", "#   #", "#### "});
-    font.put('E', new String[] {"#####", "#    ", "#### ", "#    ", "#####"});
-    font.put('F', new String[] {"#####", "#    ", "#### ", "#    ", "#    "});
-    font.put('G', new String[] {" ####", "#    ", "#  ##", "#   #", " ####"});
-    font.put('H', new String[] {"#   #", "#   #", "#####", "#   #", "#   #"});
-    font.put('I', new String[] {"#####", "  #  ", "  #  ", "  #  ", "#####"});
-    font.put('J', new String[] {"#####", "   # ", "   # ", "#  # ", " ##  "});
-    font.put('K', new String[] {"#   #", "#  # ", "###  ", "#  # ", "#   #"});
-    font.put('L', new String[] {"#    ", "#    ", "#    ", "#    ", "#####"});
-    font.put('M', new String[] {"#   #", "## ##", "# # #", "#   #", "#   #"});
-    font.put('N', new String[] {"#   #", "##  #", "# # #", "#  ##", "#   #"});
-    font.put('O', new String[] {" ### ", "#   #", "#   #", "#   #", " ### "});
-    font.put('P', new String[] {"#### ", "#   #", "#### ", "#    ", "#    "});
-    font.put('Q', new String[] {" ### ", "#   #", "#   #", "#  # ", " ## #"});
-    font.put('R', new String[] {"#### ", "#   #", "#### ", "#  # ", "#   #"});
-    font.put('S', new String[] {" ####", "#    ", " ### ", "    #", "#### "});
-    font.put('T', new String[] {"#####", "  #  ", "  #  ", "  #  ", "  #  "});
-    font.put('U', new String[] {"#   #", "#   #", "#   #", "#   #", " ### "});
-    font.put('V', new String[] {"#   #", "#   #", "#   #", " # # ", "  #  "});
-    font.put('W', new String[] {"#   #", "#   #", "# # #", "## ##", "#   #"});
-    font.put('X', new String[] {"#   #", " # # ", "  #  ", " # # ", "#   #"});
-    font.put('Y', new String[] {"#   #", " # # ", "  #  ", "  #  ", "  #  "});
-    font.put('Z', new String[] {"#####", "   # ", "  #  ", " #   ", "#####"});
-    font.put(' ', new String[] {"     ", "     ", "     ", "     ", "     "});
-    font.put('-', new String[] {"     ", "     ", "#####", "     ", "     "});
-    return font;
+  private static final String[][] BANNER_GLYPHS = {
+      {" ### ", "#   #", "#####", "#   #", "#   #"},   // A
+      {"#### ", "#   #", "#### ", "#   #", "#### "},   // B
+      {" ####", "#    ", "#    ", "#    ", " ####"},   // C
+      {"#### ", "#   #", "#   #", "#   #", "#### "},   // D
+      {"#####", "#    ", "#### ", "#    ", "#####"},   // E
+      {"#####", "#    ", "#### ", "#    ", "#    "},   // F
+      {" ####", "#    ", "#  ##", "#   #", " ####"},   // G
+      {"#   #", "#   #", "#####", "#   #", "#   #"},   // H
+      {"#####", "  #  ", "  #  ", "  #  ", "#####"},   // I
+      {"#####", "   # ", "   # ", "#  # ", " ##  "},   // J
+      {"#   #", "#  # ", "###  ", "#  # ", "#   #"},   // K
+      {"#    ", "#    ", "#    ", "#    ", "#####"},   // L
+      {"#   #", "## ##", "# # #", "#   #", "#   #"},   // M
+      {"#   #", "##  #", "# # #", "#  ##", "#   #"},   // N
+      {" ### ", "#   #", "#   #", "#   #", " ### "},   // O
+      {"#### ", "#   #", "#### ", "#    ", "#    "},   // P
+      {" ### ", "#   #", "#   #", "#  # ", " ## #"},   // Q
+      {"#### ", "#   #", "#### ", "#  # ", "#   #"},   // R
+      {" ####", "#    ", " ### ", "    #", "#### "},   // S
+      {"#####", "  #  ", "  #  ", "  #  ", "  #  "},   // T
+      {"#   #", "#   #", "#   #", "#   #", " ### "},   // U
+      {"#   #", "#   #", "#   #", " # # ", "  #  "},   // V
+      {"#   #", "#   #", "# # #", "## ##", "#   #"},   // W
+      {"#   #", " # # ", "  #  ", " # # ", "#   #"},   // X
+      {"#   #", " # # ", "  #  ", "  #  ", "  #  "},   // Y
+      {"#####", "   # ", "  #  ", " #   ", "#####"},   // Z
+      {"     ", "     ", "     ", "     ", "     "},   // space
+      {"     ", "     ", "#####", "     ", "     "}    // hyphen
+  };
+
+  /**
+   * Task: Finds the block-letter glyph for a character.
+   *
+   * Replaces what a map lookup would do. The alphabet has 28 entries, so a
+   * linear scan costs at most 28 comparisons per character drawn - far too
+   * small a cost to justify a lookup structure, and it keeps this class free of
+   * any collection class.
+   *
+   * @param letter the character to look up
+   * @return the five rows of that character, or null if it is not defined
+   */
+  private static String[] findGlyph(char letter) {
+    for (int i = 0; i < BANNER_KEYS.length; i++) {
+      if (BANNER_KEYS[i] == letter) {
+        return BANNER_GLYPHS[i];
+      }
+    }
+    return null;
   }
 
   /**
@@ -89,7 +117,7 @@ public class MessageUI {
     // Work out the drawn width first - if it cannot fit, do not draw it.
     int width = 0;
     for (int i = 0; i < upper.length(); i++) {
-      String[] glyph = BANNER_FONT.get(upper.charAt(i));
+      String[] glyph = findGlyph(upper.charAt(i));
       if (glyph != null) {
         width += glyph[0].length() + 1;
       }
@@ -108,7 +136,7 @@ public class MessageUI {
     for (int row = 0; row < BANNER_HEIGHT; row++) {
       StringBuilder line = new StringBuilder(" ".repeat(leftPadding));
       for (int i = 0; i < upper.length(); i++) {
-        String[] glyph = BANNER_FONT.get(upper.charAt(i));
+        String[] glyph = findGlyph(upper.charAt(i));
         if (glyph != null) {
           line.append(glyph[row]).append(' ');
         }
@@ -164,6 +192,17 @@ public class MessageUI {
    */
   public static void displayBoxBlank() {
     displayBoxLine("");
+  }
+
+  /**
+   * Prints one blank line outside any frame, used to separate a framed screen
+   * from whatever the console printed before it.
+   *
+   * Exists so callers never need a System.out statement of their own - under
+   * the ECB pattern only boundary and utility classes write to the console.
+   */
+  public static void displayBlankLine() {
+    System.out.println();
   }
 
   /**

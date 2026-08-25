@@ -322,6 +322,20 @@ public class WalkInRegistrationBookingMaintenance {
       return;
     }
 
+    // Serving is shown and confirmed before it happens, the same way cancelling
+    // and undoing are. Marking a guest SERVED cannot be reversed from within
+    // this module, so the officer is told exactly who is at the front of the
+    // queue before committing to it.
+    walkInRegistrationBookingUI.displayMessage("Next guest in the queue:");
+    walkInRegistrationBookingUI.displayGuest(next);
+
+    if (!walkInRegistrationBookingUI.confirm(
+        "Serve this guest now?")) {
+      walkInRegistrationBookingUI.displayMessage(
+          "Serving aborted - the guest is still waiting.");
+      return;
+    }
+
     next.setStatus(WalkInGuest.STATUS_SERVED);
     next.setServedTime(java.time.LocalDateTime.now());
     walkInGuestDAO.saveToFile(walkInRecords);
@@ -334,12 +348,12 @@ public class WalkInRegistrationBookingMaintenance {
   /**
    * Shows every guest currently waiting, in the order they will be served.
    */
-  public void displayQueue() {
+  public boolean displayQueue() {
     walkInRegistrationBookingUI.startAction("CURRENT WALK-IN QUEUE");
 
     ListInterface<WalkInGuest> waiting = walkInRecords.filter(isWaiting());
 
-    walkInRegistrationBookingUI.displayGuestList(waiting,
+    return walkInRegistrationBookingUI.displayGuestList(waiting,
         "Position 1 is served next:",
         "The walk-in queue is empty. No guests are waiting.");
   }
@@ -436,21 +450,21 @@ public class WalkInRegistrationBookingMaintenance {
    * Finds every guest whose name contains the text entered, so a partial or
    * misremembered name still finds them.
    */
-  public void searchByName() {
+  public boolean searchByName() {
     walkInRegistrationBookingUI.startAction("SEARCH BY NAME");
 
     String text = walkInRegistrationBookingUI.inputNameToSearch();
 
     if (text == null) {
       walkInRegistrationBookingUI.displayMessage("Search cancelled.");
-      return;
+      return false;
     }
 
     String lowerCaseText = text.toLowerCase();
     ListInterface<WalkInGuest> matches = walkInRecords.filter(
         guest -> guest.getName().toLowerCase().contains(lowerCaseText));
 
-    walkInRegistrationBookingUI.displayGuestList(matches,
+    return walkInRegistrationBookingUI.displayGuestList(matches,
         "SEARCH RESULTS FOR \"" + text + "\"",
         "No guest found with a name containing \"" + text + "\".");
   }
@@ -458,18 +472,19 @@ public class WalkInRegistrationBookingMaintenance {
   /**
    * Lists every guest with the chosen status.
    */
-  public void filterByStatus() {
+  public boolean filterByStatus() {
     walkInRegistrationBookingUI.startAction("FILTER BY STATUS");
 
     String status = walkInRegistrationBookingUI.inputStatusFilter();
 
     if (status == null) {
-      return;
+      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
+      return false;
     }
 
     ListInterface<WalkInGuest> matches = walkInRecords.filter(hasStatus(status));
 
-    walkInRegistrationBookingUI.displayGuestList(matches,
+    return walkInRegistrationBookingUI.displayGuestList(matches,
         "GUESTS WITH STATUS: " + status,
         "No guests currently have the status " + status + ".");
   }
@@ -477,19 +492,20 @@ public class WalkInRegistrationBookingMaintenance {
   /**
    * Lists every guest of the chosen type (urgent or normal).
    */
-  public void filterByType() {
+  public boolean filterByType() {
     walkInRegistrationBookingUI.startAction("FILTER BY GUEST TYPE");
 
     int choice = walkInRegistrationBookingUI.inputTypeFilter();
 
     if (choice == 0) {
-      return;
+      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
+      return false;
     }
 
     boolean urgent = (choice == 1);
     ListInterface<WalkInGuest> matches = walkInRecords.filter(isUrgent(urgent));
 
-    walkInRegistrationBookingUI.displayGuestList(matches,
+    return walkInRegistrationBookingUI.displayGuestList(matches,
         urgent ? "URGENT EXCEPTION CASES" : "NORMAL WALK-IN GUESTS",
         urgent ? "No urgent exception cases recorded." : "No normal walk-in guests recorded.");
   }
@@ -508,7 +524,7 @@ public class WalkInRegistrationBookingMaintenance {
    * @param comparator the order to arrange the guests into
    * @param heading the title to show above the listing
    */
-  private void displaySorted(Comparator<WalkInGuest> comparator, String heading) {
+  private boolean displaySorted(Comparator<WalkInGuest> comparator, String heading) {
     walkInRegistrationBookingUI.startAction(heading);
 
     // filter() with an always-true condition gives a copy of every record.
@@ -516,32 +532,32 @@ public class WalkInRegistrationBookingMaintenance {
 
     if (copy.isEmpty()) {
       walkInRegistrationBookingUI.displayMessage("There are no records to list.");
-      return;
+      return false;
     }
 
     copy.sort(comparator);
 
     // The heading is already on screen as the action banner, so the table is
     // labelled with the record count instead of repeating it.
-    walkInRegistrationBookingUI.displayGuestList(copy,
+    return walkInRegistrationBookingUI.displayGuestList(copy,
         "All " + copy.getNumberOfEntries() + " records, sorted:",
         "There are no records to list.");
   }
 
-  public void displaySortedByArrival() {
-    displaySorted(byArrivalTime(), "ALL RECORDS - BY ARRIVAL TIME (EARLIEST FIRST)");
+  public boolean displaySortedByArrival() {
+    return displaySorted(byArrivalTime(), "ALL RECORDS - BY ARRIVAL TIME (EARLIEST FIRST)");
   }
 
-  public void displaySortedByName() {
-    displaySorted(byName(), "ALL RECORDS - BY GUEST NAME (A-Z)");
+  public boolean displaySortedByName() {
+    return displaySorted(byName(), "ALL RECORDS - BY GUEST NAME (A-Z)");
   }
 
-  public void displaySortedByWaitingTime() {
-    displaySorted(byWaitingTimeDescending(), "ALL RECORDS - BY WAITING TIME (LONGEST FIRST)");
+  public boolean displaySortedByWaitingTime() {
+    return displaySorted(byWaitingTimeDescending(), "ALL RECORDS - BY WAITING TIME (LONGEST FIRST)");
   }
 
-  public void displaySortedByServiceOrder() {
-    displaySorted(byServiceOrder(), "ALL RECORDS - BY SERVICE ORDER (URGENT FIRST, THEN ARRIVAL)");
+  public boolean displaySortedByServiceOrder() {
+    return displaySorted(byServiceOrder(), "ALL RECORDS - BY SERVICE ORDER (URGENT FIRST, THEN ARRIVAL)");
   }
 
   // ==================================================================
@@ -693,7 +709,7 @@ public class WalkInRegistrationBookingMaintenance {
       }
     }
 
-    System.out.println();
+    walkInRegistrationBookingUI.displayBlankLine();
     walkInRegistrationBookingUI.displayReportLine("Peak arrival hour",
         String.format("%02d:00 - %02d:59 (%d guests)", peakHour, peakHour, hourlyCounts[peakHour]));
   }
@@ -750,13 +766,7 @@ public class WalkInRegistrationBookingMaintenance {
 
     Iterator<WalkInGuest> iterator = urgentGuests.getIterator();
     while (iterator.hasNext()) {
-      WalkInGuest guest = iterator.next();
-      System.out.printf("  %-9s %-24s %-17s %-10s %s%n",
-          guest.getGuestId(),
-          guest.getName(),
-          guest.getFormattedArrivalTime(),
-          guest.getStatus(),
-          guest.getUrgencyReason() == null ? "-" : guest.getUrgencyReason());
+      walkInRegistrationBookingUI.displayExceptionRow(iterator.next());
     }
 
     walkInRegistrationBookingUI.displayReportFooter();
@@ -805,7 +815,7 @@ public class WalkInRegistrationBookingMaintenance {
 
     walkInRegistrationBookingUI.displayBarChart(labels, counts, 30);
 
-    System.out.println();
+    walkInRegistrationBookingUI.displayBlankLine();
     for (int i = 1; i <= count; i++) {
       walkInRegistrationBookingUI.displayReportLine(
           "  " + reasons.getEntry(i), tallies.getEntry(i) + " case(s)");
@@ -855,6 +865,24 @@ public class WalkInRegistrationBookingMaintenance {
   // MENU DRIVERS
   // ==================================================================
 
+  /**
+   * Holds the screen after an action unless the user has already dismissed it.
+   *
+   * A paged listing ends with the user pressing [Q], which is itself a
+   * deliberate "I have finished looking" keystroke, and the listing is cleared
+   * on the way out. Pausing again there would make leaving a listing take two
+   * keystrokes and would leave the finished table on screen. Every other action
+   * still pauses, so its result stays readable until the user is ready.
+   *
+   * @param alreadyDismissed true if the action ended with the user quitting a
+   * paged listing
+   */
+  private void pauseUnlessQuit(boolean alreadyDismissed) {
+    if (!alreadyDismissed) {
+      walkInRegistrationBookingUI.pause();
+    }
+  }
+
   private void runRegistrationMenu() {
     int choice;
     do {
@@ -890,8 +918,7 @@ public class WalkInRegistrationBookingMaintenance {
           walkInRegistrationBookingUI.pause();
           break;
         case 2:
-          displayQueue();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(displayQueue());
           break;
         case 3:
           cancelWaitingGuest();
@@ -913,16 +940,13 @@ public class WalkInRegistrationBookingMaintenance {
           walkInRegistrationBookingUI.pause();
           break;
         case 2:
-          searchByName();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(searchByName());
           break;
         case 3:
-          filterByStatus();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(filterByStatus());
           break;
         case 4:
-          filterByType();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(filterByType());
           break;
       }
     } while (choice != 0);
@@ -936,20 +960,16 @@ public class WalkInRegistrationBookingMaintenance {
         case 0:
           break;
         case 1:
-          displaySortedByArrival();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(displaySortedByArrival());
           break;
         case 2:
-          displaySortedByName();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(displaySortedByName());
           break;
         case 3:
-          displaySortedByWaitingTime();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(displaySortedByWaitingTime());
           break;
         case 4:
-          displaySortedByServiceOrder();
-          walkInRegistrationBookingUI.pause();
+          pauseUnlessQuit(displaySortedByServiceOrder());
           break;
       }
     } while (choice != 0);

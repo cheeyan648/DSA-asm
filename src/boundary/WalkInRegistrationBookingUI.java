@@ -213,6 +213,141 @@ public class WalkInRegistrationBookingUI {
   }
 
   // ==================================================================
+  // CHARACTER TESTS
+  //
+  // Written by hand rather than with String.matches() and a regular
+  // expression. A regex is a whole pattern language hidden inside one string,
+  // so what the rule actually is only becomes clear once the pattern is
+  // decoded; these loops state each rule directly in Java and can be stepped
+  // through in a debugger a character at a time.
+  // ==================================================================
+
+  /**
+   * Task: Sees whether a character is a letter A-Z or a-z.
+   *
+   * @param character the character to test
+   * @return true if it is a letter, or false if not
+   */
+  private boolean isLetter(char character) {
+    return (character >= 'A' && character <= 'Z')
+        || (character >= 'a' && character <= 'z');
+  }
+
+  /**
+   * Task: Sees whether a character is a digit 0-9.
+   *
+   * @param character the character to test
+   * @return true if it is a digit, or false if not
+   */
+  private boolean isDigit(char character) {
+    return character >= '0' && character <= '9';
+  }
+
+  /**
+   * Task: Sees whether a piece of text contains at least one letter.
+   *
+   * Used to reject an entry made up entirely of digits or symbols, such as
+   * "123", which is not a plausible name.
+   *
+   * @param text the text to examine
+   * @return true if at least one letter is present, or false if none is
+   */
+  private boolean containsLetter(String text) {
+    for (int i = 0; i < text.length(); i++) {
+      if (isLetter(text.charAt(i))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Task: Sees whether every character of a name is one a real name may use.
+   *
+   * Permits letters, digits, spaces, apostrophes, hyphens, full stops and the
+   * slash that appears in Malaysian names such as "Muthu a/l Samy".
+   *
+   * @param name the name to examine
+   * @return true if every character is permitted, or false if any is not
+   */
+  private boolean hasOnlyNameCharacters(String name) {
+    for (int i = 0; i < name.length(); i++) {
+      char character = name.charAt(i);
+      boolean permitted = isLetter(character)
+          || isDigit(character)
+          || character == ' '
+          || character == '\''
+          || character == '-'
+          || character == '.'
+          || character == '/'
+          || character == '@';
+
+      if (!permitted) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Task: Sees whether every character of a contact number is permitted.
+   *
+   * Digits carry the number itself; spaces and dashes are allowed purely so it
+   * can be typed in a readable grouping such as "012-345 6789".
+   *
+   * @param contactNumber the contact number to examine
+   * @return true if every character is permitted, or false if any is not
+   */
+  private boolean hasOnlyContactCharacters(String contactNumber) {
+    for (int i = 0; i < contactNumber.length(); i++) {
+      char character = contactNumber.charAt(i);
+      if (!isDigit(character) && character != ' ' && character != '-') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Task: Builds a copy of the text containing only its digits.
+   *
+   * Lets the length rules count the digits that matter while ignoring whatever
+   * spacing the user typed for readability.
+   *
+   * @param text the text to strip
+   * @return the digits of text, in order, with everything else removed
+   */
+  private String digitsOf(String text) {
+    StringBuilder digits = new StringBuilder();
+    for (int i = 0; i < text.length(); i++) {
+      char character = text.charAt(i);
+      if (isDigit(character)) {
+        digits.append(character);
+      }
+    }
+    return digits.toString();
+  }
+
+  /**
+   * Task: Sees whether the text is exactly the given number of digits.
+   *
+   * @param text the text to examine
+   * @param length how many digits are required
+   * @return true if text is that many characters and all of them are digits
+   */
+  private boolean isAllDigits(String text, int length) {
+    if (text.length() != length) {
+      return false;
+    }
+    for (int i = 0; i < text.length(); i++) {
+      if (!isDigit(text.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // ==================================================================
   // INPUT
   // ==================================================================
 
@@ -291,13 +426,13 @@ public class WalkInRegistrationBookingUI {
         displayMessage("Name is too long! Please keep it to 40 characters or fewer.");
         continue;
       }
-      if (!name.matches(".*[A-Za-z].*")) {
+      if (!containsLetter(name)) {
         displayMessage("Invalid name! A name must contain letters - it cannot be "
             + "only numbers or symbols.");
         displayMessage("Example: Ali Bakar");
         continue;
       }
-      if (!name.matches("[A-Za-z0-9 '\\-./@]+")) {
+      if (!hasOnlyNameCharacters(name)) {
         displayMessage("Invalid name! Letters, numbers, spaces, apostrophes, "
             + "hyphens and full stops only.");
         displayMessage("Example: Nur Aisyah binti Rahman");
@@ -338,14 +473,14 @@ public class WalkInRegistrationBookingUI {
       }
 
       // Only digits, spaces and dashes are permitted at all.
-      if (!contactNumber.matches("[0-9 \\-]+")) {
+      if (!hasOnlyContactCharacters(contactNumber)) {
         displayMessage("Invalid contact number! It may contain digits only, "
             + "with optional dashes or spaces.");
         displayContactNumberRule();
         continue;
       }
 
-      String digitsOnly = contactNumber.replaceAll("[^0-9]", "");
+      String digitsOnly = digitsOf(contactNumber);
 
       if (digitsOnly.length() < 9) {
         displayMessage("Contact number is too short! You entered "
@@ -459,7 +594,7 @@ public class WalkInRegistrationBookingUI {
         guestId = guestId.substring(2).trim();
       }
 
-      if (!guestId.matches("\\d{4}")) {
+      if (!isAllDigits(guestId, 4)) {
         displayMessage("Invalid guest ID! Enter a 4-digit number, e.g. 1006.");
         continue;
       }
@@ -664,12 +799,17 @@ public class WalkInRegistrationBookingUI {
    * @param list the guests to print
    * @param heading the title to show above them
    * @param emptyMessage what to say when the list has no entries
+   * @return true if the user quit a paged listing with [Q], which is already a
+   * deliberate "I have finished looking" keystroke. The caller uses this to
+   * skip the usual "Press Enter to continue" so leaving a listing takes one
+   * keystroke rather than two. Returns false for a single-page listing, which
+   * has no [Q] prompt and so still needs the pause to stay readable.
    */
-  public void displayGuestList(ListInterface<WalkInGuest> list, String heading,
+  public boolean displayGuestList(ListInterface<WalkInGuest> list, String heading,
       String emptyMessage) {
     if (list == null || list.isEmpty()) {
       System.out.println("\n" + emptyMessage);
-      return;
+      return false;
     }
 
     int totalRows = list.getNumberOfEntries();
@@ -717,12 +857,16 @@ public class WalkInRegistrationBookingUI {
           + "no longer in the queue)");
 
       if (totalPages == 1) {
-        return;
+        return false;
       }
 
       int command = readPageCommand(currentPage, totalPages);
       if (command == PAGE_QUIT) {
-        return;
+        // The listing is wiped on the way out so the caller's next screen
+        // starts clean, rather than being drawn underneath the table the user
+        // has just finished with.
+        MessageUI.clearScreen();
+        return true;
       }
       currentPage = command;
     }
@@ -879,6 +1023,30 @@ public class WalkInRegistrationBookingUI {
    */
   public void displayReportLine(String label, String value) {
     System.out.printf("  %-46s : %s%n", label, value);
+  }
+
+  /**
+   * Prints one blank line, used to space sections of a report apart.
+   *
+   * Exists so the control class never has to write to the console itself - the
+   * ECB pattern requires that only boundary objects communicate with the user.
+   */
+  public void displayBlankLine() {
+    System.out.println();
+  }
+
+  /**
+   * Prints one guest as a row in the exception-case listing of a report.
+   *
+   * @param guest the guest to print
+   */
+  public void displayExceptionRow(WalkInGuest guest) {
+    System.out.printf("  %-9s %-24s %-17s %-10s %s%n",
+        guest.getGuestId(),
+        guest.getName(),
+        guest.getFormattedArrivalTime(),
+        guest.getStatus(),
+        guest.getUrgencyReason() == null ? "-" : guest.getUrgencyReason());
   }
 
   /**

@@ -30,7 +30,7 @@ public class TARUMTResortUI {
    */
   public int getMenuChoice() {
     MessageUI.clearScreen();
-    System.out.println();
+    MessageUI.displayBlankLine();
 
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -74,7 +74,7 @@ public class TARUMTResortUI {
    */
   private void displayExitScreen() {
     MessageUI.clearScreen();
-    System.out.println();
+    MessageUI.displayBlankLine();
 
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -87,7 +87,7 @@ public class TARUMTResortUI {
     MessageUI.displayBoxDivider();
     MessageUI.displayBoxCentred("Have a pleasant day.");
     MessageUI.displayBoxBottom();
-    System.out.println();
+    MessageUI.displayBlankLine();
   }
 
   public void runTARUMTResort() {

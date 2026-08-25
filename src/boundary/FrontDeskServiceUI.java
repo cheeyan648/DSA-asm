@@ -490,4 +490,18 @@ public class FrontDeskServiceUI {
   public void displayMessage(String message) {
     System.out.println("\n" + message);
   }
+
+  /**
+   * Prints the heading that opens a use case, underlined to the width of the
+   * title itself.
+   *
+   * Exists so the control class never has to write to the console itself - the
+   * ECB pattern requires that only boundary objects communicate with the user.
+   *
+   * @param title the heading text
+   */
+  public void displayScreenHeading(String title) {
+    System.out.println("\n" + title);
+    System.out.println("=".repeat(title.length()));
+  }
 }

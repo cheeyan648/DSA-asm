@@ -6,6 +6,8 @@ import entity.Reward;
 
 /**
  * Provides the default reward catalogue for the Loyalty & Rewards module.
+ *
+ * @author Ivan
  */
 public class RewardInitializer {
 

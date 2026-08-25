@@ -1,0 +1,377 @@
+================================================================================
+MODULE 2 - HOUSEKEEPING TASK LOG
+Zhi Ying
+
+Presentation and live-coding preparation.
+Read docs/PRESENTATION-General.txt first - team ADT, rules, common questions.
+================================================================================
+
+YOUR FILES
+  control/HousekeepingTaskLogMaintenance.java     <- Part B source code
+  boundary/HousekeepingTaskLogUI.java
+  entity/HousekeepingTask.java
+  dao/HousekeepingTaskDAO.java, dao/HousekeepingTaskInitializer.java
+
+YOUR ADTs
+  List   (team ADT)  taskLog         - every status update, append-only
+  Stack              statusHistory   - rollback last status update
+
+SPEC MAPPING
+  The spec assigns this module the LINEAR ADT and names the rollback
+  explicitly: "If a supervisor logs an incorrect status, or a guest requests a
+  late check-out during cleaning, the system must instantly roll back the
+  schedule." The Stack is the direct answer to that sentence - say so.
+
+
+*** READ THIS FIRST - ACTION NEEDED BEFORE THE DEMO ***
+--------------------------------------------------------------------------------
+
+  Your module currently uses ONLY the core List operations that came from the
+  Carrano sample code: getEntry(), replace(), remove(), add(). It does not call
+  any of the six operations the team ADDED.
+
+  Spec §4.1.3: "Each member should contribute to the implementation of ADT
+  methods (modified, add new) in the Implementation class and invoke the
+  methods from the collection ADT."
+
+  If the tutor asks "which ADT method did you contribute?", you need an answer.
+  See docs/PRESENTATION-General.txt section 2 for the team plan. The suggestion
+  that fits your module naturally:
+
+      Add  lastIndexOf(Condition)  to ListInterface + ArrayList
+      - returns the LAST entry matching a condition, instead of the first.
+
+      Why it fits: buildCurrentRoomList() (line 383) already hand-rolls exactly
+      this - it walks the log to find each room's LATEST entry. Moving that
+      into the ADT is non-trivial, meaningful, and genuinely useful for any
+      append-only log. That is what the "originality" criterion rewards.
+
+      Put your @author line on it in BOTH files, and CALL it from
+      buildCurrentRoomList(). Adding it without using it does not count.
+
+
+--------------------------------------------------------------------------------
+1. THE 60-SECOND OPENING
+--------------------------------------------------------------------------------
+
+"This module records room cleaning work as an append-only log. Every status
+update is a new entry - task ID, room number, status, timestamp - and a room's
+current state is whatever its latest entry says. Nothing is ever edited in
+place, so the log is a full audit trail of who changed what and when.
+
+Statuses move Dirty, Cleaning In Progress, Inspected, Ready for Check-In.
+
+I use two ADTs. The List holds the log in chronological order. The Stack backs
+the rollback feature, because undoing a mistaken status update is last-in-
+first-out by definition - you reverse the most recent one."
+
+
+--------------------------------------------------------------------------------
+2. MENU - WHAT TO DEMO, IN ORDER
+--------------------------------------------------------------------------------
+
+   1. Log new task status update       List.add() + Stack.push()
+   2. Rollback last status update      Stack peek -> confirm -> pop
+   3. Display task log
+   4. Search Housekeeping Task         linear search
+        1. by Task ID
+        2. by Room Number
+        3. by Status
+   5. Generate Room Status Report      bubble sort + current-state collapse
+   6. Generate Housekeeping Activity Report
+   0. Back to main menu
+
+RECOMMENDED DEMO PATH
+
+  1. Menu 3   Display the log. Point out it is chronological and append-only.
+  2. Menu 1   Log a status update on a room. Show the new entry appended.
+  3. Menu 1   Try to set the SAME status again - show it is rejected.
+              This is your validation talking point.
+  4. Menu 2   Rollback. Show it names the exact update before asking Y/N.
+              Say NO first, show nothing changed. Then do it again and say YES.
+  5. Menu 4 > 2   Search by room number.
+  6. Menu 5   Room Status Report - one current row per room.
+  7. Menu 6   Housekeeping Activity Report.
+
+
+--------------------------------------------------------------------------------
+3. ADT WALKTHROUGH - LIST
+--------------------------------------------------------------------------------
+
+DECLARATION                             line 45
+    private ListInterface<HousekeepingTask> taskLog;
+
+  Declared by INTERFACE, not by ArrayList. Spec §4.5.4 asks about exactly this.
+  If asked: it restricts callers to the interface methods, and the
+  implementation class could be swapped without changing any other line.
+
+
+STEP 1 - APPEND-ONLY LOGGING            line 172 area
+    taskLog.add(newTask);
+    statusHistory.push(newTask);
+
+  Every update appends. Nothing is edited in place.
+
+  SAY THIS: "I chose append-only because housekeeping needs an audit trail. If
+  I overwrote the status, I would lose the history of who changed what and
+  when, and the rollback would have nothing to roll back to."
+
+
+STEP 2 - THE CURRENT-STATE COLLAPSE     buildCurrentRoomList(), line 383
+
+  THIS IS THE MOST INTERESTING PART OF YOUR MODULE. Lead with it.
+
+  Problem: the log has many entries per room, but a status report needs ONE
+  current row per room.
+
+      Log:  Room 101  Dirty          08:00
+            Room 102  Dirty          08:05
+            Room 101  In Progress    09:15
+            Room 101  Inspected      10:40      <- 101's current state
+            Room 102  In Progress    09:30      <- 102's current state
+
+      Collapsed:  Room 101  Inspected
+                  Room 102  In Progress
+
+  The method walks the log and keeps each room's LATEST entry, building a new
+  List of current states.
+
+  SAY THIS: "This is what makes an append-only history usable as a live status
+  view. The log is the source of truth; the room list is a derived view built
+  fresh each time, so it can never drift out of sync with the log."
+
+  (If you add lastIndexOf() as suggested above, this method becomes the place
+  you call it - and this is then also your ADT-contribution answer.)
+
+
+STEP 3 - COUNTING UNIQUE ROOMS          countUniqueRooms(), line 672
+
+    ListInterface<String> uniqueRooms = new ArrayList<>();
+    ...for each task, if (!uniqueRooms.contains(room)) uniqueRooms.add(room);
+
+  Uses a second List plus contains() to avoid double-counting.
+
+  LIKELY QUESTION: "Isn't that O(n squared)?"
+  HONEST ANSWER: "Yes - contains() is O(n) and it runs once per entry, so it is
+  O(n squared) overall. With a few hundred log entries that is fine. If the log
+  grew large I would want a Set ADT, but we are not allowed the Java one and a
+  custom Set was outside my module's scope."
+
+  Do not pretend it is efficient. Knowing the complexity and the trade-off
+  scores better than claiming it is optimal.
+
+
+STEP 4 - SORTING                        bubbleSortRoomList(), line 431
+                                        bubbleSortActivityList(), line 642
+
+  BUBBLE SORT with an early-exit swapped flag:
+
+      for i = 1 to n-1
+          swapped = false
+          for j = 1 to n-i
+              compare roomList.getEntry(j) with getEntry(j+1)
+              if out of order:
+                  roomList.replace(j, second);
+                  roomList.replace(j+1, first);      <- swap via replace()
+                  swapped = true
+          if (!swapped) break;                       <- already sorted, stop
+
+  Note it swaps using the ADT's replace() operation, not by touching an array.
+  That is correct - the control class must go through the ADT interface.
+
+  COMPLEXITY - know these:
+      Worst / average   O(n squared)
+      BEST              O(n)  when already sorted, thanks to the swapped flag
+      Space             O(1)  sorts in place
+
+  SAY THIS: "The early-exit flag matters here specifically. My log is already
+  in chronological order, so sorting by time is the best case and finishes in a
+  single pass. Without the flag it would always do the full n squared."
+
+  IF ASKED "why not merge sort like Module 1?"
+  "Merge sort is O(n log n) always, but it needs O(n) extra space. My lists are
+  small and often already sorted, which is bubble sort's best case. Different
+  data, different trade-off." That is a real answer, not an excuse.
+
+
+STEP 5 - SEARCHING                      searchHousekeepingTask(), line 293
+
+  LINEAR SEARCH over the log, by Task ID, Room Number, or Status.
+
+      Task ID  -> breaks early on the first match (line 364), because task IDs
+                  are unique so there cannot be a second one.
+      Room     -> collects all matches, a room has many log entries.
+      Status   -> collects all matches.
+
+  SAY THIS: "The early break on Task ID is a small thing but it is deliberate -
+  once a unique key matches, continuing to scan is wasted work."
+
+  Complexity: O(n). Best case O(1) for a Task ID hit on the first entry.
+
+
+STEP 6 - REPORTS                        line 475 and line 778
+
+  Report 1 - Room Status Report
+      buildCurrentRoomList()    collapse log to current state per room
+      bubbleSortRoomList()      sort by room number, ascending or descending
+      filtering by status       multi-criteria narrowing
+
+  Report 2 - Housekeeping Activity Report
+      filtered activity list    by status and/or date
+      bubbleSortActivityList()  sort the result
+      countUniqueRooms()        summary statistics
+
+  BOTH combine searching + sorting + filtering, which is what the spec demands.
+  Neither just lists the log - §4.5.3 says listing everything is not a report.
+
+  SAY THIS if asked what makes it a report: "The Room Status Report does not
+  show the log. It derives current state per room, which is information that
+  does not exist as a row anywhere in the data - it has to be computed."
+
+
+--------------------------------------------------------------------------------
+4. ADT WALKTHROUGH - STACK
+--------------------------------------------------------------------------------
+
+DECLARATION                             line 47
+    private StackInterface<HousekeepingTask> statusHistory = new ArrayStack<>();
+
+WHY A STACK
+  The spec sentence for this module literally asks for instant rollback of the
+  most recent status change. That is LIFO. Nothing needs to reach into the
+  middle of the history, so the restricted interface is a feature: rolling back
+  out of order is impossible to write by accident.
+
+
+STEP 1 - EVERY LOGGED UPDATE PUSHES     line 172
+    statusHistory.push(newTask);
+
+  Also note line 37: existing tasks loaded from file are pushed at startup, so
+  the history is populated from the seeded data too.
+
+  After logging three updates:
+            top -> [ Room 101 Inspected   ]
+                   [ Room 102 In Progress ]
+                   [ Room 101 In Progress ]  <- bottom
+
+
+STEP 2 - ROLLBACK                       line 194 onward
+
+    if (statusHistory.isEmpty()) { ...nothing to roll back... }
+
+    HousekeepingTask lastTask = statusHistory.peek();      // LOOK first
+    ...display exactly which update will be reversed...
+    if (userConfirmsYes) {
+        HousekeepingTask rolledBack = statusHistory.pop(); // then COMMIT
+        ...remove it from the log...
+    }
+
+  peek() reads the top WITHOUT removing it, so the supervisor sees exactly what
+  they are about to undo. pop() only runs after Y.
+
+  SAY THIS: "peek-then-pop is the correct pattern for confirm-before-destroy.
+  If I popped first and the user declined, the record would already be gone
+  from the history and the next rollback would silently skip one."
+
+  (Module 1 hit exactly that bug and fixed it the same way - the two modules
+  share the pattern deliberately.)
+
+
+STEP 3 - DUPLICATE STATUS REJECTION
+
+  A task cannot be set to the status it already has.
+
+  SAY THIS: "This prevents a meaningless entry entering the log - and more
+  importantly it stops the rollback stack filling with no-op updates that would
+  each need rolling back separately."
+
+  Good answer to "what validation do you have?" Spec §4.5.1 wants validations
+  that involve a collection operation, and this one reads the current state out
+  of the List before deciding.
+
+
+--------------------------------------------------------------------------------
+5. LIVE CODING - LIKELY REQUESTS AND HOW TO ANSWER
+--------------------------------------------------------------------------------
+
+RULE: go through the ADT interface. Never touch java.util.
+
+"Count how many rooms are Ready for Check-In."
+    int n = taskLog.countIf(t -> t.getStatus().equalsIgnoreCase("Ready"));
+  countIf() exists on the team ADT - use it rather than writing a loop.
+  (Currently your module writes loops for this. Using countIf here is also an
+  easy way to demonstrate you use the team's added operations.)
+
+"Show only tasks for room 101."
+    ListInterface<HousekeepingTask> roomTasks =
+        taskLog.filter(t -> t.getRoomNumber().equals("101"));
+
+"Find the first task with status Dirty."
+    HousekeepingTask t = taskLog.search(x -> x.getStatus().equals("Dirty"));
+
+"Sort by timestamp instead of room number."
+    Either add a branch to bubbleSortRoomList's comparison, or - better -
+    use the team ADT's own sort with a Comparator:
+        roomList.sort((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
+
+"Add a new status to the workflow."
+    Show where statuses are validated, add it there. Point out the duplicate
+    check still applies.
+
+IF YOU GET STUCK
+  Say what you would do and why, then write it. "I need a new list of matching
+  entries without changing the log, so this is a filter with a Condition" is
+  most of the mark.
+
+
+--------------------------------------------------------------------------------
+6. QUESTIONS SPECIFIC TO THIS MODULE
+--------------------------------------------------------------------------------
+
+Q: Which ADT method did YOU contribute?
+A: See the action box at the top of this file. Have a real answer ready.
+
+Q: Why append-only instead of updating the task in place?
+A: Audit trail, and rollback needs a previous state to return to. Updating in
+   place would destroy both.
+
+Q: Your bubble sort is O(n squared). Why not something faster?
+A: Answer honestly - see STEP 4. Small lists, often already sorted, sorts in
+   place with no extra memory. Know that merge sort is the alternative and why
+   you did not need it.
+
+Q: What is the difference between your Stack and Module 1's?
+A: Same ADT, same peek-then-pop pattern, different entity. Module 1 undoes a
+   registration, you roll back a status update. Both are LIFO for the same
+   reason.
+
+Q: Why does the Stack get populated at startup (line 37)?
+A: So a rollback works on seeded data too, not only on updates made in the
+   current run. Be ready to say whether that is what you intended - if the
+   tutor pushes, the honest position is that rollback of historical entries is
+   a design choice, not an accident.
+
+Q: What happens if you roll back twice?
+A: The second pop returns the update before it. The stack keeps going until
+   isEmpty(), then the module reports there is nothing to roll back. Demo it.
+
+Q: Is your List declared by interface or by class?
+A: Interface - ListInterface<HousekeepingTask>. Spec §4.5.4. Know why.
+
+
+--------------------------------------------------------------------------------
+7. YOUR CHECKLIST
+--------------------------------------------------------------------------------
+
+  [ ] DECIDE YOUR ADT CONTRIBUTION with the team (top of this file). Do this
+      first - it may need code changes before you screenshot anything.
+  [ ] Screenshots of every core function, input AND output, clearly labelled:
+      log update, duplicate-status rejection, rollback (both Y and N), display
+      log, all 3 search types, both reports.
+  [ ] HousekeepingTaskLogMaintenance.java into the report - CONTROL CLASS ONLY.
+      Light mode, Alt+Shift+F first.
+  [ ] Delete housekeepingTasks.dat once and re-run before screenshotting.
+  [ ] Practise the demo path in section 2.
+  [ ] Be ready to open any line number quoted in this file within 5 seconds.
+
+================================================================================

@@ -1,0 +1,386 @@
+================================================================================
+MODULE 3 - FRONT-DESK SERVICE
+Yong Le
+
+Presentation and live-coding preparation.
+Read docs/PRESENTATION-General.txt first - team ADT, rules, common questions.
+================================================================================
+
+YOUR FILES
+  control/FrontDeskServiceMaintenance.java     <- Part B source code
+  boundary/FrontDeskServiceUI.java
+  entity/Booking.java, entity/BillingRecord.java, entity/FrontDeskRecord.java
+  adt/BookingBST.java, adt/BookingBSTInterface.java     <- you wrote these
+  dao/BookingDAO.java, dao/BookingInitializer.java
+
+YOUR ADTs
+  List   (team ADT)  bookingList, billingList, recordList
+  BST                bookingTree    - O(log n) lookup by confirmation number
+
+SPEC MAPPING
+  The spec assigns this module "Non-Linear ADT & Searching" and asks for "an
+  efficient search algorithm capable of instantly retrieving complete guest
+  information" using "a unique 8-digit confirmation number."
+
+  YOU CARRY THE NON-LINEAR ADT REQUIREMENT FOR THE WHOLE TEAM. Nobody else has
+  a tree. Expect the most ADT questions of anyone - the tutor will probe here.
+
+
+*** READ THIS FIRST - ACTION NEEDED BEFORE THE DEMO ***
+--------------------------------------------------------------------------------
+
+  Your module uses the List almost entirely through the CORE Carrano
+  operations: getEntry() (15 times), replace() (6), contains() (1). You call
+  search() once. You do not use the other five added operations.
+
+  Spec §4.1.3: each member should contribute to the implementation of ADT
+  methods and invoke them from their module.
+
+  You have a strong partial answer already - YOU WROTE THE ENTIRE BST. Say so.
+  But note the team ADT submitted for Part A is the LIST, not the BST, so
+  "I wrote a whole separate ADT" may not fully satisfy a tutor asking about
+  contributions to the TEAM ADT.
+
+  Suggested addition that fits your module naturally:
+
+      Add  addSorted(T, Comparator)  to ListInterface + ArrayList
+      - insert an entry while keeping the list in sorted order.
+
+      Why it fits: your booking summary report currently builds a list and then
+      runs a separate selection sort pass over it (sortBookingByCheckInDate,
+      line 735). addSorted() would keep the report list ordered as it is built
+      and remove the sort pass entirely. Non-trivial, meaningful, and it
+      genuinely simplifies your own code.
+
+      Put your @author line on it in BOTH files, and CALL it from your report.
+
+  ALSO NOTE - two things in your files were fixed during the compliance audit:
+
+    1. BillingRecord and FrontDeskRecord were missing toString(), equals() and
+       hashCode(). Spec §4.2.1 asks for them, and the other seven entity
+       classes had them. They have been added.
+
+       WORTH KNOWING WHY, in case you are asked: the List ADT's contains(),
+       getPosition() and removeEntry() all compare with equals(). Without an
+       override they fall back to reference equality, so searching the
+       billingList for a record you built from file data would fail to match.
+       It was a latent bug, not only a style issue.
+
+    2. Five headings in your control class were printed with System.out
+       directly. Under ECB, control objects may not talk to the actor - only
+       boundary objects may. They now call
+       frontDeskServiceUI.displayScreenHeading(title). Output is unchanged.
+
+
+--------------------------------------------------------------------------------
+1. THE 60-SECOND OPENING
+--------------------------------------------------------------------------------
+
+"This module is the front desk counter. Agents handle a constant stream of
+inquiries - room availability, billing questions, and guest identification by
+an 8-digit confirmation number. The spec asks for instant retrieval, so lookup
+speed is the design driver for this whole module.
+
+That is why I built a Binary Search Tree. Every booking is keyed on its
+confirmation number, so a lookup is O(log n) instead of scanning every booking.
+With a thousand bookings that is about ten comparisons instead of a thousand.
+
+I store each booking in two places on purpose: the BST for fast lookup, and the
+team's List ADT for traversal and reporting. Different access patterns, so
+different structures."
+
+
+--------------------------------------------------------------------------------
+2. MENU - WHAT TO DEMO, IN ORDER
+--------------------------------------------------------------------------------
+
+   1. Create new booking                          BST.add() + List.add()
+   2. Search guest information by confirmation no. BST.search()      <- headline
+   3. Check room availability
+   4. Search billing details by confirmation no.   BST + linear
+   5. Display all bookings                        in-order traversal
+   6. Booking summary report                      selection sort
+   7. Outstanding billing report
+   0. Back to main menu
+
+RECOMMENDED DEMO PATH
+
+  1. Menu 5   Display all bookings. POINT OUT they come out sorted by
+              confirmation number WITHOUT any sort being run - that is the
+              in-order traversal, and it is free. Strong opening.
+              Copy a confirmation number off the screen.
+  2. Menu 2   Search that number. Explain the tree walk while it runs.
+  3. Menu 2   Search a number that does NOT exist. Show it handles the miss.
+  4. Menu 1   Create a new booking.
+  5. Menu 1   Try the SAME confirmation number again - show it is rejected.
+              Explain the duplicate check is free, it falls out of the search
+              path. This is your best ADT talking point.
+  6. Menu 4   Billing lookup on your new booking. Explain the two-step.
+  7. Menu 3   Room availability.
+  8. Menu 6   Booking summary report.
+  9. Menu 7   Outstanding billing report.
+
+
+--------------------------------------------------------------------------------
+3. ADT WALKTHROUGH - BINARY SEARCH TREE
+--------------------------------------------------------------------------------
+
+DECLARATION                             line 53
+    private final BookingBST bookingTree = new BookingBST();
+
+STRUCTURE                               BookingBST.java line 17
+    private class Node {
+        private Booking data;
+        private Node left;
+        private Node right;
+    }
+
+  Each node holds one Booking. Left subtree holds SMALLER confirmation numbers,
+  right subtree holds LARGER. That invariant is what makes search work.
+
+
+STEP 1 - INSERT                         BookingBST.add(), line 34
+
+    Node current = root;
+    while (true) {
+        int comparison = booking.getConfirmationNumber()
+                            .compareTo(current.data.getConfirmationNumber());
+        if (comparison == 0)  return false;        // duplicate - reject
+        else if (comparison < 0) { ...go left...  }
+        else                     { ...go right... }
+    }
+
+  Walks down from the root, comparing, until it finds an empty child slot.
+
+  Inserting 50231847, then 20114563, then 78905512:
+
+                    [50231847]
+                   /          \
+           [20114563]        [78905512]
+
+  *** THE DUPLICATE CHECK IS FREE - SAY THIS ***
+  "I do not need a separate pass to check for duplicates. Finding where to
+  insert and checking whether it already exists are the same walk down the
+  tree. comparison == 0 means I have landed on it. A List would need a full
+  O(n) contains() scan before every insert; the tree gets it for nothing."
+
+  This is the single best thing to lead with. It shows you understand WHY the
+  structure was chosen, not just that you used it.
+
+  Complexity: O(log n) average, O(n) worst case.
+
+
+STEP 2 - SEARCH                         searchBookingByConfirmationNumber(),
+                                        line 300
+    return bookingTree.search(confirmationNumber);
+
+  Same walk. Compare, go left or right, until found or you fall off the tree.
+
+  WORKED EXAMPLE - have this ready on paper:
+      Looking for 78905512 in the tree above.
+      Compare with root 50231847 -> larger -> go right.
+      Compare with 78905512      -> equal  -> found.
+      Two comparisons.
+
+  THE NUMBER TO QUOTE: "With 1000 bookings, about 10 comparisons instead of up
+  to 1000. log base 2 of 1000 is roughly 10."
+
+
+STEP 3 - IN-ORDER TRAVERSAL             getAllBookings()
+
+  Visit left subtree, then the node, then right subtree. That order yields the
+  bookings in ASCENDING confirmation-number order.
+
+  SAY THIS: "Menu 5 shows bookings sorted, and I never call a sort. The tree's
+  structure already encodes the order - the traversal just reads it out. That
+  is a second benefit of the BST I get for free alongside the fast lookup."
+
+  Complexity: O(n) - every node visited exactly once.
+
+  Returns a ListInterface<Booking>, so the tree hands its contents back in the
+  TEAM ADT. Worth pointing out: the two structures interoperate.
+
+
+STEP 4 - THE TWO-STEP BILLING LOOKUP    searchBillingDetails(), line 411
+                                        searchBillingRecord(), line 382
+
+    Booking b = searchBookingByConfirmationNumber(...);   // O(log n)  BST
+    BillingRecord r = searchBillingRecord(...);           // O(n)      linear
+
+  *** THIS IS A DELIBERATE CHOICE - DEFEND IT, DO NOT APOLOGISE ***
+
+  SAY THIS: "The booking lookup is a tree search, but the billing lookup is a
+  linear scan, and that is on purpose. There are far fewer billing records than
+  bookings. A second tree would cost memory and insertion time to maintain, and
+  it would save almost nothing at this size. Using the fast structure
+  everywhere would be over-engineering."
+
+  Tutors like hearing a student justify NOT using the advanced structure. It
+  shows judgement rather than pattern-matching.
+
+
+--------------------------------------------------------------------------------
+4. ADT WALKTHROUGH - LIST (THE TEAM ADT)
+--------------------------------------------------------------------------------
+
+DECLARATIONS                            lines 36, 62, 68
+    private final ListInterface<FrontDeskRecord> recordList = new ArrayList<>();
+    private final ListInterface<Booking>     bookingList    = new ArrayList<>();
+    private final ListInterface<BillingRecord> billingList  = new ArrayList<>();
+
+  All declared by INTERFACE, not by ArrayList. Spec §4.5.4 asks about exactly
+  this. Answer: it restricts callers to the interface methods, and lets the
+  implementation be swapped without changing any other line.
+
+
+WHY BOTH A TREE AND A LIST              line 90 comment, line 167 comment
+
+  Every booking goes into BOTH:
+      bookingTree.add(booking);      lookup by key       O(log n)
+      bookingList.add(booking);      traversal, reports  O(1) append
+
+  SAY THIS: "The tree answers 'find this one booking'. The List answers 'walk
+  every booking'. Reports need the second, and a tree traversal for every
+  report would be clumsier than just keeping a list. I trade a little memory
+  for the right structure for each job."
+
+  LIKELY FOLLOW-UP: "Isn't storing it twice wasteful?"
+  ANSWER: "Both hold REFERENCES to the same Booking objects, not copies. The
+  extra cost is one pointer per booking, not a second copy of the data."
+  Know this - it is the difference between a good answer and a shaky one.
+
+
+SELECTION SORT                          sortBookingByCheckInDate(), line 735
+
+  Used by the booking summary report to order by check-in date ascending.
+
+  How it works: find the minimum in the unsorted portion, swap it into place,
+  repeat for the next position.
+
+  COMPLEXITY - know these:
+      Best / average / worst   O(n squared) ALWAYS - no early exit possible,
+                               it must scan the remaining portion every pass
+      Swaps                    O(n) - fewest swaps of the simple sorts
+      Space                    O(1) - in place
+
+  IF ASKED "why selection sort?"
+  "Report lists are small. Selection sort does the fewest swaps of the simple
+  sorts, which matters if swapping is expensive. But I should be honest - merge
+  sort in the team ADT is O(n log n) and would be the better choice if the data
+  grew. For a report of a few dozen bookings the difference is invisible."
+
+  IF ASKED "is it stable?"
+  "The classic implementation is NOT stable - swapping a distant minimum into
+  place can jump an equal element over another. Merge sort in our team ADT IS
+  stable. If ties needed to keep their original order I would use that instead."
+
+  Do not guess on this one. Selection sort's instability is a standard exam
+  question.
+
+
+--------------------------------------------------------------------------------
+5. LIVE CODING - LIKELY REQUESTS AND HOW TO ANSWER
+--------------------------------------------------------------------------------
+
+RULE: go through the ADT interface. Never touch java.util.
+
+"Check whether a confirmation number exists."
+    boolean exists = bookingTree.contains(confirmationNumber);
+  Already on your BST interface. O(log n).
+
+"Count bookings over RM500."
+    int n = bookingList.countIf(b -> b.getTotalAmount() > 500);
+  countIf() is on the team ADT. Use it rather than a loop - and it demonstrates
+  you use the team's added operations.
+
+"Show only bookings checking in today."
+    ListInterface<Booking> today =
+        bookingList.filter(b -> b.getCheckInDate().equals(LocalDate.now()));
+
+"Sort bookings by guest name."
+    bookingList.sort((a, b) -> a.getGuestName().compareTo(b.getGuestName()));
+  The team ADT's merge sort. Faster to write than another selection sort, and
+  it is stable.
+
+"Add a method to count the tree's nodes."
+    getNumberOfEntries() already exists - it is maintained as a counter on
+    insert, so it is O(1) rather than a traversal. Say that.
+
+"Write a method to find the smallest confirmation number."
+    Walk left from the root until left is null. O(log n).
+        Node current = root;
+        while (current.left != null) current = current.left;
+        return current.data;
+  A classic BST question. Practise it - the mirror (largest = walk right) too.
+
+"How would you delete a node?"
+    You have NOT implemented delete. Say so, then explain the three cases:
+      - leaf: just remove it
+      - one child: replace the node with its child
+      - two children: replace with the in-order successor (smallest in the
+        right subtree), then delete that successor
+    Knowing the algorithm without having coded it is a fine answer. Bluffing
+    that it exists is not.
+
+IF YOU GET STUCK
+  Reason aloud. "Confirmation numbers are unique keys and I need one record, so
+  this is a tree search, not a scan" is most of the mark.
+
+
+--------------------------------------------------------------------------------
+6. QUESTIONS SPECIFIC TO THIS MODULE
+--------------------------------------------------------------------------------
+
+Q: What is the worst case for your BST?    *** ALMOST CERTAIN TO BE ASKED ***
+A: "If confirmation numbers arrive in already-sorted order, every insert goes
+   right and the tree degenerates into a linked chain. Search becomes O(n) -
+   no better than a list, but with the memory overhead of nodes. Our
+   confirmation numbers are effectively random 8-digit values, so the tree
+   stays roughly balanced in practice. The proper fix is a self-balancing tree,
+   AVL or red-black, which rebalances on insertion. That was beyond this
+   assignment's scope."
+   Draw the degenerate chain if you have a whiteboard. It lands well.
+
+Q: Why compareTo on a String rather than parsing to a number?
+A: 8-digit confirmation numbers are fixed length, so lexicographic order and
+   numeric order agree. Be ready to admit that if lengths varied, "9" would
+   sort after "10" and the ordering would break.
+
+Q: Why a BST and not a hash table?
+A: A hash table would give O(1) average lookup, better than O(log n). But it
+   gives no ordering - I would lose the free sorted output from the in-order
+   traversal, and Menu 5 would need an actual sort. Also we cannot use Java's
+   HashMap, so I would have had to build one.
+
+Q: Your tree only holds Booking, not <T>. Why isn't it generic?
+A: BE HONEST. "It is typed to Booking rather than generic. The team ADT that we
+   submit for assessment is the List, which IS fully generic. If I rewrote the
+   BST I would make it generic with a Comparator, the same way ArrayList.sort()
+   takes one." The rubric's genericity criterion applies to the submitted team
+   ADT - do not pretend the BST is something it is not.
+
+Q: Which ADT method did YOU contribute to the team ADT?
+A: See the action box at the top of this file. "I wrote the entire BST" is a
+   strong answer but may not be what they are asking.
+
+Q: Where does the non-linear ADT requirement get met for your team?
+A: Here. You are it. Own that in your opening.
+
+
+--------------------------------------------------------------------------------
+7. YOUR CHECKLIST
+--------------------------------------------------------------------------------
+
+  [ ] DECIDE YOUR TEAM-ADT CONTRIBUTION with the team (top of this file).
+  [ ] Practise drawing your BST on paper - insert 3-4 numbers, then trace a
+      search. You WILL be asked to do this.
+  [ ] Practise the degenerate-tree answer and the delete-node cases.
+  [ ] Screenshots of every core function, input AND output, clearly labelled:
+      create booking, duplicate rejection, search hit, search miss, billing
+      lookup, availability, display all, both reports.
+  [ ] FrontDeskServiceMaintenance.java into the report - CONTROL CLASS ONLY.
+      Light mode, Alt+Shift+F first.
+  [ ] Delete bookings.dat once and re-run before screenshotting.
+  [ ] Be ready to open any line number quoted in this file within 5 seconds.
+
+================================================================================

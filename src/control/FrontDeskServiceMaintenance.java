@@ -313,11 +313,7 @@ public class FrontDeskServiceMaintenance {
      */
     public void searchCompleteGuestInformation() {
 
-        System.out.println(
-                "\nSEARCH COMPLETE GUEST INFORMATION");
-
-        System.out.println(
-                "===================================");
+        frontDeskServiceUI.displayScreenHeading("SEARCH COMPLETE GUEST INFORMATION");
 
         String confirmationNumber =
                 frontDeskServiceUI
@@ -414,11 +410,7 @@ public class FrontDeskServiceMaintenance {
      */
     public void searchBillingDetails() {
 
-        System.out.println(
-                "\nSEARCH BILLING DETAILS");
-
-        System.out.println(
-                "======================");
+        frontDeskServiceUI.displayScreenHeading("SEARCH BILLING DETAILS");
 
         String confirmationNumber =
                 frontDeskServiceUI
@@ -548,11 +540,7 @@ public class FrontDeskServiceMaintenance {
      */
     public void checkRoomAvailability() {
 
-        System.out.println(
-                "\nCHECK ROOM AVAILABILITY");
-
-        System.out.println(
-                "=======================");
+        frontDeskServiceUI.displayScreenHeading("CHECK ROOM AVAILABILITY");
 
         String roomNumber =
                 frontDeskServiceUI
@@ -632,11 +620,7 @@ public class FrontDeskServiceMaintenance {
      */
     public void generateBookingReport() {
 
-        System.out.println(
-                "\nGENERATE BOOKING REPORT");
-
-        System.out.println(
-                "=======================");
+        frontDeskServiceUI.displayScreenHeading("GENERATE BOOKING REPORT");
 
         /*
          * First filtering criterion.
@@ -813,11 +797,7 @@ public class FrontDeskServiceMaintenance {
      */
     public void generateOutstandingBillingReport() {
 
-        System.out.println(
-                "\nGENERATE OUTSTANDING BILLING REPORT");
-
-        System.out.println(
-                "===================================");
+        frontDeskServiceUI.displayScreenHeading("GENERATE OUTSTANDING BILLING REPORT");
 
         /*
          * Get minimum outstanding amount.
