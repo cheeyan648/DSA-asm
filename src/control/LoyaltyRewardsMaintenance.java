@@ -130,7 +130,8 @@ public class LoyaltyRewardsMaintenance {
   }
 
   /**
-   * Registers a new member after checking for duplicate member IDs.
+   * Registers a new member with an auto-generated loyalty ID and today's join
+   * date after collecting name and contact details from the user.
    */
   public void registerMember() {
     Member member = loyaltyRewardsUI.inputMember();
@@ -139,14 +140,52 @@ public class LoyaltyRewardsMaintenance {
       return;
     }
 
+    member.setMemberId(generateNextMemberId());
+    member.setJoinDate(LocalDate.now());
+    member.setPoints(0);
+    member.setTier(TIER_SILVER);
+    member.setPointsExpiryDate(null);
+    member.setTier(resolveTierAfterPoints(member.getTier(), member.getPoints()));
+
     if (findMemberById(member.getMemberId()) != null) {
       loyaltyRewardsUI.displayDuplicateMemberMessage(member.getMemberId());
       return;
     }
 
-    member.setTier(resolveTierAfterPoints(member.getTier(), member.getPoints()));
     memberList.add(member);
     loyaltyRewardsUI.displayRegistrationSuccess(member);
+  }
+
+  /**
+   * Scans existing member IDs and returns the next sequential loyalty ID in
+   * the format L0001, L0002, and so on. Uses the highest numeric suffix found,
+   * not the current list size, so deleted records cannot cause duplicates.
+   */
+  private String generateNextMemberId() {
+    int highestNumber = 0;
+
+    for (int position = 1; position <= memberList.getNumberOfEntries(); position++) {
+      Member existingMember = memberList.getEntry(position);
+      if (existingMember == null || existingMember.getMemberId() == null) {
+        continue;
+      }
+
+      String memberId = existingMember.getMemberId().trim();
+      if (memberId.length() < 2 || !memberId.substring(0, 1).equalsIgnoreCase("L")) {
+        continue;
+      }
+
+      try {
+        int numericPart = Integer.parseInt(memberId.substring(1));
+        if (numericPart > highestNumber) {
+          highestNumber = numericPart;
+        }
+      } catch (NumberFormatException e) {
+        // Ignore IDs that do not follow the L#### format.
+      }
+    }
+
+    return String.format("L%04d", highestNumber + 1);
   }
 
   /**
@@ -908,14 +947,14 @@ public class LoyaltyRewardsMaintenance {
     }
 
     Integer minPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Minimum points (blank for none): ");
+        "Minimum points (blank for none, C to cancel): ");
     if (minPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
     }
 
     Integer maxPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Maximum points (blank for none): ");
+        "Maximum points (blank for none, C to cancel): ");
     if (maxPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
@@ -929,14 +968,14 @@ public class LoyaltyRewardsMaintenance {
     }
 
     LocalDate joinStart = loyaltyRewardsUI.inputOptionalReportDate(
-        "Join date on/after (YYYY-MM-DD, blank to skip): ");
+        "Join date on/after (YYYY-MM-DD, blank to skip, C to cancel): ");
     if (joinStart == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
     }
 
     LocalDate joinEnd = loyaltyRewardsUI.inputOptionalReportDate(
-        "Join date on/before (YYYY-MM-DD, blank to skip): ");
+        "Join date on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
     if (joinEnd == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
@@ -949,7 +988,7 @@ public class LoyaltyRewardsMaintenance {
     }
 
     LocalDate expiryBefore = loyaltyRewardsUI.inputOptionalReportDate(
-        "Points expiry on/before (YYYY-MM-DD, blank to skip): ");
+        "Points expiry on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
     if (expiryBefore == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
@@ -991,14 +1030,14 @@ public class LoyaltyRewardsMaintenance {
     }
 
     Integer minPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Minimum points redeemed (blank for none): ");
+        "Minimum points redeemed (blank for none, C to cancel): ");
     if (minPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
     }
 
     Integer maxPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Maximum points redeemed (blank for none): ");
+        "Maximum points redeemed (blank for none, C to cancel): ");
     if (maxPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
@@ -1018,14 +1057,14 @@ public class LoyaltyRewardsMaintenance {
     }
 
     LocalDate startDate = loyaltyRewardsUI.inputOptionalReportDate(
-        "Request date on/after (YYYY-MM-DD, blank to skip): ");
+        "Request date on/after (YYYY-MM-DD, blank to skip, C to cancel): ");
     if (startDate == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;
     }
 
     LocalDate endDate = loyaltyRewardsUI.inputOptionalReportDate(
-        "Request date on/before (YYYY-MM-DD, blank to skip): ");
+        "Request date on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
     if (endDate == null && loyaltyRewardsUI.wasReportInputCancelled()) {
       loyaltyRewardsUI.displayMessage("Report cancelled.");
       return;

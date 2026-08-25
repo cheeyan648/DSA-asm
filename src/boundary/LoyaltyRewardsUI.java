@@ -68,9 +68,10 @@ public class LoyaltyRewardsUI {
   }
 
   /**
-   * Collects the details needed to register a new loyalty member.
+   * Collects the manual registration details for a new loyalty member.
+   * Loyalty ID and join date are assigned by the control class.
    *
-   * @return a new Member, or null if the user cancels during input
+   * @return a Member with name and contact only, or null if the user cancels
    */
   public Member inputMember() {
     displayActionHeader("REGISTER NEW MEMBER");
@@ -78,35 +79,8 @@ public class LoyaltyRewardsUI {
     System.out.println("Enter 0 at any prompt to cancel.");
     System.out.println();
 
-    String memberId = inputMemberId("Member ID (0 to cancel): ");
-    if (memberId == null) {
-      return null;
-    }
-
     String name = inputRequiredText("Name (0 to cancel): ");
     if (name == null) {
-      return null;
-    }
-
-    // No "0 to cancel" here: 0 is a valid starting points balance.
-    Integer points = inputNonNegativeInt("Points: ");
-    if (points == null) {
-      return null;
-    }
-
-    LocalDate pointsExpiryDate = inputOptionalDate(
-        "Points expiry date (YYYY-MM-DD, blank if none, 0 to cancel): ");
-    if (pointsExpiryDate == null && !skippedOptionalDate) {
-      return null;
-    }
-
-    String tier = inputTier();
-    if (tier == null) {
-      return null;
-    }
-
-    LocalDate joinDate = inputDate("Join date (YYYY-MM-DD, 0 to cancel): ");
-    if (joinDate == null) {
       return null;
     }
 
@@ -115,8 +89,10 @@ public class LoyaltyRewardsUI {
       return null;
     }
 
-    return new Member(memberId, name, points.intValue(), pointsExpiryDate,
-        tier, joinDate, contactNumber);
+    Member member = new Member();
+    member.setName(name);
+    member.setContactNumber(contactNumber);
+    return member;
   }
 
   /**
@@ -268,8 +244,17 @@ public class LoyaltyRewardsUI {
   }
 
   public void displayRegistrationSuccess(Member member) {
-    displayMessage("Member registered successfully.");
-    displayMember(member);
+    System.out.println();
+    System.out.println("========================================");
+    System.out.println("       MEMBER REGISTRATION SUCCESS");
+    System.out.println("========================================");
+    System.out.printf("Loyalty ID   : %s%n", member.getMemberId());
+    System.out.printf("Name         : %s%n", member.getName());
+    System.out.printf("Contact No.  : %s%n", member.getContactNumber());
+    System.out.printf("Join Date    : %s%n", formatDate(member.getJoinDate()));
+    System.out.printf("Points       : %d%n", member.getPoints());
+    System.out.printf("Tier         : %s%n", member.getTier());
+    System.out.println("========================================");
   }
 
   public void displayDuplicateMemberMessage(String memberId) {
@@ -826,6 +811,10 @@ public class LoyaltyRewardsUI {
     }
   }
 
+  private boolean isReportCancelInput(String input) {
+    return input.equalsIgnoreCase("C");
+  }
+
   public Integer inputOptionalReportPoints(String prompt) {
     reportInputCancelled = false;
 
@@ -833,7 +822,7 @@ public class LoyaltyRewardsUI {
       System.out.print(prompt);
       String input = MessageUI.readLine(scanner);
 
-      if (input.equals("0")) {
+      if (isReportCancelInput(input)) {
         reportInputCancelled = true;
         return null;
       }
@@ -861,7 +850,7 @@ public class LoyaltyRewardsUI {
       System.out.print(prompt);
       String input = MessageUI.readLine(scanner);
 
-      if (input.equals("0")) {
+      if (isReportCancelInput(input)) {
         reportInputCancelled = true;
         return null;
       }
