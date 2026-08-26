@@ -1,1478 +1,490 @@
 package boundary;
 
 import adt.ListInterface;
-import entity.BillingRecord;
+import control.ResortData;
 import entity.Booking;
+import entity.Guest;
+import entity.Invoice;
+import entity.Payment;
+import entity.Room;
+import entity.RoomAssignment;
+import entity.RoomType;
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
-import java.util.Iterator;
 import java.util.Scanner;
 import utility.MessageUI;
 
 /**
- * Handles all input and output for the Front-Desk Service module.
+ * Every screen and prompt for Front-Desk Service.
  *
- * @author Kat Tan
+ * @author Lim Yong Le
  */
 public class FrontDeskServiceUI {
 
-    // ============================================================
-    // CONSTANTS
-    // ============================================================
+  private final Scanner scanner = MessageUI.scanner;
 
-    /*
-     * Standard booking table format.
-     *
-     * Confirm No. : 12 characters
-     * Guest Name  : 28 characters
-     * Room        : 10 characters
-     * Check-in    : 12 characters
-     * Check-out   : 12 characters
-     */
-    private static final String BOOKING_FORMAT =
-            "%-12s %-28s %-10s %-12s %-12s%n";
+  // ==================================================================
+  // MENUS
+  // ==================================================================
 
-    /**
-     * Returned by inputNonNegativeAmount()
-     * when the user cancels.
-     */
-    public static final double CANCELLED_AMOUNT = -1;
+  public int getMenuChoice() {
+    MessageUI.displayMenuScreen("FRONT-DESK SERVICE", null,
+        "Main Menu  >  Front-Desk Service",
+        new String[] {
+          "Bookings (create, amend, cancel)",
+          "Rooms (availability, assign, expedite cleaning)",
+          "Stay (check in, check out)",
+          "Billing (payments, loyalty discount)",
+          "Search & display",
+          "Reports"
+        },
+        "Back to main menu");
+    return MessageUI.readMenuChoice(scanner, 6, "go back to the main menu");
+  }
 
-    private final Scanner scanner =
-            MessageUI.scanner;
+  public int getBookingMenuChoice() {
+    MessageUI.displayMenuScreen("BOOKINGS", null,
+        "Main Menu  >  Front-Desk Service  >  Bookings",
+        new String[] {
+          "Create a new booking",
+          "Amend a booking (dates or guest count)",
+          "Cancel a booking",
+          "Mark a booking as no-show"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 4, "go back");
+  }
 
-    // ============================================================
-    // MAIN MENU
-    // ============================================================
+  public int getRoomMenuChoice() {
+    MessageUI.displayMenuScreen("ROOMS", null,
+        "Main Menu  >  Front-Desk Service  >  Rooms",
+        new String[] {
+          "Check room availability",
+          "Assign a room to a pending booking",
+          "Move a booking to another room",
+          "Request urgent cleaning for a waiting booking",
+          "Room status board"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
+  }
 
-    /**
-     * Displays the Front-Desk Service main menu.
-     *
-     * @return selected menu option
-     */
-    public int getMenuChoice() {
+  public int getStayMenuChoice() {
+    MessageUI.displayMenuScreen("STAY", null,
+        "Main Menu  >  Front-Desk Service  >  Stay",
+        new String[] {
+          "Check in a guest",
+          "Check out a guest"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
+  }
 
-        MessageUI.clearScreen();
-        System.out.println();
+  public int getBillingMenuChoice() {
+    MessageUI.displayMenuScreen("BILLING", null,
+        "Main Menu  >  Front-Desk Service  >  Billing",
+        new String[] {
+          "View an invoice",
+          "Record a payment",
+          "Apply an approved loyalty reward to a bill"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 3, "go back");
+  }
 
-        MessageUI.displayBoxTop();
-        MessageUI.displayBoxBlank();
+  public int getSearchMenuChoice() {
+    MessageUI.displayMenuScreen("SEARCH & DISPLAY", null,
+        "Main Menu  >  Front-Desk Service  >  Search & Display",
+        new String[] {
+          "Search by booking ID",
+          "Search by guest name",
+          "Search by room number",
+          "Filter by status",
+          "Display all bookings (sorted by ID)"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
+  }
 
-        MessageUI.displayBoxCentred(
-                "F R O N T - D E S K   S E R V I C E");
+  public int getReportMenuChoice() {
+    MessageUI.displayMenuScreen("REPORTS", null,
+        "Main Menu  >  Front-Desk Service  >  Reports",
+        new String[] {
+          "Occupancy & Revenue Report",
+          "Outstanding Balance Report"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
+  }
 
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxDivider();
+  // ==================================================================
+  // INPUT
+  // ==================================================================
 
-        MessageUI.displayBoxLine(
-                "  Main Menu  >  Front-Desk Service");
+  public String inputBookingId() {
+    String id = MessageUI.readRequiredText(scanner, "Booking ID (e.g. BK0004)");
+    return MessageUI.isCancelled(id) ? null : id;
+  }
 
-        MessageUI.displayBoxDivider();
-        MessageUI.displayBoxBlank();
+  public String inputRoomNo() {
+    String roomNo = MessageUI.readRequiredText(scanner, "Room number (e.g. 1005)");
+    return MessageUI.isCancelled(roomNo) ? null : roomNo;
+  }
 
-        MessageUI.displayMenuOption(
-                1,
-                "Create new booking");
+  public String inputInvoiceId() {
+    String id = MessageUI.readRequiredText(scanner, "Invoice ID (e.g. INV0004)");
+    return MessageUI.isCancelled(id) ? null : id;
+  }
 
-        MessageUI.displayMenuOption(
-                2,
-                "Search information");
+  public String inputGuestName() {
+    String name = MessageUI.readRequiredText(scanner, "Guest name (or part of it)");
+    return MessageUI.isCancelled(name) ? null : name;
+  }
 
-        MessageUI.displayMenuOption(
-                3,
-                "Check room availability");
+  public LocalDate inputDate(String prompt) {
+    return MessageUI.readDate(scanner, prompt);
+  }
 
-        MessageUI.displayMenuOption(
-                4,
-                "Display all bookings");
+  public int inputGuestCount(int maximum) {
+    int guests = MessageUI.readInt(scanner, "Number of guests", 1, maximum);
+    return (guests == MessageUI.CANCELLED_INT) ? -1 : guests;
+  }
 
-        MessageUI.displayMenuOption(
-                5,
-                "Reports");
+  public double inputAmount(String prompt) {
+    return MessageUI.readAmount(scanner, prompt);
+  }
 
-        MessageUI.displayBoxBlank();
+  /**
+   * Asks which room type is wanted, listing the rates.
+   *
+   * @param types the types on offer
+   * @return the chosen type's ID, or null if cancelled
+   */
+  public String inputRoomType(ListInterface<RoomType> types) {
+    MessageUI.displaySectionHeading("Room types");
+    MessageUI.displayTableHeading(String.format("  %-6s %-18s %5s %12s  %s",
+        "TYPE", "NAME", "MAX", "RATE/NIGHT", "DESCRIPTION"));
 
-        MessageUI.displayMenuOption(
-                0,
-                "Back to main menu");
+    for (int i = 1; i <= types.getNumberOfEntries(); i++) {
+      RoomType type = types.getEntry(i);
+      System.out.printf("  %-6s %-18s %5d %12.2f  %s%n",
+          type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
+          type.getBaseRatePerNight(), type.getDescription());
+    }
+    MessageUI.displayThinRule();
 
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxBottom();
+    int picked = MessageUI.readInt(scanner, "Room type number", 1,
+        types.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : types.getEntry(picked).getTypeId();
+  }
 
-        return MessageUI.readMenuChoice(
-                scanner,
-                5,
-                "go back to the main menu");
+  public String inputBookingSource() {
+    String source = MessageUI.readChoice(scanner, "Booking source", new String[] {
+      Booking.SOURCE_ONLINE, Booking.SOURCE_PHONE, Booking.SOURCE_CORPORATE
+    });
+    return MessageUI.isCancelled(source) ? null : source;
+  }
+
+  public String inputPaymentMethod() {
+    String method = MessageUI.readChoice(scanner, "Payment method", new String[] {
+      Payment.CASH, Payment.CARD, Payment.EWALLET, Payment.BANK_TRANSFER
+    });
+    return MessageUI.isCancelled(method) ? null : method;
+  }
+
+  public String inputPaymentReference() {
+    String reference = MessageUI.readRequiredText(scanner, "Approval / transaction reference");
+    return MessageUI.isCancelled(reference) ? null : reference;
+  }
+
+  public String inputStatusFilter() {
+    String status = MessageUI.readChoice(scanner, "Booking status", new String[] {
+      Booking.STATUS_PENDING, Booking.STATUS_CONFIRMED, Booking.STATUS_CHECKED_IN,
+      Booking.STATUS_CHECKED_OUT, Booking.STATUS_CANCELLED, Booking.STATUS_NO_SHOW
+    });
+    return MessageUI.isCancelled(status) ? null : status;
+  }
+
+  /**
+   * Asks the user to pick one of the rooms on offer.
+   *
+   * @param rooms the rooms that could be given
+   * @return the chosen room number, or null if cancelled
+   */
+  public String chooseRoom(ListInterface<Room> rooms) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-4s %-6s %-6s %-6s %-22s %s",
+        "NO", "ROOM", "TYPE", "FLOOR", "HOUSEKEEPING", "OCCUPANCY"));
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      System.out.printf("  %-4d %-6s %-6s %-6d %-22s %s%n",
+          i, room.getRoomNo(), room.getTypeId(), room.getFloorNo(),
+          room.getHousekeepingStatus(), room.getOccupancyStatus());
+    }
+    MessageUI.displayThinRule();
+
+    int picked = MessageUI.readInt(scanner, "Room number from the list", 1,
+        rooms.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : rooms.getEntry(picked).getRoomNo();
+  }
+
+  public String inputAssignmentReason() {
+    String reason = MessageUI.readChoice(scanner, "Reason for the move", new String[] {
+      RoomAssignment.REASON_UPGRADE,
+      RoomAssignment.REASON_GUEST_REQUEST,
+      RoomAssignment.REASON_MAINTENANCE
+    });
+    return MessageUI.isCancelled(reason) ? null : reason;
+  }
+
+  public boolean confirm(String question) {
+    return MessageUI.confirm(scanner, question);
+  }
+
+  public void pause() {
+    MessageUI.pause(scanner);
+  }
+
+  // ==================================================================
+  // DISPLAY
+  // ==================================================================
+
+  public void startAction(String title) {
+    MessageUI.startAction(title);
+  }
+
+  public void displayMessage(String message) {
+    MessageUI.displayMessage(message);
+  }
+
+  public void displayError(String message) {
+    MessageUI.displayError(message);
+  }
+
+  public void displaySuccess(String message) {
+    MessageUI.displaySuccess(message);
+  }
+
+  public void displaySectionHeading(String title) {
+    MessageUI.displaySectionHeading(title);
+  }
+
+  /**
+   * Shows one booking in full, with its guest and bill.
+   *
+   * @param booking the booking
+   * @param data used to look up the guest, room type and invoice
+   */
+  public void displayBooking(Booking booking, ResortData data) {
+    Guest guest = data.findGuest(booking.getGuestId());
+    RoomType type = data.findRoomType(booking.getTypeId());
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Booking ID", booking.getBookingId());
+    MessageUI.displayField("Guest", (guest == null ? "-" : guest.getFullName())
+        + " (" + booking.getGuestId() + ")");
+    MessageUI.displayField("Room type", type == null ? booking.getTypeId()
+        : type.getTypeName() + " (" + booking.getTypeId() + ")");
+    MessageUI.displayField("Room", booking.getRoomNo() == null
+        ? "not assigned yet" : booking.getRoomNo());
+    MessageUI.displayField("Stay", booking.getCheckInDate() + " to "
+        + booking.getCheckOutDate() + "  (" + booking.getNumberOfNights() + " night(s))");
+    MessageUI.displayField("Guests", String.valueOf(booking.getNumberOfGuests()));
+    MessageUI.displayField("Status", booking.getBookingStatus());
+    MessageUI.displayField("Priority", booking.getPriority());
+    MessageUI.displayField("Source", booking.getSource()
+        + (booking.getRegId() == null ? "" : "  (from " + booking.getRegId() + ")"));
+    MessageUI.displayField("Rate per night", String.format("RM%.2f", booking.getRatePerNight()));
+
+    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+    if (invoice != null) {
+      MessageUI.displayField("Invoice", invoice.getInvoiceId() + "  "
+          + invoice.getPaymentStatus()
+          + String.format("  (RM%.2f of RM%.2f paid)",
+              invoice.getAmountPaid(), invoice.getTotalAmount()));
+    }
+  }
+
+  /**
+   * Shows a bill broken into its parts.
+   *
+   * Every line is shown rather than just the total, because a guest querying
+   * their bill at the counter wants to see where the figure came from.
+   *
+   * @param invoice the bill
+   * @param payments the payments taken against it
+   */
+  public void displayInvoice(Invoice invoice, ListInterface<Payment> payments) {
+    MessageUI.displaySectionHeading("Invoice " + invoice.getInvoiceId()
+        + "  (booking " + invoice.getBookingId() + ")");
+
+    System.out.printf("  %-28s   RM%10.2f%n", "Room charge", invoice.getRoomCharge());
+    System.out.printf("  %-28s   RM%10.2f%n", "Service charge (10%)",
+        invoice.getServiceCharge());
+    System.out.printf("  %-28s   RM%10.2f%n", "SST (6%)", invoice.getTaxAmount());
+
+    if (invoice.getDiscountAmount() > 0) {
+      System.out.printf("  %-28s  -RM%10.2f%n", "Loyalty discount",
+          invoice.getDiscountAmount());
     }
 
-    // ============================================================
-    // SEARCH MENU
-    // ============================================================
+    MessageUI.displayThinRule();
+    System.out.printf("  %-28s   RM%10.2f%n", "TOTAL", invoice.getTotalAmount());
+    System.out.printf("  %-28s   RM%10.2f%n", "Paid", invoice.getAmountPaid());
+    System.out.printf("  %-28s   RM%10.2f%n", "Outstanding",
+        invoice.getOutstandingBalance());
+    System.out.printf("  %-28s   %s%n", "Status", invoice.getPaymentStatus());
 
-    /**
-     * Displays the Search Information submenu.
-     *
-     * @return selected search option
-     */
-    public int getSearchMenuChoice() {
+    if (payments != null && !payments.isEmpty()) {
+      MessageUI.displaySectionHeading("Payments received");
+      MessageUI.displayTableHeading(String.format("  %-7s %10s  %-14s %-18s %s",
+          "PAY ID", "AMOUNT", "METHOD", "REFERENCE", "TAKEN"));
 
-        MessageUI.clearScreen();
-        System.out.println();
+      for (int i = 1; i <= payments.getNumberOfEntries(); i++) {
+        Payment payment = payments.getEntry(i);
+        System.out.printf("  %-7s %10.2f  %-14s %-18s %s%n",
+            payment.getPaymentId(), payment.getAmount(), payment.getMethod(),
+            (payment.getReference() == null || payment.getReference().isBlank())
+                ? "-" : payment.getReference(),
+            payment.getPaidAt().toLocalDate());
+      }
+      MessageUI.displayThinRule();
+    }
+  }
 
-        MessageUI.displayBoxTop();
-        MessageUI.displayBoxBlank();
-
-        MessageUI.displayBoxCentred(
-                "S E A R C H   I N F O R M A T I O N");
-
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxDivider();
-
-        MessageUI.displayBoxLine(
-                "  Main Menu  >  Front-Desk Service"
-                + "  >  Search Information");
-
-        MessageUI.displayBoxDivider();
-        MessageUI.displayBoxBlank();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Search guest information");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Search billing details");
-
-        MessageUI.displayBoxBlank();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back to Front-Desk Service");
-
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxBottom();
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                2,
-                "go back to Front-Desk Service");
+  /**
+   * Lists bookings as a table, a page at a time.
+   *
+   * @param bookings the bookings to show
+   * @param data used to turn a guest ID into a name
+   * @param emptyMessage what to say when there is nothing to show
+   * @return true if anything was shown
+   */
+  public boolean displayBookingList(ListInterface<Booking> bookings, ResortData data,
+      String emptyMessage) {
+    if (bookings.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  " + emptyMessage);
+      return false;
     }
 
-    // ============================================================
-    // REPORT MENU
-    // ============================================================
+    int totalPages = MessageUI.pageCount(bookings.getNumberOfEntries());
+    int shown = 0;
 
-    /**
-     * Displays the Reports submenu.
-     *
-     * @return selected report option
-     */
-    public int getReportMenuChoice() {
+    for (int page = 1; page <= totalPages; page++) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayTableHeading(String.format("  %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s",
+          "BOOKING", "GUEST", "TYPE", "ROOM", "CHECK IN", "CHECK OUT", "STATUS", "PRI"));
 
-        MessageUI.clearScreen();
-        System.out.println();
+      int upTo = Math.min(shown + MessageUI.PAGE_SIZE, bookings.getNumberOfEntries());
+      for (int i = shown + 1; i <= upTo; i++) {
+        Booking booking = bookings.getEntry(i);
+        Guest guest = data.findGuest(booking.getGuestId());
 
-        MessageUI.displayBoxTop();
-        MessageUI.displayBoxBlank();
+        System.out.printf("  %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s%n",
+            booking.getBookingId(),
+            guest == null ? "-" : truncate(guest.getFullName(), 20),
+            booking.getTypeId(),
+            booking.getRoomNo() == null ? "-" : booking.getRoomNo(),
+            booking.getCheckInDate(), booking.getCheckOutDate(),
+            booking.getBookingStatus(),
+            booking.isUrgent() ? "URG" : "-");
+      }
+      shown = upTo;
 
-        MessageUI.displayBoxCentred(
-                "R E P O R T S");
+      MessageUI.displayThinRule();
+      System.out.printf("  %d booking(s).%n", bookings.getNumberOfEntries());
 
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxDivider();
-
-        MessageUI.displayBoxLine(
-                "  Main Menu  >  Front-Desk Service"
-                + "  >  Reports");
-
-        MessageUI.displayBoxDivider();
-        MessageUI.displayBoxBlank();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Booking Report");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Billing Report");
-
-        MessageUI.displayBoxBlank();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back to Front-Desk Service");
-
-        MessageUI.displayBoxBlank();
-        MessageUI.displayBoxBottom();
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                2,
-                "go back to Front-Desk Service");
+      if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
+        break;
+      }
     }
+    return true;
+  }
 
-    // ============================================================
-    // BOOKING REPORT FILTER
-    // ============================================================
+  /**
+   * Shows every room with both of its statuses and whether it can be sold.
+   *
+   * This is the screen that makes the front desk and housekeeping visibly one
+   * system: the assignable column is the two modules' answers combined.
+   *
+   * @param rooms the rooms
+   * @param data used to look up each room's type
+   */
+  public void displayRoomBoard(ListInterface<Room> rooms, ResortData data) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-6s %-16s %-10s %-22s %s",
+        "ROOM", "TYPE", "OCCUPANCY", "HOUSEKEEPING", "ASSIGNABLE?"));
 
-    /**
-     * Displays booking report filter options.
-     *
-     * @return selected filter option
-     */
-    public int getBookingReportFilterChoice() {
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      RoomType type = data.findRoomType(room.getTypeId());
 
-        displayActionHeader(
-                "BOOKING REPORT - FILTER");
+      String assignable;
+      if (room.isOutOfService()) {
+        assignable = "No (out of service)";
+      } else if (!Room.VACANT.equals(room.getOccupancyStatus())) {
+        assignable = "No (" + room.getOccupancyStatus().toLowerCase() + ")";
+      } else if (!Room.READY_FOR_CHECK_IN.equals(room.getHousekeepingStatus())) {
+        assignable = "No (not cleaned)";
+      } else {
+        assignable = "Yes";
+      }
 
-        System.out.println();
-        System.out.println(
-                "  Filter bookings by:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "All bookings");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Room number");
-
-        MessageUI.displayMenuOption(
-                3,
-                "Check-in date range");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                3,
-                "go back to Reports");
+      System.out.printf("  %-6s %-16s %-10s %-22s %s%n",
+          room.getRoomNo(),
+          type == null ? room.getTypeId() : truncate(type.getTypeName(), 16),
+          room.getOccupancyStatus(), room.getHousekeepingStatus(), assignable);
     }
+    MessageUI.displayThinRule();
+  }
 
-    // ============================================================
-    // BILLING REPORT FILTER
-    // ============================================================
-
-    /**
-     * Displays billing report filter options.
-     *
-     * @return selected filter option
-     */
-    public int getBillingReportFilterChoice() {
-
-        displayActionHeader(
-                "BILLING REPORT - FILTER");
-
-        System.out.println();
-        System.out.println(
-                "  Filter billing records by:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "All billing records");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Fully paid records");
-
-        MessageUI.displayMenuOption(
-                3,
-                "Outstanding records");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                3,
-                "go back to Reports");
+  private String truncate(String text, int width) {
+    if (text == null) {
+      return "-";
     }
-
-    // ============================================================
-    // BOOKING REPORT SORT
-    // ============================================================
-
-    /**
-     * Displays booking report sorting options.
-     *
-     * @return selected sorting field
-     */
-    public int getBookingReportSortChoice() {
-
-        displayActionHeader(
-                "BOOKING REPORT - SORT");
-
-        System.out.println();
-        System.out.println(
-                "  Sort bookings by:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Check-in date");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Check-out date");
-
-        MessageUI.displayMenuOption(
-                3,
-                "Room number");
-
-        MessageUI.displayMenuOption(
-                4,
-                "Confirmation number");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                4,
-                "go back to Booking Report");
-    }
-
-    /**
-     * Displays booking sorting order options.
-     *
-     * @return selected sorting order
-     */
-    public int getBookingSortOrderChoice() {
-
-        displayActionHeader(
-                "BOOKING REPORT - SORT ORDER");
-
-        System.out.println();
-        System.out.println(
-                "  Sort order:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Ascending");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Descending");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                2,
-                "go back to Booking Report");
-    }
-
-    // ============================================================
-    // BILLING REPORT SORT
-    // ============================================================
-
-    /**
-     * Displays billing report sorting options.
-     *
-     * @return selected sorting field
-     */
-    public int getBillingReportSortChoice() {
-
-        displayActionHeader(
-                "BILLING REPORT - SORT");
-
-        System.out.println();
-        System.out.println(
-                "  Sort billing records by:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Total bill");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Amount paid");
-
-        MessageUI.displayMenuOption(
-                3,
-                "Outstanding balance");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                3,
-                "go back to Billing Report");
-    }
-
-    /**
-     * Displays billing sorting order options.
-     *
-     * @return selected sorting order
-     */
-    public int getBillingSortOrderChoice() {
-
-        displayActionHeader(
-                "BILLING REPORT - SORT ORDER");
-
-        System.out.println();
-        System.out.println(
-                "  Sort order:");
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                1,
-                "Highest to Lowest");
-
-        MessageUI.displayMenuOption(
-                2,
-                "Lowest to Highest");
-
-        System.out.println();
-
-        MessageUI.displayMenuOption(
-                0,
-                "Back");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                2,
-                "go back to Billing Report");
-    }
-
-    // ============================================================
-    // ACTION HEADER
-    // ============================================================
-
-    /**
-     * Displays a framed action header.
-     *
-     * @param title action title
-     */
-    private void displayActionHeader(
-            String title) {
-
-        MessageUI.clearScreen();
-        System.out.println();
-
-        MessageUI.displayBoxTop();
-
-        MessageUI.displayBoxCentred(
-                title);
-
-        MessageUI.displayBoxBottom();
-    }
-
-    // ============================================================
-    // NEXT ACTION
-    // ============================================================
-
-    /**
-     * Displays the next action menu.
-     *
-     * @return selected option
-     */
-    public int getNextActionChoice() {
-
-        System.out.println();
-
-        System.out.println(
-                "  [1]  Continue with the same task");
-
-        System.out.println(
-                "  [0]  Back to Front-Desk Service");
-
-        return MessageUI.readMenuChoice(
-                scanner,
-                1,
-                "go back to Front-Desk Service");
-    }
-
-    // ============================================================
-    // BOOKING INPUT
-    // ============================================================
-
-    /**
-     * Collects all information required to create a booking.
-     *
-     * @return Booking object or null if cancelled
-     */
-    public Booking inputBooking() {
-
-        displayActionHeader(
-                "CREATE NEW BOOKING");
-
-        System.out.println(
-                "Enter 0 at any prompt to cancel.");
-
-        System.out.println();
-
-        String confirmationNumber =
-                inputConfirmationNumber();
-
-        if (confirmationNumber == null) {
-            return null;
-        }
-
-        String guestName =
-                inputRequiredText(
-                        "Guest name (0 to cancel): ");
-
-        if (guestName == null) {
-            return null;
-        }
-
-        String roomNumber =
-                inputRoomNumber();
-
-        if (roomNumber == null) {
-            return null;
-        }
-
-        LocalDate checkInDate =
-                inputCheckInDate();
-
-        if (checkInDate == null) {
-            return null;
-        }
-
-        LocalDate checkOutDate =
-                inputCheckOutDate(
-                        checkInDate);
-
-        if (checkOutDate == null) {
-            return null;
-        }
-
-        return new Booking(
-                confirmationNumber,
-                guestName,
-                roomNumber,
-                checkInDate,
-                checkOutDate);
-    }
-
-    // ============================================================
-    // CONFIRMATION NUMBER
-    // ============================================================
-
-    /**
-     * Reads an 8-digit confirmation number.
-     *
-     * @return confirmation number or null if cancelled
-     */
-    public String inputConfirmationNumber() {
-
-        while (true) {
-
-            System.out.print(
-                    "Confirmation number "
-                    + "(8 digits, 0 to cancel): ");
-
-            String confirmationNumber =
-                    MessageUI.readLine(scanner);
-
-            if (confirmationNumber.equals("0")) {
-                return null;
-            }
-
-            if (confirmationNumber.matches(
-                    "\\d{8}")) {
-
-                return confirmationNumber;
-            }
-
-            System.out.println(
-                    "Confirmation number must contain "
-                    + "exactly 8 digits.");
-        }
-    }
-
-    // ============================================================
-    // ROOM NUMBER
-    // ============================================================
-
-    /**
-     * Reads a room number.
-     *
-     * Room number must contain exactly four digits.
-     *
-     * Valid examples:
-     * 1001
-     * 1002
-     * 2001
-     * 3001
-     *
-     * Invalid examples:
-     * A101
-     * 20A1
-     * 101
-     * 10001
-     *
-     * @return room number or null if cancelled
-     */
-    public String inputRoomNumber() {
-
-        while (true) {
-
-            System.out.print(
-                    "Room number "
-                    + "(4 digits, 0 to cancel): ");
-
-            String roomNumber =
-                    MessageUI.readLine(scanner);
-
-            /*
-             * User cancellation.
-             */
-            if (roomNumber.equals("0")) {
-                return null;
-            }
-
-            /*
-             * Empty input.
-             */
-            if (roomNumber.isEmpty()) {
-
-                System.out.println(
-                        "Room number cannot be empty.");
-
-                continue;
-            }
-
-            /*
-             * Room number must contain
-             * exactly four digits.
-             */
-            if (!roomNumber.matches(
-                    "\\d{4}")) {
-
-                System.out.println(
-                        "Invalid room number. "
-                        + "Room number must contain "
-                        + "exactly 4 digits.");
-
-                continue;
-            }
-
-            return roomNumber;
-        }
-    }
-
-    // ============================================================
-    // DATE INPUT
-    // ============================================================
-
-    /**
-     * Reads check-in date.
-     *
-     * @return check-in date or null if cancelled
-     */
-    public LocalDate inputCheckInDate() {
-
-        return inputDate(
-                "Check-in date "
-                + "(YYYY-MM-DD, 0 to cancel): ");
-    }
-
-    /**
-     * Reads check-out date.
-     *
-     * Check-out must be after check-in.
-     *
-     * @param checkInDate check-in date
-     * @return check-out date or null if cancelled
-     */
-    public LocalDate inputCheckOutDate(
-            LocalDate checkInDate) {
-
-        while (true) {
-
-            LocalDate checkOutDate =
-                    inputDate(
-                            "Check-out date "
-                            + "(YYYY-MM-DD, 0 to cancel): ");
-
-            if (checkOutDate == null) {
-                return null;
-            }
-
-            if (checkOutDate.isAfter(
-                    checkInDate)) {
-
-                return checkOutDate;
-            }
-
-            System.out.println(
-                    "Check-out date must be after "
-                    + "the check-in date.");
-        }
-    }
-
-    /**
-     * Reads a LocalDate.
-     *
-     * @param prompt input prompt
-     * @return LocalDate or null if cancelled
-     */
-    private LocalDate inputDate(
-            String prompt) {
-
-        while (true) {
-
-            System.out.print(prompt);
-
-            String input =
-                    MessageUI.readLine(scanner);
-
-            if (input.equals("0")) {
-                return null;
-            }
-
-            try {
-
-                return LocalDate.parse(input);
-
-            } catch (DateTimeParseException e) {
-
-                System.out.println(
-                        "Please enter a valid date "
-                        + "in YYYY-MM-DD format.");
-            }
-        }
-    }
-
-    /**
-     * Reads report start date.
-     *
-     * @return start date or null
-     */
-    public LocalDate inputStartDate() {
-
-        return inputDate(
-                "Start date "
-                + "(YYYY-MM-DD, 0 to cancel): ");
-    }
-
-    /**
-     * Reads report end date.
-     *
-     * @param startDate report start date
-     * @return end date or null
-     */
-    public LocalDate inputEndDate(
-            LocalDate startDate) {
-
-        while (true) {
-
-            LocalDate endDate =
-                    inputDate(
-                            "End date "
-                            + "(YYYY-MM-DD, 0 to cancel): ");
-
-            if (endDate == null) {
-                return null;
-            }
-
-            if (!endDate.isBefore(
-                    startDate)) {
-
-                return endDate;
-            }
-
-            System.out.println(
-                    "End date must be after "
-                    + "or equal to the start date.");
-        }
-    }
-
-    // ============================================================
-    // AMOUNT INPUT
-    // ============================================================
-
-    /**
-     * Reads a non-negative monetary amount.
-     *
-     * @param prompt input prompt
-     * @return amount or CANCELLED_AMOUNT
-     */
-    public double inputNonNegativeAmount(
-            String prompt) {
-
-        while (true) {
-
-            System.out.print(prompt);
-
-            String input =
-                    MessageUI.readLine(scanner);
-
-            if (input.equals("-1")) {
-                return CANCELLED_AMOUNT;
-            }
-
-            if (input.isEmpty()) {
-
-                System.out.println(
-                        "Amount cannot be empty.");
-
-                continue;
-            }
-
-            /*
-             * Accept numbers with up to
-             * two decimal places.
-             */
-            if (!input.matches(
-                    "\\d+(\\.\\d{1,2})?")) {
-
-                System.out.println(
-                        "Please enter a valid amount "
-                        + "(e.g. 100 or 100.50).");
-
-                continue;
-            }
-
-            try {
-
-                double amount =
-                        Double.parseDouble(input);
-
-                if (Double.isFinite(amount)
-                        && amount >= 0) {
-
-                    return amount;
-                }
-
-                System.out.println(
-                        "Amount cannot be negative.");
-
-            } catch (NumberFormatException e) {
-
-                System.out.println(
-                        "Please enter a valid amount.");
-            }
-        }
-    }
-
-    /**
-     * Reads minimum outstanding amount.
-     *
-     * @return minimum amount
-     */
-    public double inputMinimumOutstandingAmount() {
-
-        return inputNonNegativeAmount(
-                "Minimum outstanding amount "
-                + "(RM, -1 to cancel): ");
-    }
-
-    /**
-     * Reads required text.
-     *
-     * @param prompt input prompt
-     * @return text or null if cancelled
-     */
-    private String inputRequiredText(
-            String prompt) {
-
-        while (true) {
-
-            System.out.print(prompt);
-
-            String input =
-                    MessageUI.readLine(scanner);
-
-            if (input.equals("0")) {
-                return null;
-            }
-
-            if (!input.isEmpty()) {
-                return input;
-            }
-
-            System.out.println(
-                    "This field cannot be empty.");
-        }
-    }
-
-    // ============================================================
-    // GUEST INFORMATION
-    // ============================================================
-
-    /**
-     * Displays complete guest information.
-     *
-     * @param booking booking information
-     */
-    public void displayCompleteGuestInformation(
-            Booking booking) {
-
-        if (booking == null) {
-
-            System.out.println(
-                    "\nBooking not found.");
-
-            return;
-        }
-
-        displayActionHeader(
-                "GUEST INFORMATION");
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Confirmation number",
-                booking.getConfirmationNumber());
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Guest name",
-                booking.getGuestName());
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Room number",
-                booking.getRoomNumber());
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Check-in date",
-                booking.getCheckInDate());
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Check-out date",
-                booking.getCheckOutDate());
-    }
-
-    // ============================================================
-    // BILLING DETAILS
-    // ============================================================
-
-    /**
-     * Displays billing details.
-     *
-     * @param booking booking information
-     * @param totalBill total bill
-     * @param amountPaid amount paid
-     */
-    public void displayBillingDetails(
-            Booking booking,
-            double totalBill,
-            double amountPaid) {
-
-        if (booking == null) {
-
-            System.out.println(
-                    "\nBooking not found.");
-
-            return;
-        }
-
-        double outstandingBalance =
-                totalBill - amountPaid;
-
-        String paymentStatus =
-                outstandingBalance <= 0
-                        ? "PAID"
-                        : "OUTSTANDING";
-
-        displayActionHeader(
-                "BILLING DETAILS");
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Confirmation number",
-                booking.getConfirmationNumber());
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Guest name",
-                booking.getGuestName());
-
-        System.out.printf(
-                "%-22s: RM %.2f%n",
-                "Total bill",
-                totalBill);
-
-        System.out.printf(
-                "%-22s: RM %.2f%n",
-                "Amount paid",
-                amountPaid);
-
-        System.out.printf(
-                "%-22s: RM %.2f%n",
-                "Outstanding balance",
-                outstandingBalance);
-
-        System.out.printf(
-                "%-22s: %s%n",
-                "Payment status",
-                paymentStatus);
-    }
-
-    // ============================================================
-    // ROOM AVAILABILITY
-    // ============================================================
-
-    /**
-     * Displays room availability result.
-     *
-     * @param roomNumber room number
-     * @param checkInDate check-in date
-     * @param checkOutDate check-out date
-     * @param available availability status
-     */
-    public void displayRoomAvailability(
-            String roomNumber,
-            LocalDate checkInDate,
-            LocalDate checkOutDate,
-            boolean available) {
-
-        displayActionHeader(
-                "ROOM AVAILABILITY RESULT");
-
-        System.out.printf(
-                "%-18s: %s%n",
-                "Room number",
-                roomNumber);
-
-        System.out.printf(
-                "%-18s: %s%n",
-                "Check-in date",
-                checkInDate);
-
-        System.out.printf(
-                "%-18s: %s%n",
-                "Check-out date",
-                checkOutDate);
-
-        System.out.printf(
-                "%-18s: %s%n",
-                "Status",
-                available
-                        ? "AVAILABLE"
-                        : "NOT AVAILABLE");
-    }
-
-    // ============================================================
-    // DISPLAY ALL BOOKINGS
-    // ============================================================
-
-    /**
-     * Displays all bookings.
-     *
-     * @param list booking list
-     */
-    public void displayAllBookings(
-            ListInterface<Booking> list) {
-
-        if (list.isEmpty()) {
-
-            System.out.println(
-                    "\nNo bookings found.");
-
-            return;
-        }
-
-        displayActionHeader(
-                "ALL BOOKINGS");
-
-        System.out.println(
-                "================================================================================");
-
-        System.out.printf(
-                "%-5s",
-                "No.");
-
-        displayBookingHeader();
-
-        System.out.println(
-                "--------------------------------------------------------------------------------");
-
-        Iterator<Booking> iterator =
-                list.getIterator();
-
-        int number = 1;
-
-        while (iterator.hasNext()) {
-
-            System.out.printf(
-                    "%-5d",
-                    number++);
-
-            displayBookingRow(
-                    iterator.next());
-        }
-
-        System.out.println(
-                "================================================================================");
-
-        System.out.println(
-                "Total Bookings : "
-                + list.getNumberOfEntries());
-    }
-
-    /**
-     * Displays booking table header.
-     */
-    private void displayBookingHeader() {
-
-        System.out.printf(
-                BOOKING_FORMAT,
-                "Confirm No.",
-                "Guest Name",
-                "Room",
-                "Check-in",
-                "Check-out");
-    }
-
-    /**
-     * Displays one booking row.
-     *
-     * @param booking booking record
-     */
-    private void displayBookingRow(
-            Booking booking) {
-
-        String guestName =
-                formatGuestName(
-                        booking.getGuestName(),
-                        28);
-
-        System.out.printf(
-                BOOKING_FORMAT,
-                booking.getConfirmationNumber(),
-                guestName,
-                booking.getRoomNumber(),
-                booking.getCheckInDate(),
-                booking.getCheckOutDate());
-    }
-
-    // ============================================================
-    // BOOKING REPORT
-    // ============================================================
-
-    /**
-     * Displays the generated booking report.
-     *
-     * @param reportList filtered and sorted bookings
-     * @param filterDescription selected filter
-     * @param sortDescription selected sorting field
-     * @param orderDescription selected sorting order
-     */
-    public void displayBookingReport(
-            ListInterface<Booking> reportList,
-            String filterDescription,
-            String sortDescription,
-            String orderDescription) {
-
-        displayActionHeader(
-                "BOOKING REPORT");
-
-        System.out.println(
-                "Filter : "
-                + filterDescription);
-
-        System.out.println(
-                "Sort   : "
-                + sortDescription);
-
-        System.out.println(
-                "Order  : "
-                + orderDescription);
-
-        System.out.println();
-
-        if (reportList.isEmpty()) {
-
-            System.out.println(
-                    "No booking records found.");
-
-            return;
-        }
-
-        System.out.println(
-                "========================================================================================");
-
-        System.out.printf(
-                "%-5s %-12s %-28s %-10s %-12s %-12s%n",
-                "No.",
-                "Confirm No.",
-                "Guest Name",
-                "Room",
-                "Check-in",
-                "Check-out");
-
-        System.out.println(
-                "----------------------------------------------------------------------------------------");
-
-        long totalNights = 0;
-
-        for (int i = 1;
-                i <= reportList.getNumberOfEntries();
-                i++) {
-
-            Booking booking =
-                    reportList.getEntry(i);
-
-            String guestName =
-                    formatGuestName(
-                            booking.getGuestName(),
-                            28);
-
-            long nights =
-                    booking.getCheckInDate()
-                            .until(
-                                    booking.getCheckOutDate())
-                            .getDays();
-
-            totalNights += nights;
-
-            System.out.printf(
-                    "%-5d %-12s %-28s %-10s %-12s %-12s%n",
-                    i,
-                    booking.getConfirmationNumber(),
-                    guestName,
-                    booking.getRoomNumber(),
-                    booking.getCheckInDate(),
-                    booking.getCheckOutDate());
-        }
-
-        System.out.println(
-                "========================================================================================");
-
-        System.out.println(
-                "Total Bookings : "
-                + reportList.getNumberOfEntries());
-
-        System.out.println(
-                "Total Nights   : "
-                + totalNights);
-    }
-
-    // ============================================================
-    // BILLING REPORT
-    // ============================================================
-
-    /**
-     * Displays the generated billing report.
-     *
-     * @param bookingList booking records
-     * @param billingList billing records
-     * @param filterDescription selected filter
-     * @param sortDescription selected sorting field
-     * @param orderDescription selected sorting order
-     */
-    public void displayBillingReport(
-            ListInterface<Booking> bookingList,
-            ListInterface<BillingRecord> billingList,
-            String filterDescription,
-            String sortDescription,
-            String orderDescription) {
-
-        displayActionHeader(
-                "BILLING REPORT");
-
-        System.out.println(
-                "Filter : "
-                + filterDescription);
-
-        System.out.println(
-                "Sort   : "
-                + sortDescription);
-
-        System.out.println(
-                "Order  : "
-                + orderDescription);
-
-        System.out.println();
-
-        if (bookingList.isEmpty()) {
-
-            System.out.println(
-                    "No billing records found.");
-
-            return;
-        }
-
-        System.out.println(
-                "==============================================================================================");
-
-        System.out.printf(
-                "%-5s %-12s %-28s %-14s %-14s %-14s%n",
-                "No.",
-                "Confirm No.",
-                "Guest Name",
-                "Total Bill",
-                "Paid",
-                "Balance");
-
-        System.out.println(
-                "----------------------------------------------------------------------------------------------");
-
-        double totalBilling = 0;
-        double totalPaid = 0;
-        double totalOutstanding = 0;
-
-        for (int i = 1;
-                i <= bookingList.getNumberOfEntries();
-                i++) {
-
-            Booking booking =
-                    bookingList.getEntry(i);
-
-            BillingRecord billing =
-                    billingList.getEntry(i);
-
-            String guestName =
-                    formatGuestName(
-                            booking.getGuestName(),
-                            28);
-
-            double totalBill =
-                    billing.getTotalBill();
-
-            double amountPaid =
-                    billing.getAmountPaid();
-
-            double outstanding =
-                    billing.getOutstandingBalance();
-
-            totalBilling += totalBill;
-            totalPaid += amountPaid;
-            totalOutstanding += outstanding;
-
-            System.out.printf(
-                    "%-5d %-12s %-28s "
-                    + "RM %-10.2f "
-                    + "RM %-10.2f "
-                    + "RM %-10.2f%n",
-                    i,
-                    booking.getConfirmationNumber(),
-                    guestName,
-                    totalBill,
-                    amountPaid,
-                    outstanding);
-        }
-
-        double averageBill =
-                totalBilling
-                / bookingList.getNumberOfEntries();
-
-        System.out.println(
-                "==============================================================================================");
-
-        System.out.printf(
-                "Total Records       : %d%n",
-                bookingList.getNumberOfEntries());
-
-        System.out.printf(
-                "Total Billing       : RM %.2f%n",
-                totalBilling);
-
-        System.out.printf(
-                "Total Paid          : RM %.2f%n",
-                totalPaid);
-
-        System.out.printf(
-                "Total Outstanding   : RM %.2f%n",
-                totalOutstanding);
-
-        System.out.printf(
-                "Average Bill        : RM %.2f%n",
-                averageBill);
-
-        System.out.println(
-                "==============================================================================================");
-    }
-
-    // ============================================================
-    // FORMAT GUEST NAME
-    // ============================================================
-
-    /**
-     * Keeps guest names within the table width.
-     *
-     * Long names are shortened with "...".
-     *
-     * Example:
-     *
-     * Nur Aisyah binti Rahman
-     *
-     * will remain unchanged if it fits.
-     *
-     * Very long names will become:
-     *
-     * Nur Aisyah binti Rah...
-     *
-     * @param guestName guest name
-     * @param maxLength maximum display width
-     * @return formatted guest name
-     */
-    private String formatGuestName(
-            String guestName,
-            int maxLength) {
-
-        if (guestName == null) {
-            return "";
-        }
-
-        if (guestName.length() <= maxLength) {
-            return guestName;
-        }
-
-        return guestName.substring(
-                0,
-                maxLength - 3)
-                + "...";
-    }
-
-    // ============================================================
-    // GENERAL MESSAGE
-    // ============================================================
-
-    /**
-     * Displays a general message.
-     *
-     * @param message message to display
-     */
-    public void displayMessage(
-            String message) {
-
-        System.out.println(
-                "\n" + message);
-    }
-
-    /**
-     * Displays a simple screen heading.
-     *
-     * @param title heading title
-     */
-    public void displayScreenHeading(
-            String title) {
-
-        System.out.println(
-                "\n" + title);
-
-        System.out.println(
-                "=".repeat(
-                        title.length()));
-    }
+    return (text.length() <= width) ? text : text.substring(0, width - 1) + ".";
+  }
+
+  // ==================================================================
+  // REPORTS
+  // ==================================================================
+
+  public void displayReportHeader(String title) {
+    MessageUI.clearScreen();
+    MessageUI.displayBlankLine();
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("TARUMT RESORT MANAGEMENT SYSTEM");
+    MessageUI.displayBoxCentred(title);
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Generated: " + java.time.LocalDateTime.now()
+        .format(java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm")));
+    MessageUI.displayBoxBottom();
+  }
+
+  public void displayReportLine(String label, String value) {
+    MessageUI.displayReportLine(label, value);
+  }
+
+  public void displayBarChart(String title, String yAxisLabel, String[] labels,
+      double[] values) {
+    MessageUI.displayBarChart(title, yAxisLabel, labels, values);
+  }
+
+  public void displayTableHeading(String heading) {
+    MessageUI.displayTableHeading(heading);
+  }
+
+  public void displayThinRule() {
+    MessageUI.displayThinRule();
+  }
+
+  public void displayReportFooter() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayRule();
+    MessageUI.displayMessage("  END OF REPORT");
+    MessageUI.displayRule();
+  }
 }

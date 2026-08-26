@@ -378,4 +378,501 @@ public class MessageUI {
     }
   }
 
+
+  // ==================================================================
+  // SHARED SCREEN BUILDING
+  //
+  // Every module draws its screens through these, so a menu in Loyalty is
+  // laid out exactly like a menu in Housekeeping. Before this existed each
+  // module framed its own screens and they drifted apart - different widths,
+  // different ways of saying "0 to go back", different table headings.
+  // ==================================================================
+
+  /**
+   * Draws a full menu screen: the framed title, a breadcrumb showing where the
+   * user is, the numbered options and a back/exit line.
+   *
+   * @param title the screen's name, shown large
+   * @param subtitle a second title line, or null for none
+   * @param breadcrumb the path to this screen, e.g. "Main Menu &gt; Front Desk"
+   * @param options what the numbered options do, starting at [1]
+   * @param backLabel what option [0] does
+   */
+  public static void displayMenuScreen(String title, String subtitle, String breadcrumb,
+      String[] options, String backLabel) {
+    clearScreen();
+    displayBlankLine();
+
+    displayBoxTop();
+    displayBoxBlank();
+    displayBoxCentred(spaced(title));
+    if (subtitle != null && !subtitle.isBlank()) {
+      displayBoxCentred(subtitle);
+    }
+    displayBoxBlank();
+    displayBoxDivider();
+
+    // The breadcrumb means the user can always see which part of the system
+    // they are in without having to remember how they got there.
+    displayBoxLine("  " + breadcrumb);
+    displayBoxDivider();
+    displayBoxBlank();
+
+    for (int i = 0; i < options.length; i++) {
+      displayMenuOption(i + 1, options[i]);
+    }
+
+    displayBoxBlank();
+    displayMenuOption(0, backLabel);
+    displayBoxBlank();
+    displayBoxBottom();
+  }
+
+  /**
+   * Spaces out a title so it reads as a heading rather than a word.
+   *
+   * @param text the title
+   * @return the title with a space between each character
+   */
+  public static String spaced(String text) {
+    StringBuilder spacedOut = new StringBuilder();
+    for (int i = 0; i < text.length(); i++) {
+      if (i > 0) {
+        spacedOut.append(' ');
+      }
+      spacedOut.append(text.charAt(i));
+    }
+    return spacedOut.toString();
+  }
+
+  /**
+   * Clears the screen and announces the action about to run, so each action
+   * starts clean instead of under the menu it was chosen from.
+   *
+   * @param title the name of the action being started
+   */
+  public static void startAction(String title) {
+    clearScreen();
+    displayBlankLine();
+    displayBoxTop();
+    displayBoxCentred(title);
+    displayBoxBottom();
+    displayBlankLine();
+  }
+
+  /**
+   * Prints a heading for a section within a screen.
+   *
+   * @param title the section's name
+   */
+  public static void displaySectionHeading(String title) {
+    displayBlankLine();
+    System.out.println(title);
+    System.out.println("-".repeat(Math.min(SCREEN_WIDTH, title.length() + 20)));
+  }
+
+  /** Prints a full-width rule, used to close a table. */
+  public static void displayRule() {
+    System.out.println("=".repeat(SCREEN_WIDTH));
+  }
+
+  /** Prints a lighter full-width rule, used under a table heading. */
+  public static void displayThinRule() {
+    System.out.println("-".repeat(SCREEN_WIDTH));
+  }
+
+  /**
+   * Prints a table heading with a rule under it.
+   *
+   * @param heading the column headings, already spaced into columns
+   */
+  public static void displayTableHeading(String heading) {
+    System.out.println(heading);
+    displayThinRule();
+  }
+
+  /**
+   * Prints one message line.
+   *
+   * @param message what to tell the user
+   */
+  public static void displayMessage(String message) {
+    System.out.println(message);
+  }
+
+  /**
+   * Prints a message that reports something went wrong.
+   *
+   * Prefixed rather than merely printed so a refusal cannot be mistaken for
+   * ordinary output when it appears in a long screen.
+   *
+   * @param message what went wrong
+   */
+  public static void displayError(String message) {
+    System.out.println("  [!] " + message);
+  }
+
+  /**
+   * Prints a message that reports something succeeded.
+   *
+   * @param message what happened
+   */
+  public static void displaySuccess(String message) {
+    System.out.println("  [OK] " + message);
+  }
+
+  /**
+   * Prints one label-and-value line, with the labels lined up.
+   *
+   * @param label what the value is
+   * @param value the value
+   */
+  public static void displayField(String label, String value) {
+    System.out.printf("  %-28s : %s%n", label, value);
+  }
+
+  /**
+   * Prints one line of a report - a label and a figure lined up down the page.
+   *
+   * @param label what is being measured
+   * @param value the figure
+   */
+  public static void displayReportLine(String label, String value) {
+    System.out.printf("  %-44s %s%n", label, value);
+  }
+
+  /**
+   * Waits for the user to press Enter before moving on.
+   *
+   * Called at the end of every action so its output is still on screen when
+   * the user is ready to leave it - without this the next menu clears the
+   * screen immediately and the result is never read.
+   *
+   * @param scanner the Scanner to read from
+   */
+  public static void pause(Scanner scanner) {
+    displayBlankLine();
+    System.out.print("Press ENTER to continue...");
+    if (scanner.hasNextLine()) {
+      scanner.nextLine();
+    } else {
+      displayBlankLine();
+    }
+  }
+
+  // ==================================================================
+  // VALIDATED INPUT
+  //
+  // Every prompt takes 0 to cancel, so the user can always back out of a
+  // half-finished action rather than being forced to complete it.
+  // ==================================================================
+
+  /** What every text prompt returns when the user cancels. */
+  public static final String CANCELLED = " CANCELLED";
+
+  /** What the numeric prompts return when the user cancels. */
+  public static final int CANCELLED_INT = Integer.MIN_VALUE;
+
+  /** What the money prompts return when the user cancels. */
+  public static final double CANCELLED_AMOUNT = Double.NEGATIVE_INFINITY;
+
+  /**
+   * Asks for a line of text, re-prompting until something is entered.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the text, or CANCELLED if the user typed 0
+   */
+  public static String readRequiredText(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (0 to cancel): ");
+      String input = readLine(scanner);
+
+      if ("0".equals(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+      return input;
+    }
+  }
+
+  /**
+   * Asks for a line of text that may be left blank.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the text, "" if skipped, or CANCELLED if the user typed 0
+   */
+  public static String readOptionalText(Scanner scanner, String prompt) {
+    System.out.print("  " + prompt + " (ENTER to skip, 0 to cancel): ");
+    String input = readLine(scanner, "");
+    return "0".equals(input) ? CANCELLED : input;
+  }
+
+  /**
+   * Asks for a whole number inside a range.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @param min the lowest acceptable value
+   * @param max the highest acceptable value
+   * @return the number, or CANCELLED_INT if the user typed 0
+   */
+  public static int readInt(Scanner scanner, String prompt, int min, int max) {
+    while (true) {
+      System.out.printf("  %s (%d-%d, 0 to cancel): ", prompt, min, max);
+      String input = readLine(scanner);
+
+      if ("0".equals(input)) {
+        return CANCELLED_INT;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        int value = Integer.parseInt(input);
+        if (value < min || value > max) {
+          displayError("Please enter a number from " + min + " to " + max + ".");
+          continue;
+        }
+        return value;
+      } catch (NumberFormatException notANumber) {
+        displayError("Please enter a whole number.");
+      }
+    }
+  }
+
+  /**
+   * Asks for an amount of money that cannot be negative.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the amount, or CANCELLED_AMOUNT if the user typed 0
+   */
+  public static double readAmount(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (RM, 0 to cancel): ");
+      String input = readLine(scanner);
+
+      if ("0".equals(input)) {
+        return CANCELLED_AMOUNT;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        double value = Double.parseDouble(input);
+        if (value < 0) {
+          displayError("An amount cannot be negative.");
+          continue;
+        }
+        return Math.round(value * 100.0) / 100.0;
+      } catch (NumberFormatException notANumber) {
+        displayError("Please enter an amount, e.g. 150.00");
+      }
+    }
+  }
+
+  /**
+   * Asks for a date.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what the date is for
+   * @return the date, or null if the user typed 0
+   */
+  public static java.time.LocalDate readDate(Scanner scanner, String prompt) {
+    java.time.format.DateTimeFormatter format =
+        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    while (true) {
+      System.out.print("  " + prompt + " (dd/MM/yyyy, 0 to cancel): ");
+      String input = readLine(scanner);
+
+      if ("0".equals(input)) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        return java.time.LocalDate.parse(input, format);
+      } catch (java.time.format.DateTimeParseException badDate) {
+        displayError("Please enter a real date as dd/MM/yyyy, e.g. 25/12/2026");
+      }
+    }
+  }
+
+  /**
+   * Asks a yes or no question.
+   *
+   * Anything other than y or n is refused rather than assumed, because these
+   * questions guard actions that cannot be undone.
+   *
+   * @param scanner the Scanner to read from
+   * @param question what to ask
+   * @return true for yes, false for no
+   */
+  public static boolean confirm(Scanner scanner, String question) {
+    while (true) {
+      System.out.print("  " + question + " (y/n): ");
+      String input = readLine(scanner, "n").toLowerCase();
+
+      if (input.equals("y") || input.equals("yes")) {
+        return true;
+      }
+      if (input.equals("n") || input.equals("no")) {
+        return false;
+      }
+      displayError("Please answer y or n.");
+    }
+  }
+
+  /**
+   * Asks the user to pick one of a set of values.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what is being chosen
+   * @param choices the values on offer
+   * @return the chosen value, or CANCELLED if the user typed 0
+   */
+  public static String readChoice(Scanner scanner, String prompt, String[] choices) {
+    displayBlankLine();
+    for (int i = 0; i < choices.length; i++) {
+      System.out.printf("    [%d]  %s%n", i + 1, choices[i]);
+    }
+    displayBlankLine();
+
+    int picked = readInt(scanner, prompt, 1, choices.length);
+    return (picked == CANCELLED_INT) ? CANCELLED : choices[picked - 1];
+  }
+
+  /** Whether a prompt was cancelled. */
+  public static boolean isCancelled(String value) {
+    return CANCELLED.equals(value);
+  }
+
+  // ==================================================================
+  // PAGING
+  // ==================================================================
+
+  /** How many rows of a listing are shown at a time. */
+  public static final int PAGE_SIZE = 15;
+
+  /**
+   * Shows one page of a listing and asks whether to continue.
+   *
+   * Long listings are paged so the earliest rows are not scrolled off the top
+   * before they can be read.
+   *
+   * @param scanner the Scanner to read from
+   * @param page which page has just been shown, counting from 1
+   * @param totalPages how many pages there are altogether
+   * @return true if the user wants the next page
+   */
+  public static boolean askForNextPage(Scanner scanner, int page, int totalPages) {
+    if (page >= totalPages) {
+      return false;
+    }
+
+    displayThinRule();
+    System.out.printf("  Page %d of %d. Show the next page? (y/n): ", page, totalPages);
+    String input = readLine(scanner, "n").toLowerCase();
+    return input.equals("y") || input.equals("yes");
+  }
+
+  /**
+   * How many pages a listing of a given size will take.
+   *
+   * @param rows how many rows there are
+   * @return the number of pages, at least 1
+   */
+  public static int pageCount(int rows) {
+    if (rows <= 0) {
+      return 1;
+    }
+    return (rows + PAGE_SIZE - 1) / PAGE_SIZE;
+  }
+
+  // ==================================================================
+  // TEXT CHARTS
+  //
+  // Written by hand rather than with a library so the bars scale to whatever
+  // the data happens to be, and so the numbers stay printed beside the chart -
+  // the chart illustrates, but the figures are what is authoritative.
+  // ==================================================================
+
+  /** How tall a bar chart is drawn, in rows. */
+  public static final int CHART_HEIGHT = 8;
+
+  /**
+   * Draws a vertical bar chart in text.
+   *
+   * @param title what the chart shows
+   * @param yAxisLabel the unit being measured
+   * @param labels the name under each bar
+   * @param values the height of each bar
+   */
+  public static void displayBarChart(String title, String yAxisLabel,
+      String[] labels, double[] values) {
+    displaySectionHeading(title);
+
+    if (labels.length == 0) {
+      displayMessage("  (no data to chart)");
+      return;
+    }
+
+    double highest = 0;
+    for (double value : values) {
+      if (value > highest) {
+        highest = value;
+      }
+    }
+
+    // Every bar would be full height if the tallest were zero, so a chart with
+    // nothing in it is said plainly instead of drawn misleadingly.
+    if (highest <= 0) {
+      displayMessage("  (every value is zero)");
+      return;
+    }
+
+    System.out.printf("  %s%n", yAxisLabel);
+
+    for (int row = CHART_HEIGHT; row >= 1; row--) {
+      StringBuilder line = new StringBuilder("  |");
+      for (double value : values) {
+        int barHeight = (int) Math.round((value / highest) * CHART_HEIGHT);
+        line.append(barHeight >= row ? "  #  " : "     ");
+      }
+      System.out.println(line);
+    }
+
+    // Columns are five wide so a four-character label still has a gap after it.
+    StringBuilder axis = new StringBuilder("  +");
+    for (int i = 0; i < values.length; i++) {
+      axis.append("-----");
+    }
+    System.out.println(axis);
+
+    StringBuilder labelLine = new StringBuilder("   ");
+    for (String label : labels) {
+      String shown = (label.length() > 4) ? label.substring(0, 4) : label;
+      labelLine.append(String.format("%-5s", shown));
+    }
+    System.out.println(labelLine);
+
+    // The chart shows the shape; these are the actual figures.
+    displayBlankLine();
+    for (int i = 0; i < labels.length; i++) {
+      System.out.printf("    %-20s %10.2f%n", labels[i], values[i]);
+    }
+  }
 }

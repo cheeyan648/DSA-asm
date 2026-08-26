@@ -1,1648 +1,1132 @@
 package control;
 
 import adt.ArrayList;
-import adt.ArrayQueue;
-import adt.Condition;
 import adt.ListInterface;
-import adt.QueueInterface;
 import boundary.LoyaltyRewardsUI;
-import dao.RewardInitializer;
-import entity.LoyaltyNotification;
+import entity.Booking;
+import entity.Guest;
 import entity.Member;
+import entity.Notification;
+import entity.PointTransaction;
 import entity.Redemption;
 import entity.Reward;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import utility.MessageUI;
 
 /**
- * Loyalty & Rewards control class.
+ * Loyalty & Rewards - the reason a guest comes back.
  *
- * Redemption points rule: member points are deducted only when a pending
- * redemption is successfully processed (not when the request is created).
- * Rejected redemptions never reduce member points.
+ * Points are earned from stays the front desk has completed and spent on
+ * rewards, which can then be taken off a live bill. That makes this module the
+ * end of the guest journey and the start of the next one.
  *
- * @author Kat Tan
+ * Two rules shape everything here. Tier comes from lifetime points rather than
+ * the spendable balance, so redeeming never costs a member their standing. And
+ * points are deducted only when a request is approved, so a refusal costs the
+ * member nothing - which is why eligibility is checked when the request is
+ * processed rather than when it is made.
+ *
+ * @author Ivan Wong
  */
 public class LoyaltyRewardsMaintenance {
 
-  public static final String TIER_SILVER = "Silver";
-  public static final String TIER_GOLD = "Gold";
-  public static final String TIER_PLATINUM = "Platinum";
-  public static final String TIER_DIAMOND = "Diamond";
+  private final LoyaltyRewardsUI ui = new LoyaltyRewardsUI();
+  private final ResortData data;
+  private final ResortService service;
+  private final String staffId;
 
-  public static final int GOLD_THRESHOLD = 1000;
-  public static final int PLATINUM_THRESHOLD = 5000;
-  public static final int DIAMOND_THRESHOLD = 10000;
-
-  public static final int HIGH_SILVER_POINTS = 750;
-  public static final int HIGH_GOLD_POINTS = 2500;
-  public static final int HIGH_PLATINUM_POINTS = 7500;
-  public static final int HIGH_DIAMOND_POINTS = 12000;
-
-  public static final int LONG_MEMBER_MONTHS_SILVER = 12;
-  public static final int LONG_MEMBER_MONTHS_GOLD = 6;
-  public static final int LONG_MEMBER_MONTHS_PLATINUM = 24;
-  public static final int LONG_MEMBER_MONTHS_DIAMOND = 36;
-
-  public static final int NEAR_NEXT_TIER_POINTS = 100;
-
-  public static final String REPORT_ALL_TIERS = "ALL";
-  public static final String REPORT_ALL_STATUSES = "ALL";
-
-  public static final String TYPE_EXPIRING_POINTS = "EXPIRING_POINTS";
-  public static final String TYPE_REDEMPTION = "REDEMPTION";
-  public static final String TYPE_TIER_UPGRADE = "TIER_UPGRADE";
-
-  private static final String REDEMPTION_EVENT_SUBMITTED = "SUBMITTED";
-  private static final String REDEMPTION_EVENT_COMPLETED = "COMPLETED";
-  private static final String REDEMPTION_EVENT_REJECTED = "REJECTED";
-
-  private LoyaltyRewardsUI loyaltyRewardsUI = new LoyaltyRewardsUI();
-  private ListInterface<Member> memberList = new ArrayList<>();
-  private ListInterface<Reward> rewardList = new ArrayList<>();
-  private ListInterface<Redemption> redemptionHistory = new ArrayList<>();
-  private ListInterface<LoyaltyNotification> notificationList = new ArrayList<>();
-  private QueueInterface<Redemption> pendingRedemptionQueue = new ArrayQueue<>();
-
-  private int nextRedemptionNumber = 1;
-  private int nextNotificationNumber = 1;
-
-  public LoyaltyRewardsMaintenance() {
-    rewardList = new RewardInitializer().initializeRewards();
+  public LoyaltyRewardsMaintenance(ResortService service, String staffId) {
+    this.service = service;
+    this.data = service.getData();
+    this.staffId = staffId;
   }
 
-  public void runLoyaltyRewards() {
-    int choice = 0;
+  // ==================================================================
+  // MENU
+  // ==================================================================
+
+  public void run() {
+    int choice;
     do {
-      choice = loyaltyRewardsUI.getMenuChoice();
+      choice = ui.getMenuChoice();
       switch (choice) {
-        case 0:
-          break;
         case 1:
-          registerMember();
+          runMemberMenu();
           break;
         case 2:
-          searchMemberById();
+          runPointsMenu();
+          break;
+        case 3:
+          runRewardMenu();
+          break;
+        case 4:
+          runNotificationMenu();
+          break;
+        case 5:
+          runReportMenu();
+          break;
+        default:
+          break;
+      }
+    } while (choice != 0);
+
+    data.saveLoyalty();
+  }
+
+  private void runMemberMenu() {
+    int choice;
+    do {
+      choice = ui.getMemberMenuChoice();
+      switch (choice) {
+        case 1:
+          enrolMember();
+          break;
+        case 2:
+          searchMember();
           break;
         case 3:
           displayAllMembers();
           break;
         case 4:
-          displayMembersSortedByPoints();
+          displayMembersByPoints();
           break;
         case 5:
           displayExpiringPoints();
           break;
         case 6:
-          accumulateMemberPoints();
+          displayNearNextTier();
           break;
-        case 7:
-          viewRewards();
+        default:
           break;
-        case 8:
-          requestRewardRedemption();
-          break;
-        case 9:
-          processNextPendingRedemption();
-          break;
-        case 10:
-          viewRedemptionHistory();
-          break;
-        case 11:
-          viewMemberNotifications();
-          break;
-        case 12:
-          viewPersonalizedPromotion();
-          break;
-        case 13:
-          runReportMenu();
-          break;
-      }
-
-      // Holds the result on screen until the user is ready, so the next menu's
-      // clearScreen() cannot wipe it before it has been read. The report menu
-      // pauses on its own screens, and option 0 is leaving anyway.
-      if (choice != 0 && choice != 13) {
-        loyaltyRewardsUI.pressEnterToContinue();
       }
     } while (choice != 0);
   }
 
-  /**
-   * Registers a new member with an auto-generated loyalty ID and today's join
-   * date after collecting name and contact details from the user.
-   */
-  public void registerMember() {
-    Member member = loyaltyRewardsUI.inputMember();
-    if (member == null) {
-      loyaltyRewardsUI.displayMessage("Registration cancelled.");
-      return;
-    }
-
-    member.setMemberId(generateNextMemberId());
-    member.setJoinDate(LocalDate.now());
-    member.setPoints(0);
-    member.setTier(TIER_SILVER);
-    member.setPointsExpiryDate(null);
-    member.setTier(resolveTierAfterPoints(member.getTier(), member.getPoints()));
-
-    if (findMemberById(member.getMemberId()) != null) {
-      loyaltyRewardsUI.displayDuplicateMemberMessage(member.getMemberId());
-      return;
-    }
-
-    memberList.add(member);
-    loyaltyRewardsUI.displayRegistrationSuccess(member);
-  }
-
-  /**
-   * Scans existing member IDs and returns the next sequential loyalty ID in
-   * the format L0001, L0002, and so on. Uses the highest numeric suffix found,
-   * not the current list size, so deleted records cannot cause duplicates.
-   */
-  private String generateNextMemberId() {
-    int highestNumber = 0;
-
-    for (int position = 1; position <= memberList.getNumberOfEntries(); position++) {
-      Member existingMember = memberList.getEntry(position);
-      if (existingMember == null || existingMember.getMemberId() == null) {
-        continue;
+  private void runPointsMenu() {
+    int choice;
+    do {
+      choice = ui.getPointsMenuChoice();
+      switch (choice) {
+        case 1:
+          awardPointsForStay();
+          break;
+        case 2:
+          adjustPoints();
+          break;
+        case 3:
+          expirePoints();
+          break;
+        case 4:
+          displayLedger();
+          break;
+        default:
+          break;
       }
+    } while (choice != 0);
+  }
 
-      String memberId = existingMember.getMemberId().trim();
-      if (memberId.length() < 2 || !memberId.substring(0, 1).equalsIgnoreCase("L")) {
-        continue;
+  private void runRewardMenu() {
+    int choice;
+    do {
+      choice = ui.getRewardMenuChoice();
+      switch (choice) {
+        case 1:
+          displayCatalogue();
+          break;
+        case 2:
+          requestRedemption();
+          break;
+        case 3:
+          processNextRedemption();
+          break;
+        case 4:
+          displayPendingQueue();
+          break;
+        case 5:
+          displayRedemptionHistory();
+          break;
+        default:
+          break;
       }
+    } while (choice != 0);
+  }
 
-      try {
-        int numericPart = Integer.parseInt(memberId.substring(1));
-        if (numericPart > highestNumber) {
-          highestNumber = numericPart;
-        }
-      } catch (NumberFormatException e) {
-        // Ignore IDs that do not follow the L#### format.
+  private void runNotificationMenu() {
+    int choice;
+    do {
+      choice = ui.getNotificationMenuChoice();
+      switch (choice) {
+        case 1:
+          displayNotifications();
+          break;
+        case 2:
+          displayPromotion();
+          break;
+        default:
+          break;
       }
-    }
-
-    return String.format("L%04d", highestNumber + 1);
-  }
-
-  /**
-   * Adds earned points to an existing member, recalculates tier, and reports
-   * whether a tier upgrade occurred.
-   */
-  public void accumulateMemberPoints() {
-    String memberId = loyaltyRewardsUI.inputAccumulateMemberId();
-    if (memberId == null) {
-      loyaltyRewardsUI.displayMessage("Points accumulation cancelled.");
-      return;
-    }
-
-    Member member = findMemberById(memberId);
-    if (member == null) {
-      loyaltyRewardsUI.displayMemberNotFoundMessage(memberId);
-      return;
-    }
-
-    Integer earnedPoints = loyaltyRewardsUI.inputEarnedPoints();
-    if (earnedPoints == null) {
-      loyaltyRewardsUI.displayMessage("Points accumulation cancelled.");
-      return;
-    }
-
-    if (earnedPoints <= 0) {
-      loyaltyRewardsUI.displayMessage(
-          "Earned points must be greater than zero.");
-      return;
-    }
-
-    int oldPoints = member.getPoints();
-    int newPoints = oldPoints + earnedPoints;
-    String oldTier = member.getTier();
-
-    member.setPoints(newPoints);
-    TierProgressionResult progression = checkTierProgression(member, newPoints);
-
-    if (progression.isUpgraded()) {
-      createTierUpgradeNotification(member,
-          progression.getOldTier(), progression.getNewTier());
-    }
-
-    loyaltyRewardsUI.displayPointsAccumulationResult(
-        member, oldPoints, newPoints, oldTier,
-        progression.getNewTier(), progression.isUpgraded());
-  }
-
-  /**
-   * Determines the tier a member qualifies for based on total points alone.
-   */
-  public String determineTier(int points) {
-    if (points >= DIAMOND_THRESHOLD) {
-      return TIER_DIAMOND;
-    }
-    if (points >= PLATINUM_THRESHOLD) {
-      return TIER_PLATINUM;
-    }
-    if (points >= GOLD_THRESHOLD) {
-      return TIER_GOLD;
-    }
-    return TIER_SILVER;
-  }
-
-  /**
-   * Applies tier progression after points change. Members are upgraded when
-   * they reach a higher threshold, but are never downgraded automatically.
-   */
-  public TierProgressionResult checkTierProgression(Member member, int newPoints) {
-    String oldTier = member.getTier() == null ? TIER_SILVER : member.getTier();
-    String resolvedTier = resolveTierAfterPoints(oldTier, newPoints);
-
-    member.setTier(resolvedTier);
-
-    boolean upgraded = getTierRank(resolvedTier) > getTierRank(oldTier);
-    return new TierProgressionResult(oldTier, resolvedTier, upgraded);
-  }
-
-  /**
-   * Looks up a member by ID and displays the full profile.
-   */
-  public void searchMemberById() {
-    String memberId = loyaltyRewardsUI.inputSearchMemberId();
-    if (memberId == null) {
-      loyaltyRewardsUI.displayMessage("Search cancelled.");
-      return;
-    }
-
-    Member member = findMemberById(memberId);
-    if (member == null) {
-      loyaltyRewardsUI.displayMemberNotFoundMessage(memberId);
-      return;
-    }
-
-    loyaltyRewardsUI.displayMemberExistsMessage(member);
-  }
-
-  /**
-   * Displays every member in registration order without changing memberList.
-   */
-  public void displayAllMembers() {
-    loyaltyRewardsUI.displayMembers(copyMemberList(), "ALL MEMBERS");
-  }
-
-  /**
-   * Displays a points-descending listing without reordering the master list.
-   */
-  public void displayMembersSortedByPoints() {
-    ListInterface<Member> sortedMembers = copyMemberList();
-    sortedMembers.sort(byPointsDescendingThenMemberId());
-    loyaltyRewardsUI.displayMembers(sortedMembers,
-        "MEMBERS SORTED BY POINTS (HIGHEST FIRST)");
-  }
-
-  /**
-   * Lists members whose points expire on or before the selected cutoff date.
-   */
-  public void displayExpiringPoints() {
-    LocalDate cutoff = loyaltyRewardsUI.inputCutoffDate();
-    if (cutoff == null) {
-      loyaltyRewardsUI.displayMessage("Search cancelled.");
-      return;
-    }
-
-    ListInterface<Member> expiringMembers =
-        findExpiringPoints(cutoff);
-
-    for (int position = 1; position <= expiringMembers.getNumberOfEntries(); position++) {
-      createExpiringPointsNotificationIfAbsent(expiringMembers.getEntry(position));
-    }
-
-    ListInterface<Member> sortedExpiring = copyList(expiringMembers);
-    sortedExpiring.sort(byExpiryDateAscendingThenMemberId());
-
-    loyaltyRewardsUI.displayMembers(sortedExpiring,
-        "MEMBERS WITH POINTS EXPIRING ON OR BEFORE " + cutoff);
-  }
-
-  /**
-   * Returns members whose points expire on or before the cutoff date and who
-   * still hold a positive points balance.
-   */
-  public ListInterface<Member> findExpiringPoints(LocalDate cutoff) {
-    return memberList.filter(expiringOnOrBefore(cutoff));
-  }
-
-  /**
-   * Uses the List ADT's linear search to find the first member with the given
-   * member ID.
-   */
-  public Member findMemberById(String memberId) {
-    if (memberId == null) {
-      return null;
-    }
-
-    String trimmedId = memberId.trim();
-    return memberList.search(hasMemberId(trimmedId));
-  }
-
-  /**
-   * Checks whether a member ID is already registered.
-   */
-  public boolean isMemberRegistered(String memberId) {
-    return findMemberById(memberId) != null;
-  }
-
-  /**
-   * Displays the reward catalogue.
-   */
-  public void viewRewards() {
-    loyaltyRewardsUI.displayRewards(rewardList);
-  }
-
-  /**
-   * Creates a pending redemption request without deducting member points.
-   * Points are deducted later during FIFO processing when the request is
-   * successfully completed.
-   */
-  public void requestRewardRedemption() {
-    String memberId = loyaltyRewardsUI.inputRedemptionMemberId();
-    if (memberId == null) {
-      loyaltyRewardsUI.displayMessage("Redemption request cancelled.");
-      return;
-    }
-
-    Member member = findMemberById(memberId);
-    if (member == null) {
-      loyaltyRewardsUI.displayMemberNotFoundMessage(memberId);
-      return;
-    }
-
-    loyaltyRewardsUI.displayMemberSummaryForRedemption(member);
-    loyaltyRewardsUI.displayRewards(rewardList);
-
-    String rewardId = loyaltyRewardsUI.inputRewardId();
-    if (rewardId == null) {
-      loyaltyRewardsUI.displayMessage("Redemption request cancelled.");
-      return;
-    }
-
-    Reward reward = findRewardById(rewardId);
-    if (reward == null) {
-      loyaltyRewardsUI.displayInvalidRewardMessage(rewardId);
-      return;
-    }
-
-    if (member.getPoints() < reward.getPointsRequired()) {
-      loyaltyRewardsUI.displayInsufficientPointsMessage(
-          member.getPoints(), reward.getPointsRequired());
-      return;
-    }
-
-    Redemption redemption = new Redemption(
-        generateRedemptionId(),
-        member.getMemberId(),
-        reward.getRewardId(),
-        reward.getPointsRequired(),
-        LocalDate.now(),
-        Redemption.STATUS_PENDING);
-
-    redemptionHistory.add(redemption);
-    pendingRedemptionQueue.enqueue(redemption);
-
-    createRedemptionNotification(
-        member.getMemberId(),
-        redemption.getRedemptionId(),
-        REDEMPTION_EVENT_SUBMITTED,
-        String.format("[%s:%s] Redemption request submitted for %s (%d points). "
-            + "Status: PENDING.",
-            redemption.getRedemptionId(), REDEMPTION_EVENT_SUBMITTED,
-            reward.getRewardName(), redemption.getPointsUsed()));
-
-    loyaltyRewardsUI.displayRedemptionRequestResult(redemption, reward, member);
-  }
-
-  /**
-   * Processes the front pending redemption request in FIFO order.
-   */
-  public void processNextPendingRedemption() {
-    if (pendingRedemptionQueue.isEmpty()) {
-      loyaltyRewardsUI.displayEmptyPendingQueueMessage();
-      return;
-    }
-
-    Redemption redemption = pendingRedemptionQueue.dequeue();
-    Reward reward = findRewardById(redemption.getRewardId());
-    Member member = findMemberById(redemption.getMemberId());
-
-    if (member == null) {
-      redemption.setStatus(Redemption.STATUS_REJECTED);
-      createRedemptionNotification(
-          redemption.getMemberId(),
-          redemption.getRedemptionId(),
-          REDEMPTION_EVENT_REJECTED,
-          String.format("[%s:%s] Redemption rejected because the member no longer exists.",
-              redemption.getRedemptionId(), REDEMPTION_EVENT_REJECTED));
-      loyaltyRewardsUI.displayProcessRedemptionResult(
-          redemption, reward, null, 0, 0,
-          "Redemption rejected: member no longer exists.");
-      return;
-    }
-
-    if (reward == null) {
-      redemption.setStatus(Redemption.STATUS_REJECTED);
-      createRedemptionNotification(
-          member.getMemberId(),
-          redemption.getRedemptionId(),
-          REDEMPTION_EVENT_REJECTED,
-          String.format("[%s:%s] Redemption rejected because the reward no longer exists.",
-              redemption.getRedemptionId(), REDEMPTION_EVENT_REJECTED));
-      loyaltyRewardsUI.displayProcessRedemptionResult(
-          redemption, null, member, member.getPoints(), member.getPoints(),
-          "Redemption rejected: reward no longer exists.");
-      return;
-    }
-
-    if (member.getPoints() < redemption.getPointsUsed()) {
-      redemption.setStatus(Redemption.STATUS_REJECTED);
-      createRedemptionNotification(
-          member.getMemberId(),
-          redemption.getRedemptionId(),
-          REDEMPTION_EVENT_REJECTED,
-          String.format("[%s:%s] Redemption rejected due to insufficient points "
-              + "at processing time. No points were deducted.",
-              redemption.getRedemptionId(), REDEMPTION_EVENT_REJECTED));
-      loyaltyRewardsUI.displayProcessRedemptionResult(
-          redemption, reward, member, member.getPoints(), member.getPoints(),
-          "Redemption rejected: insufficient points at processing time.");
-      return;
-    }
-
-    int oldPoints = member.getPoints();
-    int newPoints = oldPoints - redemption.getPointsUsed();
-    member.setPoints(newPoints);
-    redemption.setStatus(Redemption.STATUS_COMPLETED);
-
-    createRedemptionNotification(
-        member.getMemberId(),
-        redemption.getRedemptionId(),
-        REDEMPTION_EVENT_COMPLETED,
-        String.format("[%s:%s] Redemption completed for %s. %d points deducted.",
-            redemption.getRedemptionId(), REDEMPTION_EVENT_COMPLETED,
-            reward.getRewardName(), redemption.getPointsUsed()));
-
-    loyaltyRewardsUI.displayProcessRedemptionResult(
-        redemption, reward, member, oldPoints, newPoints,
-        "Redemption completed successfully. Points deducted.");
-  }
-
-  /**
-   * Displays every redemption record, including pending, completed, and
-   * rejected requests.
-   */
-  public void viewRedemptionHistory() {
-    ListInterface<Redemption> sortedHistory = copyRedemptionHistory();
-    sortedHistory.sort(byRedemptionIdAscending());
-    loyaltyRewardsUI.displayRedemptions(sortedHistory, "REDEMPTION HISTORY");
-  }
-
-  /**
-   * Displays notifications for a member with optional unread/type filters.
-   */
-  public void viewMemberNotifications() {
-    String memberId = loyaltyRewardsUI.inputNotificationMemberId();
-    if (memberId == null) {
-      loyaltyRewardsUI.displayMessage("Notification view cancelled.");
-      return;
-    }
-
-    Member member = findMemberById(memberId);
-    if (member == null) {
-      loyaltyRewardsUI.displayMemberNotFoundMessage(memberId);
-      return;
-    }
-
-    int filterChoice = loyaltyRewardsUI.getNotificationFilterChoice();
-    if (filterChoice == 0) {
-      loyaltyRewardsUI.displayMessage("Notification view cancelled.");
-      return;
-    }
-
-    String typeFilter = null;
-    if (filterChoice == 3) {
-      typeFilter = loyaltyRewardsUI.inputNotificationType();
-      if (typeFilter == null) {
-        loyaltyRewardsUI.displayMessage("Notification view cancelled.");
-        return;
-      }
-    }
-
-    ListInterface<LoyaltyNotification> notifications =
-        getMemberNotifications(memberId, filterChoice, typeFilter);
-    notifications.sort(byNotificationIdAscending());
-
-    loyaltyRewardsUI.displayNotifications(
-        notifications, memberId, filterChoice, typeFilter);
-  }
-
-  /**
-   * Looks up a member and determines the promotion tailored to that member's
-   * tier, points balance, and membership duration.
-   *
-   * @return the personalized promotion result, or null if the member was not
-   *         found
-   */
-  public PersonalizedPromotionResult getPersonalizedPromotion(String memberId) {
-    Member member = findMemberById(memberId);
-    if (member == null) {
-      return null;
-    }
-    return determinePersonalizedPromotion(member);
-  }
-
-  /**
-   * Prompts for a member ID and displays the promotion selected for that member.
-   */
-  public void viewPersonalizedPromotion() {
-    String memberId = loyaltyRewardsUI.inputPromotionMemberId();
-    if (memberId == null) {
-      loyaltyRewardsUI.displayMessage("Personalized promotion view cancelled.");
-      return;
-    }
-
-    PersonalizedPromotionResult promotion = getPersonalizedPromotion(memberId);
-    if (promotion == null) {
-      loyaltyRewardsUI.displayMemberNotFoundMessage(memberId);
-      return;
-    }
-
-    loyaltyRewardsUI.displayPersonalizedPromotion(
-        promotion.getMember(),
-        promotion.getMembershipMonths(),
-        promotion.getPromotionTitle(),
-        promotion.getPromotionDetails(),
-        promotion.getEligibilityReason());
-  }
-
-  /**
-   * Selects a promotion using the member's tier as the primary rule and points
-   * or membership duration as secondary personalization criteria.
-   */
-  public PersonalizedPromotionResult determinePersonalizedPromotion(Member member) {
-    int membershipMonths = getMembershipMonths(member);
-    String tier = member.getTier() == null ? TIER_SILVER : member.getTier();
-    int points = member.getPoints();
-
-    if (TIER_DIAMOND.equalsIgnoreCase(tier)) {
-      return buildDiamondPromotion(member, points, membershipMonths);
-    }
-    if (TIER_PLATINUM.equalsIgnoreCase(tier)) {
-      return buildPlatinumPromotion(member, points, membershipMonths);
-    }
-    if (TIER_GOLD.equalsIgnoreCase(tier)) {
-      return buildGoldPromotion(member, points, membershipMonths);
-    }
-    return buildSilverPromotion(member, points, membershipMonths);
-  }
-
-  private PersonalizedPromotionResult buildSilverPromotion(
-      Member member, int points, int membershipMonths) {
-    if (points >= HIGH_SILVER_POINTS) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Silver Milestone Bonus",
-          "Earn 100 bonus points on your next resort stay.",
-          "Selected because the member has at least " + HIGH_SILVER_POINTS
-              + " points within the Silver tier.");
-    }
-    if (membershipMonths >= LONG_MEMBER_MONTHS_SILVER) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Silver Loyalty Dining Offer",
-          "Enjoy 10% off food and beverage during your next visit.",
-          "Selected because the member has been registered for at least "
-              + LONG_MEMBER_MONTHS_SILVER + " months.");
-    }
-    return new PersonalizedPromotionResult(
-        member,
-        membershipMonths,
-        "Standard Silver Welcome Offer",
-        "Earn double loyalty points on weekday check-ins.",
-        "Selected as the standard Silver-tier offer for newer members.");
-  }
-
-  private PersonalizedPromotionResult buildGoldPromotion(
-      Member member, int points, int membershipMonths) {
-    if (points >= HIGH_GOLD_POINTS) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Gold Premium Room Upgrade",
-          "Receive a complimentary one-category room upgrade on your next booking.",
-          "Selected because the member has at least " + HIGH_GOLD_POINTS
-              + " Gold-tier points.");
-    }
-    if (membershipMonths >= LONG_MEMBER_MONTHS_GOLD) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Gold Member Spa Appreciation",
-          "Receive 15% off any spa treatment this month.",
-          "Selected because the member has been registered for at least "
-              + LONG_MEMBER_MONTHS_GOLD + " months.");
-    }
-    return new PersonalizedPromotionResult(
-        member,
-        membershipMonths,
-        "Enhanced Gold Member Offer",
-        "Enjoy free late checkout until 2:00 PM on your next stay.",
-        "Selected as the standard enhanced offer for Gold members.");
-  }
-
-  private PersonalizedPromotionResult buildPlatinumPromotion(
-      Member member, int points, int membershipMonths) {
-    if (points >= HIGH_PLATINUM_POINTS) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Platinum Elite Dining Package",
-          "Receive one complimentary dinner buffet for two.",
-          "Selected because the member has at least " + HIGH_PLATINUM_POINTS
-              + " Platinum-tier points.");
-    }
-    if (membershipMonths >= LONG_MEMBER_MONTHS_PLATINUM) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Platinum Anniversary Reward",
-          "Receive 500 bonus loyalty points as a long-membership thank-you.",
-          "Selected because the member has been registered for at least "
-              + LONG_MEMBER_MONTHS_PLATINUM + " months.");
-    }
-    return new PersonalizedPromotionResult(
-        member,
-        membershipMonths,
-        "Premium Platinum Priority Offer",
-        "Receive priority early check-in and a welcome amenity on arrival.",
-        "Selected as the standard premium offer for Platinum members.");
-  }
-
-  private PersonalizedPromotionResult buildDiamondPromotion(
-      Member member, int points, int membershipMonths) {
-    if (points >= HIGH_DIAMOND_POINTS) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Diamond Signature Suite Experience",
-          "Receive one complimentary suite-category night subject to availability.",
-          "Selected because the member has at least " + HIGH_DIAMOND_POINTS
-              + " Diamond-tier points.");
-    }
-    if (membershipMonths >= LONG_MEMBER_MONTHS_DIAMOND) {
-      return new PersonalizedPromotionResult(
-          member,
-          membershipMonths,
-          "Diamond Legacy Concierge Privilege",
-          "Receive a dedicated concierge contact line for all future bookings.",
-          "Selected because the member has been registered for at least "
-              + LONG_MEMBER_MONTHS_DIAMOND + " months.");
-    }
-    return new PersonalizedPromotionResult(
-        member,
-        membershipMonths,
-        "Exclusive Diamond Transfer Offer",
-        "Receive one complimentary airport transfer during your next stay.",
-        "Selected as the standard exclusive offer for Diamond members.");
-  }
-
-  private int getMembershipMonths(Member member) {
-    if (member.getJoinDate() == null) {
-      return 0;
-    }
-    return (int) ChronoUnit.MONTHS.between(member.getJoinDate(), LocalDate.now());
-  }
-
-  private void createTierUpgradeNotification(Member member, String oldTier, String newTier) {
-    String transitionToken = oldTier + "->" + newTier;
-    if (hasTierUpgradeNotification(member.getMemberId(), transitionToken)) {
-      return;
-    }
-
-    String message = String.format(
-        "[%s] Congratulations! Your tier has been upgraded from %s to %s.",
-        transitionToken, oldTier, newTier);
-    addNotification(member.getMemberId(), TYPE_TIER_UPGRADE, message);
-  }
-
-  private void createRedemptionNotification(String memberId, String redemptionId,
-      String eventToken, String message) {
-    if (hasRedemptionEventNotification(redemptionId, eventToken)) {
-      return;
-    }
-    addNotification(memberId, TYPE_REDEMPTION, message);
-  }
-
-  private void createExpiringPointsNotificationIfAbsent(Member member) {
-    if (member == null || member.getPoints() <= 0
-        || member.getPointsExpiryDate() == null) {
-      return;
-    }
-
-    LocalDate expiryDate = member.getPointsExpiryDate();
-    if (hasExpiringPointsNotification(member.getMemberId(), expiryDate)) {
-      return;
-    }
-
-    String message = String.format(
-        "[EXPIRY:%s] Warning: you have %d points expiring on %s. "
-        + "Please redeem or use them before they expire.",
-        expiryDate, member.getPoints(), expiryDate);
-    addNotification(member.getMemberId(), TYPE_EXPIRING_POINTS, message);
-  }
-
-  private void addNotification(String memberId, String type, String message) {
-    LoyaltyNotification notification = new LoyaltyNotification(
-        generateNotificationId(),
-        memberId,
-        type,
-        message,
-        LocalDate.now(),
-        false);
-    notificationList.add(notification);
-  }
-
-  private ListInterface<LoyaltyNotification> getMemberNotifications(
-      String memberId, int filterChoice, String typeFilter) {
-    ListInterface<LoyaltyNotification> filtered = new ArrayList<>();
-
-    for (int position = 1; position <= notificationList.getNumberOfEntries(); position++) {
-      LoyaltyNotification notification = notificationList.getEntry(position);
-      if (notification == null
-          || !memberId.equalsIgnoreCase(notification.getMemberId())) {
-        continue;
-      }
-
-      if (filterChoice == 2 && notification.isRead()) {
-        continue;
-      }
-
-      if (filterChoice == 3 && (typeFilter == null
-          || !typeFilter.equalsIgnoreCase(notification.getType()))) {
-        continue;
-      }
-
-      filtered.add(notification);
-    }
-
-    return filtered;
-  }
-
-  private boolean hasTierUpgradeNotification(String memberId, String transitionToken) {
-    return notificationList.search(notification ->
-        TYPE_TIER_UPGRADE.equals(notification.getType())
-            && memberId.equalsIgnoreCase(notification.getMemberId())
-            && notification.getMessage().contains("[" + transitionToken + "]")) != null;
-  }
-
-  private boolean hasRedemptionEventNotification(String redemptionId, String eventToken) {
-    return notificationList.search(notification ->
-        TYPE_REDEMPTION.equals(notification.getType())
-            && notification.getMessage().contains(
-                "[" + redemptionId + ":" + eventToken + "]")) != null;
-  }
-
-  private boolean hasExpiringPointsNotification(String memberId, LocalDate expiryDate) {
-    return notificationList.search(notification ->
-        TYPE_EXPIRING_POINTS.equals(notification.getType())
-            && memberId.equalsIgnoreCase(notification.getMemberId())
-            && notification.getMessage().contains("[EXPIRY:" + expiryDate + "]")) != null;
-  }
-
-  private String generateNotificationId() {
-    String notificationId = String.format("NT%04d", nextNotificationNumber);
-    nextNotificationNumber++;
-    return notificationId;
-  }
-
-  private Comparator<LoyaltyNotification> byNotificationIdAscending() {
-    return (first, second) ->
-        first.getNotificationId().compareToIgnoreCase(second.getNotificationId());
-  }
-
-  /**
-   * Uses the List ADT's linear search to find a reward by ID.
-   */
-  public Reward findRewardById(String rewardId) {
-    if (rewardId == null) {
-      return null;
-    }
-    return rewardList.search(hasRewardId(rewardId.trim()));
-  }
-
-  private String generateRedemptionId() {
-    String redemptionId = String.format("RD%04d", nextRedemptionNumber);
-    nextRedemptionNumber++;
-    return redemptionId;
-  }
-
-  private Condition<Reward> hasRewardId(String rewardId) {
-    return reward -> reward.getRewardId() != null
-        && reward.getRewardId().equalsIgnoreCase(rewardId);
-  }
-
-  private Comparator<Redemption> byRedemptionIdAscending() {
-    return (first, second) ->
-        first.getRedemptionId().compareToIgnoreCase(second.getRedemptionId());
-  }
-
-  private ListInterface<Redemption> copyRedemptionHistory() {
-    ListInterface<Redemption> copy = new ArrayList<>();
-    for (int position = 1; position <= redemptionHistory.getNumberOfEntries(); position++) {
-      copy.add(redemptionHistory.getEntry(position));
-    }
-    return copy;
-  }
-
-  private Condition<Member> hasMemberId(String memberId) {
-    return member -> member.getMemberId() != null
-        && member.getMemberId().equalsIgnoreCase(memberId);
-  }
-
-  private Condition<Member> expiringOnOrBefore(LocalDate cutoff) {
-    return member -> member.getPointsExpiryDate() != null
-        && member.getPoints() > 0
-        && !member.getPointsExpiryDate().isAfter(cutoff);
-  }
-
-  private Comparator<Member> byPointsDescendingThenMemberId() {
-    return (first, second) -> {
-      int pointsCompare = Integer.compare(second.getPoints(), first.getPoints());
-      if (pointsCompare != 0) {
-        return pointsCompare;
-      }
-      return first.getMemberId().compareToIgnoreCase(second.getMemberId());
-    };
-  }
-
-  private Comparator<Member> byExpiryDateAscendingThenMemberId() {
-    return (first, second) -> {
-      int dateCompare =
-          first.getPointsExpiryDate().compareTo(second.getPointsExpiryDate());
-      if (dateCompare != 0) {
-        return dateCompare;
-      }
-      return first.getMemberId().compareToIgnoreCase(second.getMemberId());
-    };
-  }
-
-  private ListInterface<Member> copyMemberList() {
-    return copyList(memberList);
-  }
-
-  private ListInterface<Member> copyList(ListInterface<Member> source) {
-    ListInterface<Member> copy = new ArrayList<>();
-    for (int position = 1; position <= source.getNumberOfEntries(); position++) {
-      copy.add(source.getEntry(position));
-    }
-    return copy;
+    } while (choice != 0);
   }
 
   private void runReportMenu() {
     int choice;
     do {
-      choice = loyaltyRewardsUI.getReportMenuChoice();
+      choice = ui.getReportMenuChoice();
       switch (choice) {
-        case 0:
-          break;
         case 1:
-          generateMembershipTierPerformanceReport();
+          membershipReport();
           break;
         case 2:
-          generateRedemptionAnalysisReport();
+          redemptionReport();
           break;
-      }
-
-      // Same reason as the main loop: a report is worth nothing if the next
-      // menu wipes it before it has been read.
-      if (choice != 0) {
-        loyaltyRewardsUI.pressEnterToContinue();
+        default:
+          break;
       }
     } while (choice != 0);
   }
 
+  // ==================================================================
+  // MEMBERS
+  // ==================================================================
+
   /**
-   * REPORT 1: Loyalty Membership & Tier Performance Report.
+   * Signs an existing guest up to the programme.
    *
-   * Combines multiple filter criteria, sorts with the List ADT merge sort, and
-   * prints management summary metrics.
+   * A membership attaches to a guest record rather than creating a person of
+   * its own, so a member and the guest who books rooms are always the same
+   * individual.
    */
-  public void generateMembershipTierPerformanceReport() {
-    loyaltyRewardsUI.displayReportHeader("LOYALTY MEMBERSHIP & TIER PERFORMANCE REPORT");
+  private void enrolMember() {
+    ui.startAction("ENROL A NEW MEMBER");
 
-    String tierFilter = loyaltyRewardsUI.inputMembershipReportTierFilter();
-    if (tierFilter == null) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
+    ListInterface<Guest> notMembers = data.getGuestList().filter(
+        guest -> data.findMemberByGuest(guest.getGuestId()) == null);
+
+    if (notMembers.isEmpty()) {
+      ui.displayMessage("  Every guest on record is already a member.");
+      ui.pause();
       return;
     }
 
-    Integer minPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Minimum points (blank for none, C to cancel): ");
-    if (minPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
+    ui.displaySectionHeading("Guests who are not yet members");
+    ui.displayTableHeading(String.format("  %-7s %-28s %-16s %s",
+        "GUEST", "NAME", "IC / PASSPORT", "CONTACT"));
+
+    for (int i = 1; i <= notMembers.getNumberOfEntries(); i++) {
+      Guest guest = notMembers.getEntry(i);
+      System.out.printf("  %-7s %-28s %-16s %s%n",
+          guest.getGuestId(), guest.getFullName(),
+          guest.getIcPassportNo(), guest.getContactNumber());
+    }
+    ui.displayThinRule();
+
+    String guestId = ui.inputGuestId();
+    if (guestId == null) {
       return;
     }
 
-    Integer maxPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Maximum points (blank for none, C to cancel): ");
-    if (maxPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
+    ServiceResult<Member> result = service.enrolMember(guestId);
+    if (result.isFailure()) {
+      ui.displayError(result.getMessage());
+      ui.pause();
       return;
     }
 
-    if (minPoints != null && maxPoints != null && minPoints > maxPoints) {
-      loyaltyRewardsUI.displayMessage(
-          "Minimum points cannot be greater than maximum points.");
-      loyaltyRewardsUI.displayReportFooter();
-      return;
-    }
-
-    LocalDate joinStart = loyaltyRewardsUI.inputOptionalReportDate(
-        "Join date on/after (YYYY-MM-DD, blank to skip, C to cancel): ");
-    if (joinStart == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    LocalDate joinEnd = loyaltyRewardsUI.inputOptionalReportDate(
-        "Join date on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
-    if (joinEnd == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    if (joinStart != null && joinEnd != null && joinStart.isAfter(joinEnd)) {
-      loyaltyRewardsUI.displayMessage("Join start date cannot be after join end date.");
-      loyaltyRewardsUI.displayReportFooter();
-      return;
-    }
-
-    LocalDate expiryBefore = loyaltyRewardsUI.inputOptionalReportDate(
-        "Points expiry on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
-    if (expiryBefore == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    ListInterface<Member> filteredMembers = filterMembersForReport(
-        tierFilter, minPoints, maxPoints, joinStart, joinEnd, expiryBefore);
-    filteredMembers.sort(byPointsDescendingThenMemberId());
-
-    MembershipReportSummary summary = buildMembershipReportSummary(filteredMembers);
-    String filterDescription = buildMembershipReportFilterDescription(
-        tierFilter, minPoints, maxPoints, joinStart, joinEnd, expiryBefore);
-
-    loyaltyRewardsUI.displayMembershipTierPerformanceReport(
-        filterDescription,
-        filteredMembers,
-        summary.getTotalMembers(),
-        summary.getTotalPoints(),
-        summary.getAveragePoints(),
-        summary.getSilverCount(),
-        summary.getGoldCount(),
-        summary.getPlatinumCount(),
-        summary.getDiamondCount(),
-        summary.getNearNextTierCount(),
-        summary.getHighestPointsMember());
-    loyaltyRewardsUI.displayReportFooter();
+    ui.displaySuccess(result.getMessage());
+    ui.displayMember(result.getValue(), data.findGuest(guestId));
+    ui.pause();
   }
 
-  /**
-   * REPORT 2: Redemption Analysis Report.
-   */
-  public void generateRedemptionAnalysisReport() {
-    loyaltyRewardsUI.displayReportHeader("REDEMPTION ANALYSIS REPORT");
+  private void searchMember() {
+    ui.startAction("SEARCH BY MEMBER ID");
 
-    String statusFilter = loyaltyRewardsUI.inputRedemptionReportStatusFilter();
-    if (statusFilter == null) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    Integer minPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Minimum points redeemed (blank for none, C to cancel): ");
-    if (minPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    Integer maxPoints = loyaltyRewardsUI.inputOptionalReportPoints(
-        "Maximum points redeemed (blank for none, C to cancel): ");
-    if (maxPoints == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    if (minPoints != null && maxPoints != null && minPoints > maxPoints) {
-      loyaltyRewardsUI.displayMessage(
-          "Minimum points cannot be greater than maximum points.");
-      loyaltyRewardsUI.displayReportFooter();
-      return;
-    }
-
-    String tierFilter = loyaltyRewardsUI.inputMembershipReportTierFilter();
-    if (tierFilter == null) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    LocalDate startDate = loyaltyRewardsUI.inputOptionalReportDate(
-        "Request date on/after (YYYY-MM-DD, blank to skip, C to cancel): ");
-    if (startDate == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    LocalDate endDate = loyaltyRewardsUI.inputOptionalReportDate(
-        "Request date on/before (YYYY-MM-DD, blank to skip, C to cancel): ");
-    if (endDate == null && loyaltyRewardsUI.wasReportInputCancelled()) {
-      loyaltyRewardsUI.displayMessage("Report cancelled.");
-      return;
-    }
-
-    if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
-      loyaltyRewardsUI.displayMessage("Start date cannot be after end date.");
-      loyaltyRewardsUI.displayReportFooter();
-      return;
-    }
-
-    ListInterface<RedemptionReportRow> filteredRows = filterRedemptionsForReport(
-        statusFilter, minPoints, maxPoints, tierFilter, startDate, endDate);
-    filteredRows.sort(byRedemptionPointsDescendingThenId());
-
-    RedemptionReportSummary summary = buildRedemptionReportSummary(filteredRows);
-    String filterDescription = buildRedemptionReportFilterDescription(
-        statusFilter, minPoints, maxPoints, tierFilter, startDate, endDate);
-
-    ListInterface<Redemption> reportRedemptions = new ArrayList<>();
-    String[] memberNames = new String[filteredRows.getNumberOfEntries()];
-    String[] memberTiers = new String[filteredRows.getNumberOfEntries()];
-    String[] rewardNames = new String[filteredRows.getNumberOfEntries()];
-
-    for (int position = 1; position <= filteredRows.getNumberOfEntries(); position++) {
-      RedemptionReportRow row = filteredRows.getEntry(position);
-      reportRedemptions.add(row.getRedemption());
-      int index = position - 1;
-      memberNames[index] = row.getMemberName();
-      memberTiers[index] = row.getMemberTier();
-      rewardNames[index] = row.getRewardName();
-    }
-
-    loyaltyRewardsUI.displayRedemptionAnalysisReport(
-        filterDescription,
-        reportRedemptions,
-        memberNames,
-        memberTiers,
-        rewardNames,
-        summary.getTotalMatches(),
-        summary.getCompletedCount(),
-        summary.getPendingCount(),
-        summary.getRejectedCount(),
-        summary.getTotalCompletedPoints(),
-        summary.getAverageCompletedPoints(),
-        summary.getHighestCompletedPoints());
-    loyaltyRewardsUI.displayReportFooter();
-  }
-
-  private ListInterface<Member> filterMembersForReport(String tierFilter,
-      Integer minPoints, Integer maxPoints, LocalDate joinStart,
-      LocalDate joinEnd, LocalDate expiryBefore) {
-    return memberList.filter(member -> matchesMembershipReportCriteria(
-        member, tierFilter, minPoints, maxPoints, joinStart, joinEnd, expiryBefore));
-  }
-
-  private boolean matchesMembershipReportCriteria(Member member, String tierFilter,
-      Integer minPoints, Integer maxPoints, LocalDate joinStart,
-      LocalDate joinEnd, LocalDate expiryBefore) {
+    Member member = promptForMember();
     if (member == null) {
-      return false;
+      return;
     }
 
-    if (!REPORT_ALL_TIERS.equalsIgnoreCase(tierFilter)) {
-      String memberTier = member.getTier() == null ? TIER_SILVER : member.getTier();
-      if (!tierFilter.equalsIgnoreCase(memberTier)) {
+    ui.displayMember(member, data.findGuest(member.getGuestId()));
+
+    // Their recent activity says more than the balance on its own.
+    ListInterface<PointTransaction> recent = ledgerFor(member.getMemberId());
+    if (!recent.isEmpty()) {
+      ui.displayLedger(recent, member);
+    }
+    ui.pause();
+  }
+
+  private void displayAllMembers() {
+    ui.startAction("ALL MEMBERS");
+    // The tree walk gives them in ID order without a sort.
+    ui.displayMemberList(data.getMembersSorted(), data, "There are no members.");
+    ui.pause();
+  }
+
+  private void displayMembersByPoints() {
+    ui.startAction("MEMBERS BY POINTS BALANCE");
+
+    ListInterface<Member> sorted = copyOf(data.getMemberList());
+    sorted.sort(Comparator.comparingInt(Member::getPointsBalance).reversed());
+
+    ui.displayMemberList(sorted, data, "There are no members.");
+    ui.pause();
+  }
+
+  /**
+   * Members whose points are about to be lost.
+   *
+   * The whole point of finding them is to tell them in time to spend the
+   * points, so a notification is offered here rather than only in a report.
+   */
+  private void displayExpiringPoints() {
+    ui.startAction("MEMBERS WITH POINTS EXPIRING SOON");
+
+    LocalDate today = LocalDate.now();
+    ListInterface<Member> expiring = data.getMemberList().filter(
+        member -> member.hasExpiringPoints(today));
+
+    if (!ui.displayMemberList(expiring, data,
+        "No member has points expiring in the next " + Member.EXPIRING_SOON_DAYS
+            + " days.")) {
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    if (!ui.confirm("Send each of them an expiry warning?")) {
+      ui.pause();
+      return;
+    }
+
+    for (int i = 1; i <= expiring.getNumberOfEntries(); i++) {
+      Member member = expiring.getEntry(i);
+      long days = ChronoUnit.DAYS.between(today, member.getPointsExpiryDate());
+
+      service.raiseNotification(member.getMemberId(), Notification.POINTS_EXPIRING,
+          String.format("Your %d points expire in %d day(s) - on %s.",
+              member.getPointsBalance(), days, member.getPointsExpiryDate()),
+          null);
+    }
+
+    data.saveLoyalty();
+    ui.displaySuccess(expiring.getNumberOfEntries() + " warning(s) sent.");
+    ui.pause();
+  }
+
+  /** Members who could be nudged over the line into the next tier. */
+  private void displayNearNextTier() {
+    ui.startAction("MEMBERS CLOSE TO THE NEXT TIER");
+
+    final int within = 500;
+    ListInterface<Member> near = data.getMemberList().filter(member -> {
+      String next = member.getNextTier();
+      return next != null && member.getPointsToNextTier() <= within;
+    });
+
+    if (near.isEmpty()) {
+      ui.displayMessage("  No member is within " + within
+          + " lifetime points of the next tier.");
+      ui.pause();
+      return;
+    }
+
+    near.sort(Comparator.comparingInt(Member::getPointsToNextTier));
+
+    ui.displaySectionHeading("Within " + within + " points of the next tier");
+    ui.displayTableHeading(String.format("  %-7s %-24s %-9s %11s %-9s %s",
+        "MEMBER", "GUEST", "TIER", "LIFETIME", "NEXT", "SHORT BY"));
+
+    for (int i = 1; i <= near.getNumberOfEntries(); i++) {
+      Member member = near.getEntry(i);
+      Guest guest = data.findGuest(member.getGuestId());
+
+      System.out.printf("  %-7s %-24s %-9s %11d %-9s %d%n",
+          member.getMemberId(), guest == null ? "-" : guest.getFullName(),
+          member.getTier(), member.getLifetimePoints(),
+          member.getNextTier(), member.getPointsToNextTier());
+    }
+    ui.displayThinRule();
+    ui.pause();
+  }
+
+  // ==================================================================
+  // POINTS
+  // ==================================================================
+
+  /**
+   * Awards the points a completed stay earned.
+   *
+   * Normally this happens by itself when the front desk checks a guest out.
+   * This is here for a stay that was settled before the guest joined the
+   * programme, or one that needs putting right by hand.
+   */
+  private void awardPointsForStay() {
+    ui.startAction("AWARD POINTS FOR A STAY");
+
+    ListInterface<Booking> settled = data.getBookingList().filter(booking -> {
+      if (!Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())) {
         return false;
       }
+      entity.Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+      return invoice != null && invoice.isSettled();
+    });
+
+    if (settled.isEmpty()) {
+      ui.displayMessage("  There is no completed, settled stay to award points for.");
+      ui.pause();
+      return;
     }
 
-    if (minPoints != null && member.getPoints() < minPoints) {
-      return false;
+    ui.displaySectionHeading("Completed stays");
+    ui.displayTableHeading(String.format("  %-8s %-24s %-8s %10s  %s",
+        "BOOKING", "GUEST", "MEMBER", "BILL", "POINTS AWARDED?"));
+
+    for (int i = 1; i <= settled.getNumberOfEntries(); i++) {
+      Booking booking = settled.getEntry(i);
+      Guest guest = data.findGuest(booking.getGuestId());
+      Member member = data.findMemberByGuest(booking.getGuestId());
+      entity.Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+
+      PointTransaction awarded = data.getTransactionList().search(
+          txn -> booking.getBookingId().equals(txn.getBookingId())
+              && PointTransaction.EARN.equals(txn.getTxnType()));
+
+      System.out.printf("  %-8s %-24s %-8s %10.2f  %s%n",
+          booking.getBookingId(),
+          guest == null ? "-" : guest.getFullName(),
+          member == null ? "not a member" : member.getMemberId(),
+          invoice == null ? 0.0 : invoice.getTotalAmount(),
+          awarded == null ? "no" : "yes (" + awarded.getPoints() + ")");
+    }
+    ui.displayThinRule();
+
+    String bookingId = ui.inputBookingId();
+    if (bookingId == null) {
+      return;
     }
 
-    if (maxPoints != null && member.getPoints() > maxPoints) {
-      return false;
+    ServiceResult<PointTransaction> result = service.awardPointsForStay(bookingId);
+    if (result.isFailure()) {
+      ui.displayError(result.getMessage());
+      ui.pause();
+      return;
     }
 
-    if (joinStart != null && (member.getJoinDate() == null
-        || member.getJoinDate().isBefore(joinStart))) {
-      return false;
-    }
+    ui.displaySuccess(result.getMessage());
 
-    if (joinEnd != null && (member.getJoinDate() == null
-        || member.getJoinDate().isAfter(joinEnd))) {
-      return false;
+    Member member = data.findMember(result.getValue().getMemberId());
+    if (member != null) {
+      ui.displayMember(member, data.findGuest(member.getGuestId()));
     }
-
-    if (expiryBefore != null) {
-      if (member.getPointsExpiryDate() == null
-          || member.getPointsExpiryDate().isAfter(expiryBefore)) {
-        return false;
-      }
-    }
-
-    return true;
+    ui.pause();
   }
 
-  private MembershipReportSummary buildMembershipReportSummary(
-      ListInterface<Member> members) {
-    int totalMembers = members.getNumberOfEntries();
-    int totalPoints = 0;
-    Member highestPointsMember = null;
+  /**
+   * Changes a member's points by hand.
+   *
+   * Written to the ledger like any other movement, with the reason recorded -
+   * an adjustment that left no trace would make the balance unexplainable.
+   */
+  private void adjustPoints() {
+    ui.startAction("ADJUST A MEMBER'S POINTS");
 
-    for (int position = 1; position <= totalMembers; position++) {
-      Member member = members.getEntry(position);
-      totalPoints += member.getPoints();
-      if (highestPointsMember == null
-          || member.getPoints() > highestPointsMember.getPoints()
-          || (member.getPoints() == highestPointsMember.getPoints()
-              && member.getMemberId().compareToIgnoreCase(
-                  highestPointsMember.getMemberId()) < 0)) {
-        highestPointsMember = member;
-      }
+    Member member = promptForMember();
+    if (member == null) {
+      return;
     }
 
-    double averagePoints = totalMembers == 0 ? 0.0 : (double) totalPoints / totalMembers;
+    ui.displayMember(member, data.findGuest(member.getGuestId()));
 
-    return new MembershipReportSummary(
-        totalMembers,
-        totalPoints,
-        averagePoints,
-        members.countIf(hasTier(TIER_SILVER)),
-        members.countIf(hasTier(TIER_GOLD)),
-        members.countIf(hasTier(TIER_PLATINUM)),
-        members.countIf(hasTier(TIER_DIAMOND)),
-        highestPointsMember,
-        countMembersNearNextTier(members));
+    int adjustment = ui.inputPointsAdjustment();
+    if (adjustment == MessageUI.CANCELLED_INT) {
+      ui.displayMessage("  Adjustment cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (adjustment < 0 && member.getPointsBalance() + adjustment < 0) {
+      ui.displayError("That would take the balance below zero. The member has only "
+          + member.getPointsBalance() + " points.");
+      ui.pause();
+      return;
+    }
+
+    String reason = ui.inputAdjustmentReason();
+    if (reason == null) {
+      ui.displayMessage("  Adjustment cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (!ui.confirm(String.format("Apply %+d points to %s?",
+        adjustment, member.getMemberId()))) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    String previousTier = member.getTier();
+    member.setPointsBalance(member.getPointsBalance() + adjustment);
+
+    // Only points added count towards the lifetime total: taking points away
+    // must not cost the member the tier they earned.
+    if (adjustment > 0) {
+      member.setLifetimePoints(member.getLifetimePoints() + adjustment);
+    }
+
+    data.getTransactionList().add(new PointTransaction(data.nextTransactionId(),
+        member.getMemberId(), null, PointTransaction.ADJUST, adjustment,
+        member.getPointsBalance(), LocalDate.now(), reason));
+
+    if (member.refreshTier()) {
+      service.raiseNotification(member.getMemberId(), Notification.TIER_UPGRADE,
+          "Congratulations - you are now " + member.getTier() + ".", null);
+      ui.displaySuccess("Tier upgraded from " + previousTier
+          + " to " + member.getTier() + ".");
+    }
+
+    data.saveLoyalty();
+    ui.displaySuccess(String.format("%+d points applied. Balance is now %d.",
+        adjustment, member.getPointsBalance()));
+    ui.pause();
   }
 
-  private ListInterface<RedemptionReportRow> filterRedemptionsForReport(
-      String statusFilter, Integer minPoints, Integer maxPoints,
-      String tierFilter, LocalDate startDate, LocalDate endDate) {
-    ListInterface<RedemptionReportRow> rows = new ArrayList<>();
+  private void expirePoints() {
+    ui.startAction("EXPIRE POINTS PAST THEIR DATE");
 
-    for (int position = 1; position <= redemptionHistory.getNumberOfEntries(); position++) {
-      Redemption redemption = redemptionHistory.getEntry(position);
-      Member member = findMemberById(redemption.getMemberId());
-      Reward reward = findRewardById(redemption.getRewardId());
+    LocalDate today = LocalDate.now();
+    ListInterface<Member> overdue = data.getMemberList().filter(
+        member -> member.getPointsExpiryDate() != null
+            && member.getPointsExpiryDate().isBefore(today)
+            && member.getPointsBalance() > 0);
 
-      if (!matchesRedemptionReportCriteria(redemption, member, statusFilter,
-          minPoints, maxPoints, tierFilter, startDate, endDate)) {
-        continue;
-      }
-
-      String memberName = member == null ? "(unknown)" : member.getName();
-      String memberTier = member == null || member.getTier() == null
-          ? "-" : member.getTier();
-      String rewardName = reward == null ? redemption.getRewardId() : reward.getRewardName();
-
-      rows.add(new RedemptionReportRow(
-          redemption, memberName, memberTier, rewardName));
+    if (overdue.isEmpty()) {
+      ui.displayMessage("  No member has points past their expiry date.");
+      ui.pause();
+      return;
     }
 
-    return rows;
+    ui.displayMemberList(overdue, data, "");
+    ui.displayMessage("");
+    ui.displayMessage("  These members' points have passed their expiry date.");
+    ui.displayMessage("");
+
+    if (!ui.confirm("Expire them now?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Integer> result = service.expireOverduePoints();
+    ui.displaySuccess(result.getMessage());
+    ui.displayMessage("  Each affected member has been notified.");
+    ui.pause();
   }
 
-  private boolean matchesRedemptionReportCriteria(Redemption redemption, Member member,
-      String statusFilter, Integer minPoints, Integer maxPoints,
-      String tierFilter, LocalDate startDate, LocalDate endDate) {
-    if (redemption == null) {
-      return false;
+  private void displayLedger() {
+    ui.startAction("A MEMBER'S POINT LEDGER");
+
+    Member member = promptForMember();
+    if (member == null) {
+      return;
     }
 
-    if (!REPORT_ALL_STATUSES.equalsIgnoreCase(statusFilter)
-        && !statusFilter.equalsIgnoreCase(redemption.getStatus())) {
-      return false;
-    }
-
-    if (minPoints != null && redemption.getPointsUsed() < minPoints) {
-      return false;
-    }
-
-    if (maxPoints != null && redemption.getPointsUsed() > maxPoints) {
-      return false;
-    }
-
-    if (!REPORT_ALL_TIERS.equalsIgnoreCase(tierFilter)) {
-      if (member == null || member.getTier() == null
-          || !tierFilter.equalsIgnoreCase(member.getTier())) {
-        return false;
-      }
-    }
-
-    if (startDate != null && (redemption.getRequestDate() == null
-        || redemption.getRequestDate().isBefore(startDate))) {
-      return false;
-    }
-
-    if (endDate != null && (redemption.getRequestDate() == null
-        || redemption.getRequestDate().isAfter(endDate))) {
-      return false;
-    }
-
-    return true;
+    ui.displayMember(member, data.findGuest(member.getGuestId()));
+    ui.displayLedger(ledgerFor(member.getMemberId()), member);
+    ui.pause();
   }
 
-  private RedemptionReportSummary buildRedemptionReportSummary(
-      ListInterface<RedemptionReportRow> rows) {
-    int totalMatches = rows.getNumberOfEntries();
-    int completedCount = 0;
-    int pendingCount = 0;
-    int rejectedCount = 0;
-    int totalCompletedPoints = 0;
-    int highestCompletedPoints = 0;
+  /** One member's ledger rows, oldest first. */
+  private ListInterface<PointTransaction> ledgerFor(String memberId) {
+    ListInterface<PointTransaction> txns = data.getTransactionList().filter(
+        txn -> memberId.equals(txn.getMemberId()));
+    txns.sort(Comparator.comparing(PointTransaction::getTxnDate));
+    return txns;
+  }
 
-    for (int position = 1; position <= totalMatches; position++) {
-      Redemption redemption = rows.getEntry(position).getRedemption();
-      String status = redemption.getStatus();
+  // ==================================================================
+  // REWARDS
+  // ==================================================================
 
-      if (Redemption.STATUS_COMPLETED.equalsIgnoreCase(status)) {
-        completedCount++;
-        totalCompletedPoints += redemption.getPointsUsed();
-        if (redemption.getPointsUsed() > highestCompletedPoints) {
-          highestCompletedPoints = redemption.getPointsUsed();
+  private void displayCatalogue() {
+    ui.startAction("REWARD CATALOGUE");
+    ui.displayRewardCatalogue(data.getRewardList(), null);
+    ui.pause();
+  }
+
+  /**
+   * Puts a redemption request into the queue.
+   *
+   * Nothing is deducted here and eligibility is not decided here either. The
+   * request simply joins the line, and the rules are applied when it reaches
+   * the front - which is what makes a refusal recorded and reviewable.
+   */
+  private void requestRedemption() {
+    ui.startAction("REQUEST A REDEMPTION");
+
+    Member member = promptForMember();
+    if (member == null) {
+      return;
+    }
+
+    ui.displayMember(member, data.findGuest(member.getGuestId()));
+
+    String rewardId = ui.inputReward(data.getRewardList(), member);
+    if (rewardId == null) {
+      ui.displayMessage("  Request cancelled.");
+      ui.pause();
+      return;
+    }
+
+    Reward reward = data.findReward(rewardId);
+    if (!ui.confirm("Request " + reward.getRewardName() + " for "
+        + reward.getPointsRequired() + " points?")) {
+      ui.displayMessage("  Request cancelled.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Redemption> result =
+        service.requestRedemption(member.getMemberId(), rewardId);
+
+    if (result.isFailure()) {
+      ui.displayError(result.getMessage());
+      ui.pause();
+      return;
+    }
+
+    ui.displaySuccess(result.getMessage());
+    ui.displayMessage("");
+    ui.displayMessage("  No points have been taken yet - they are deducted only");
+    ui.displayMessage("  if the request is approved when it reaches the front.");
+    ui.displayMessage("  Requests waiting: " + data.getPendingRedemptions()
+        .getNumberOfEntries());
+    ui.pause();
+  }
+
+  /**
+   * Decides the oldest waiting request.
+   *
+   * Whoever asked first is dealt with first - there is no urgent lane here,
+   * because no redemption is more pressing than another.
+   */
+  private void processNextRedemption() {
+    ui.startAction("PROCESS THE NEXT REQUEST");
+
+    ListInterface<Redemption> pending = data.getPendingRedemptions();
+    if (pending.isEmpty()) {
+      ui.displayError("There are no requests waiting.");
+      ui.pause();
+      return;
+    }
+
+    Redemption next = pending.getEntry(1);
+    Member member = data.findMember(next.getMemberId());
+    Reward reward = data.findReward(next.getRewardId());
+    Guest guest = (member == null) ? null : data.findGuest(member.getGuestId());
+
+    ui.displayMessage("  Next request in the queue:");
+    ui.displayMessage("");
+    MessageUI.displayField("Redemption ID", next.getRedemptionId());
+    MessageUI.displayField("Member", next.getMemberId()
+        + (guest == null ? "" : "  (" + guest.getFullName() + ")"));
+    MessageUI.displayField("Reward", reward == null ? next.getRewardId()
+        : reward.getRewardName());
+    MessageUI.displayField("Points required", String.valueOf(next.getPointsUsed()));
+    MessageUI.displayField("Requested on", String.valueOf(next.getRequestDate()));
+
+    if (member != null) {
+      MessageUI.displayField("Member balance", String.valueOf(member.getPointsBalance()));
+      MessageUI.displayField("Member tier", member.getTier());
+    }
+    if (reward != null) {
+      MessageUI.displayField("Minimum tier", reward.getMinimumTier());
+      MessageUI.displayField("Stock left", String.valueOf(reward.getStockQuantity()));
+    }
+
+    ui.displayMessage("");
+    if (!ui.confirm("Process this request?")) {
+      ui.displayMessage("  It stays at the front of the queue.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Redemption> result = service.processNextRedemption(staffId);
+    Redemption processed = result.getValue();
+
+    if (processed != null && Redemption.APPROVED.equals(processed.getStatus())) {
+      ui.displaySuccess(result.getMessage());
+
+      if (member != null) {
+        ui.displayMessage("  " + member.getMemberId() + " now has "
+            + member.getPointsBalance() + " points.");
+      }
+
+      // An approved reward is worth real money off a bill, so the chance to
+      // apply it is offered while the guest is still here.
+      if (reward != null && reward.getCashValue() > 0) {
+        offerToApplyToBill(processed, member, reward);
+      }
+    } else {
+      ui.displayError(result.getMessage());
+      ui.displayMessage("  No points have been deducted.");
+    }
+    ui.pause();
+  }
+
+  /** Offers to take an approved reward off the guest's live bill. */
+  private void offerToApplyToBill(Redemption redemption, Member member, Reward reward) {
+    if (member == null) {
+      return;
+    }
+
+    ListInterface<Booking> live = data.getBookingList().filter(
+        booking -> member.getGuestId().equals(booking.getGuestId())
+            && (Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())
+                || Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())));
+
+    if (live.isEmpty()) {
+      ui.displayMessage("");
+      ui.displayMessage("  This member has no live booking to apply the reward to.");
+      ui.displayMessage("  It can be applied from Front Desk on their next stay.");
+      return;
+    }
+
+    ui.displayMessage("");
+    ui.displayMessage(String.format("  This reward is worth RM%.2f off a bill.",
+        reward.getCashValue()));
+
+    Booking booking = live.getEntry(1);
+    if (!ui.confirm("Apply it to booking " + booking.getBookingId() + " now?")) {
+      return;
+    }
+
+    ServiceResult<entity.Invoice> applied = service.applyRedemptionToInvoice(
+        redemption.getRedemptionId(), booking.getBookingId());
+
+    if (applied.isSuccess()) {
+      ui.displaySuccess(applied.getMessage());
+    } else {
+      ui.displayError(applied.getMessage());
+    }
+  }
+
+  private void displayPendingQueue() {
+    ui.startAction("PENDING REDEMPTION QUEUE");
+
+    ListInterface<Redemption> pending = data.getPendingRedemptions();
+    if (pending.isEmpty()) {
+      ui.displayMessage("  No request is waiting.");
+      ui.pause();
+      return;
+    }
+
+    ui.displaySectionHeading("Waiting, in the order they will be processed");
+    ui.displayTableHeading(String.format("  %-4s %-8s %-7s %-26s %7s  %s",
+        "POS", "REDEEM", "MEMBER", "REWARD", "POINTS", "REQUESTED"));
+
+    for (int i = 1; i <= pending.getNumberOfEntries(); i++) {
+      Redemption redemption = pending.getEntry(i);
+      Reward reward = data.findReward(redemption.getRewardId());
+
+      System.out.printf("  %-4d %-8s %-7s %-26s %7d  %s%n",
+          i, redemption.getRedemptionId(), redemption.getMemberId(),
+          reward == null ? redemption.getRewardId() : reward.getRewardName(),
+          redemption.getPointsUsed(), redemption.getRequestDate());
+    }
+    ui.displayThinRule();
+    ui.displayMessage("  First requested, first processed. There is no priority lane.");
+    ui.pause();
+  }
+
+  private void displayRedemptionHistory() {
+    ui.startAction("REDEMPTION HISTORY");
+
+    ListInterface<Redemption> history = copyOfRedemptions(data.getRedemptionList());
+    history.sort(Comparator.comparing(Redemption::getRequestDate).reversed());
+
+    ui.displayRedemptionList(history, data, "No redemption has ever been requested.");
+    ui.pause();
+  }
+
+  // ==================================================================
+  // NOTIFICATIONS
+  // ==================================================================
+
+  private void displayNotifications() {
+    ui.startAction("A MEMBER'S NOTIFICATIONS");
+
+    Member member = promptForMember();
+    if (member == null) {
+      return;
+    }
+
+    final String memberId = member.getMemberId();
+    ListInterface<Notification> notifications = data.getNotificationList().filter(
+        notification -> memberId.equals(notification.getMemberId()));
+    notifications.sort(Comparator.comparing(Notification::getCreatedDate).reversed());
+
+    ui.displayNotifications(notifications, memberId);
+
+    if (!notifications.isEmpty() && notifications.countIf(n -> !n.isRead()) > 0) {
+      ui.displayMessage("");
+      if (ui.confirm("Mark them all as read?")) {
+        for (int i = 1; i <= notifications.getNumberOfEntries(); i++) {
+          notifications.getEntry(i).setRead(true);
         }
-      } else if (Redemption.STATUS_PENDING.equalsIgnoreCase(status)) {
-        pendingCount++;
-      } else if (Redemption.STATUS_REJECTED.equalsIgnoreCase(status)) {
-        rejectedCount++;
+        data.saveLoyalty();
+        ui.displaySuccess("All notifications marked as read.");
+      }
+    }
+    ui.pause();
+  }
+
+  /**
+   * Shows the offer that suits a particular member.
+   *
+   * Built from their tier, their balance and how long they have been a member,
+   * so a long-standing Diamond member is not shown the same welcome offer as
+   * somebody who joined last week.
+   */
+  private void displayPromotion() {
+    ui.startAction("PERSONALISED PROMOTION");
+
+    Member member = promptForMember();
+    if (member == null) {
+      return;
+    }
+
+    Guest guest = data.findGuest(member.getGuestId());
+    ui.displayMember(member, guest);
+
+    long monthsAMember = ChronoUnit.MONTHS.between(member.getJoinDate(), LocalDate.now());
+
+    ui.displaySectionHeading("Offer for "
+        + (guest == null ? member.getMemberId() : guest.getFullName()));
+
+    switch (member.getTier()) {
+      case Member.DIAMOND:
+        ui.displayMessage("  Diamond signature experience:");
+        ui.displayMessage("  A night in the Executive Villa, and a private dining");
+        ui.displayMessage("  experience for two.");
+        break;
+
+      case Member.PLATINUM:
+        ui.displayMessage("  Premium Platinum offer:");
+        ui.displayMessage("  A complimentary suite upgrade on your next stay, and");
+        ui.displayMessage("  lounge access for the duration.");
+        break;
+
+      case Member.GOLD:
+        ui.displayMessage("  Enhanced Gold offer:");
+        ui.displayMessage("  A spa session at half the usual points, and late");
+        ui.displayMessage("  check-out on request.");
+        break;
+
+      default:
+        ui.displayMessage("  Silver welcome offer:");
+        ui.displayMessage("  Double points on your next stay, and a welcome");
+        ui.displayMessage("  fruit basket on arrival.");
+        break;
+    }
+
+    String nextTier = member.getNextTier();
+    if (nextTier != null) {
+      ui.displayMessage("");
+      ui.displayMessage("  You are " + member.getPointsToNextTier()
+          + " lifetime points from " + nextTier + ".");
+    }
+
+    if (monthsAMember >= 12) {
+      ui.displayMessage("");
+      ui.displayMessage("  Thank you for " + monthsAMember
+          + " months with us - a loyalty bonus applies to your next booking.");
+    }
+
+    // Rewards they could actually take today, rather than the whole catalogue.
+    ListInterface<Reward> affordable = data.getRewardList().filter(reward ->
+        reward.isAvailable()
+            && reward.getPointsRequired() <= member.getPointsBalance()
+            && Member.tierRank(member.getTier())
+                >= Member.tierRank(reward.getMinimumTier()));
+
+    if (!affordable.isEmpty()) {
+      ui.displaySectionHeading("You could redeem right now");
+      for (int i = 1; i <= affordable.getNumberOfEntries(); i++) {
+        Reward reward = affordable.getEntry(i);
+        System.out.printf("    %-30s %d points%n",
+            reward.getRewardName(), reward.getPointsRequired());
       }
     }
 
-    double averageCompleted = completedCount == 0
-        ? 0.0 : (double) totalCompletedPoints / completedCount;
-
-    return new RedemptionReportSummary(
-        totalMatches,
-        completedCount,
-        pendingCount,
-        rejectedCount,
-        totalCompletedPoints,
-        averageCompleted,
-        highestCompletedPoints);
+    ui.displayMessage("");
+    if (ui.confirm("Send this promotion to the member?")) {
+      service.raiseNotification(member.getMemberId(), Notification.PROMOTION,
+          "A " + member.getTier() + " offer is waiting for you.", null);
+      data.saveLoyalty();
+      ui.displaySuccess("Promotion sent.");
+    }
+    ui.pause();
   }
 
-  private int countMembersNearNextTier(ListInterface<Member> members) {
-    int count = 0;
-    for (int position = 1; position <= members.getNumberOfEntries(); position++) {
-      if (isNearNextTier(members.getEntry(position))) {
-        count++;
+  // ==================================================================
+  // REPORTS
+  // ==================================================================
+
+  /** Who the members are and how the tiers are distributed. */
+  private void membershipReport() {
+    ui.displayReportHeader("MEMBERSHIP & TIER PERFORMANCE REPORT");
+
+    ListInterface<Member> members = data.getMemberList();
+    if (members.isEmpty()) {
+      ui.displayMessage("");
+      ui.displayMessage("  There are no members to analyse.");
+      ui.pause();
+      return;
+    }
+
+    int total = members.getNumberOfEntries();
+    int totalBalance = 0;
+    int totalLifetime = 0;
+    Member highest = null;
+
+    for (int i = 1; i <= total; i++) {
+      Member member = members.getEntry(i);
+      totalBalance += member.getPointsBalance();
+      totalLifetime += member.getLifetimePoints();
+
+      if (highest == null || member.getPointsBalance() > highest.getPointsBalance()) {
+        highest = member;
       }
     }
-    return count;
+
+    ui.displaySectionHeading("Membership");
+    ui.displayReportLine("Total members", String.valueOf(total));
+    ui.displayReportLine("Active",
+        String.valueOf(members.countIf(m -> Member.ACTIVE.equals(m.getStatus()))));
+    ui.displayReportLine("Points outstanding", String.valueOf(totalBalance));
+    ui.displayReportLine("Average balance", String.valueOf(totalBalance / total));
+    ui.displayReportLine("Lifetime points issued", String.valueOf(totalLifetime));
+
+    if (highest != null) {
+      Guest guest = data.findGuest(highest.getGuestId());
+      ui.displayReportLine("Highest balance", String.format("%s  (%s, %d points)",
+          guest == null ? "-" : guest.getFullName(),
+          highest.getMemberId(), highest.getPointsBalance()));
+    }
+
+    displayTierBreakdown(members);
+
+    LocalDate today = LocalDate.now();
+    ui.displaySectionHeading("Attention needed");
+    ui.displayReportLine("Points expiring within " + Member.EXPIRING_SOON_DAYS + " days",
+        String.valueOf(members.countIf(m -> m.hasExpiringPoints(today))));
+    ui.displayReportLine("Within 500 points of the next tier",
+        String.valueOf(members.countIf(m -> m.getNextTier() != null
+            && m.getPointsToNextTier() <= 500)));
+    ui.displayReportLine("Joined in the last 30 days",
+        String.valueOf(members.countIf(
+            m -> ChronoUnit.DAYS.between(m.getJoinDate(), today) <= 30)));
+
+    ui.displayReportFooter();
+    ui.pause();
   }
 
-  private boolean isNearNextTier(Member member) {
-    int points = member.getPoints();
-    String tier = member.getTier() == null ? TIER_SILVER : member.getTier();
+  /** How the members split across the four tiers. */
+  private void displayTierBreakdown(ListInterface<Member> members) {
+    String[] tiers = {Member.SILVER, Member.GOLD, Member.PLATINUM, Member.DIAMOND};
+    String[] labels = new String[tiers.length];
+    double[] values = new double[tiers.length];
 
-    if (TIER_SILVER.equalsIgnoreCase(tier)) {
-      return points >= GOLD_THRESHOLD - NEAR_NEXT_TIER_POINTS
-          && points < GOLD_THRESHOLD;
+    for (int i = 0; i < tiers.length; i++) {
+      final String tier = tiers[i];
+      labels[i] = tier.substring(0, Math.min(4, tier.length()));
+      values[i] = members.countIf(member -> tier.equals(member.getTier()));
     }
-    if (TIER_GOLD.equalsIgnoreCase(tier)) {
-      return points >= PLATINUM_THRESHOLD - NEAR_NEXT_TIER_POINTS
-          && points < PLATINUM_THRESHOLD;
-    }
-    if (TIER_PLATINUM.equalsIgnoreCase(tier)) {
-      return points >= DIAMOND_THRESHOLD - NEAR_NEXT_TIER_POINTS
-          && points < DIAMOND_THRESHOLD;
-    }
-    return false;
-  }
 
-  private Condition<Member> hasTier(String tier) {
-    return member -> tier.equalsIgnoreCase(
-        member.getTier() == null ? TIER_SILVER : member.getTier());
-  }
+    ui.displayBarChart("Members by tier", "Members", labels, values);
 
-  private Comparator<RedemptionReportRow> byRedemptionPointsDescendingThenId() {
-    return (first, second) -> {
-      int pointsCompare = Integer.compare(
-          second.getRedemption().getPointsUsed(),
-          first.getRedemption().getPointsUsed());
-      if (pointsCompare != 0) {
-        return pointsCompare;
+    ui.displaySectionHeading("Tier detail");
+    for (int i = 0; i < tiers.length; i++) {
+      final String tier = tiers[i];
+      int count = (int) values[i];
+
+      int tierPoints = 0;
+      for (int j = 1; j <= members.getNumberOfEntries(); j++) {
+        Member member = members.getEntry(j);
+        if (tier.equals(member.getTier())) {
+          tierPoints += member.getPointsBalance();
+        }
       }
-      return first.getRedemption().getRedemptionId()
-          .compareToIgnoreCase(second.getRedemption().getRedemptionId());
-    };
+
+      ui.displayReportLine(tier, String.format("%d member(s)  (%.1f%%)  %d points held",
+          count, (count * 100.0) / members.getNumberOfEntries(), tierPoints));
+    }
   }
 
-  private String buildMembershipReportFilterDescription(String tierFilter,
-      Integer minPoints, Integer maxPoints, LocalDate joinStart,
-      LocalDate joinEnd, LocalDate expiryBefore) {
-    StringBuilder description = new StringBuilder();
-    description.append("Tier = ")
-        .append(REPORT_ALL_TIERS.equalsIgnoreCase(tierFilter) ? "All" : tierFilter);
+  /** How redemptions are going - approved, refused, and why. */
+  private void redemptionReport() {
+    ui.displayReportHeader("REDEMPTION ANALYSIS REPORT");
 
-    if (minPoints != null) {
-      description.append(", Min points = ").append(minPoints);
+    ListInterface<Redemption> all = data.getRedemptionList();
+    if (all.isEmpty()) {
+      ui.displayMessage("");
+      ui.displayMessage("  No redemption has ever been requested.");
+      ui.pause();
+      return;
     }
-    if (maxPoints != null) {
-      description.append(", Max points = ").append(maxPoints);
+
+    int total = all.getNumberOfEntries();
+    int approved = all.countIf(r -> Redemption.APPROVED.equals(r.getStatus()));
+    int rejected = all.countIf(r -> Redemption.REJECTED.equals(r.getStatus()));
+    int pending = all.countIf(Redemption::isPending);
+
+    int pointsRedeemed = 0;
+    int pointsPending = 0;
+    for (int i = 1; i <= total; i++) {
+      Redemption redemption = all.getEntry(i);
+      if (Redemption.APPROVED.equals(redemption.getStatus())) {
+        pointsRedeemed += redemption.getPointsUsed();
+      } else if (redemption.isPending()) {
+        pointsPending += redemption.getPointsUsed();
+      }
     }
-    if (joinStart != null) {
-      description.append(", Join on/after = ").append(joinStart);
-    }
-    if (joinEnd != null) {
-      description.append(", Join on/before = ").append(joinEnd);
-    }
-    if (expiryBefore != null) {
-      description.append(", Expiry on/before = ").append(expiryBefore);
-    }
-    return description.toString();
+
+    ui.displaySectionHeading("Requests");
+    ui.displayReportLine("Total requests", String.valueOf(total));
+    ui.displayReportLine("Approved", approved + percentOf(approved, total));
+    ui.displayReportLine("Rejected", rejected + percentOf(rejected, total));
+    ui.displayReportLine("Still waiting", pending + percentOf(pending, total));
+
+    int decided = approved + rejected;
+    ui.displayReportLine("Approval rate", decided == 0 ? "-"
+        : String.format("%.1f%%", (approved * 100.0) / decided));
+
+    ui.displaySectionHeading("Points");
+    ui.displayReportLine("Points redeemed", String.valueOf(pointsRedeemed));
+    ui.displayReportLine("Points committed but not yet decided",
+        String.valueOf(pointsPending));
+
+    displayRewardPopularity(all);
+    displayRejectionReasons(all);
+
+    ui.displayReportFooter();
+    ui.pause();
   }
 
-  private String buildRedemptionReportFilterDescription(String statusFilter,
-      Integer minPoints, Integer maxPoints, String tierFilter,
-      LocalDate startDate, LocalDate endDate) {
-    StringBuilder description = new StringBuilder();
-    description.append("Status = ")
-        .append(REPORT_ALL_STATUSES.equalsIgnoreCase(statusFilter) ? "All" : statusFilter);
+  /** Which rewards people actually want. */
+  private void displayRewardPopularity(ListInterface<Redemption> all) {
+    ListInterface<Reward> rewards = data.getRewardList();
+    String[] labels = new String[rewards.getNumberOfEntries()];
+    double[] values = new double[rewards.getNumberOfEntries()];
 
-    if (minPoints != null) {
-      description.append(", Min points = ").append(minPoints);
-    }
-    if (maxPoints != null) {
-      description.append(", Max points = ").append(maxPoints);
-    }
-    if (!REPORT_ALL_TIERS.equalsIgnoreCase(tierFilter)) {
-      description.append(", Member tier = ").append(tierFilter);
-    }
-    if (startDate != null) {
-      description.append(", Request on/after = ").append(startDate);
-    }
-    if (endDate != null) {
-      description.append(", Request on/before = ").append(endDate);
-    }
-    return description.toString();
-  }
+    Reward most = null;
+    Reward least = null;
+    int highest = -1;
+    int lowest = Integer.MAX_VALUE;
 
-  /**
-   * Keeps the higher of the member's current tier and the tier their points
-   * qualify for, so automatic tier handling never downgrades a member.
-   */
-  private String resolveTierAfterPoints(String currentTier, int points) {
-    String normalizedCurrent =
-        currentTier == null ? TIER_SILVER : currentTier;
-    String qualifiedTier = determineTier(points);
+    for (int i = 1; i <= rewards.getNumberOfEntries(); i++) {
+      Reward reward = rewards.getEntry(i);
+      final String rewardId = reward.getRewardId();
+      int count = all.countIf(r -> rewardId.equals(r.getRewardId()));
 
-    if (getTierRank(qualifiedTier) > getTierRank(normalizedCurrent)) {
-      return qualifiedTier;
-    }
-    return normalizedCurrent;
-  }
+      labels[i - 1] = rewardId;
+      values[i - 1] = count;
 
-  private int getTierRank(String tier) {
-    if (TIER_DIAMOND.equalsIgnoreCase(tier)) {
-      return 4;
-    }
-    if (TIER_PLATINUM.equalsIgnoreCase(tier)) {
-      return 3;
-    }
-    if (TIER_GOLD.equalsIgnoreCase(tier)) {
-      return 2;
-    }
-    return 1;
-  }
-
-  /**
-   * Simple result object used when reporting tier changes after points are
-   * accumulated.
-   */
-  public static class TierProgressionResult {
-    private final String oldTier;
-    private final String newTier;
-    private final boolean upgraded;
-
-    public TierProgressionResult(String oldTier, String newTier, boolean upgraded) {
-      this.oldTier = oldTier;
-      this.newTier = newTier;
-      this.upgraded = upgraded;
+      if (count > highest) {
+        highest = count;
+        most = reward;
+      }
+      if (count < lowest) {
+        lowest = count;
+        least = reward;
+      }
     }
 
-    public String getOldTier() {
-      return oldTier;
-    }
+    ui.displayBarChart("Requests by reward", "Requests", labels, values);
 
-    public String getNewTier() {
-      return newTier;
+    if (most != null) {
+      ui.displayReportLine("Most requested",
+          most.getRewardName() + "  (" + highest + ")");
     }
-
-    public boolean isUpgraded() {
-      return upgraded;
+    if (least != null) {
+      ui.displayReportLine("Least requested",
+          least.getRewardName() + "  (" + lowest + ")");
     }
   }
 
   /**
-   * Result object returned when a promotion is selected for a member.
+   * Why requests were refused.
+   *
+   * Worth reporting: a pattern of refusals for one reason suggests the rule
+   * itself, or how it is explained to members, needs looking at.
    */
-  public static class PersonalizedPromotionResult {
-    private final Member member;
-    private final int membershipMonths;
-    private final String promotionTitle;
-    private final String promotionDetails;
-    private final String eligibilityReason;
+  private void displayRejectionReasons(ListInterface<Redemption> all) {
+    ListInterface<Redemption> rejected = all.filter(
+        r -> Redemption.REJECTED.equals(r.getStatus()));
 
-    public PersonalizedPromotionResult(Member member, int membershipMonths,
-        String promotionTitle, String promotionDetails, String eligibilityReason) {
-      this.member = member;
-      this.membershipMonths = membershipMonths;
-      this.promotionTitle = promotionTitle;
-      this.promotionDetails = promotionDetails;
-      this.eligibilityReason = eligibilityReason;
+    if (rejected.isEmpty()) {
+      return;
     }
 
-    public Member getMember() {
-      return member;
-    }
+    ui.displaySectionHeading("Why requests were refused");
+    ui.displayTableHeading(String.format("  %-8s %-7s %-24s %s",
+        "REDEEM", "MEMBER", "REWARD", "REASON"));
 
-    public int getMembershipMonths() {
-      return membershipMonths;
-    }
+    for (int i = 1; i <= rejected.getNumberOfEntries(); i++) {
+      Redemption redemption = rejected.getEntry(i);
+      Reward reward = data.findReward(redemption.getRewardId());
 
-    public String getPromotionTitle() {
-      return promotionTitle;
+      System.out.printf("  %-8s %-7s %-24s %s%n",
+          redemption.getRedemptionId(), redemption.getMemberId(),
+          reward == null ? redemption.getRewardId() : reward.getRewardName(),
+          redemption.getRejectReason() == null ? "-" : redemption.getRejectReason());
     }
-
-    public String getPromotionDetails() {
-      return promotionDetails;
-    }
-
-    public String getEligibilityReason() {
-      return eligibilityReason;
-    }
+    ui.displayThinRule();
   }
 
-  /**
-   * Summary metrics for the membership and tier performance report.
-   */
-  public static class MembershipReportSummary {
-    private final int totalMembers;
-    private final int totalPoints;
-    private final double averagePoints;
-    private final int silverCount;
-    private final int goldCount;
-    private final int platinumCount;
-    private final int diamondCount;
-    private final Member highestPointsMember;
-    private final int nearNextTierCount;
+  // ==================================================================
+  // HELPERS
+  // ==================================================================
 
-    public MembershipReportSummary(int totalMembers, int totalPoints,
-        double averagePoints, int silverCount, int goldCount, int platinumCount,
-        int diamondCount, Member highestPointsMember, int nearNextTierCount) {
-      this.totalMembers = totalMembers;
-      this.totalPoints = totalPoints;
-      this.averagePoints = averagePoints;
-      this.silverCount = silverCount;
-      this.goldCount = goldCount;
-      this.platinumCount = platinumCount;
-      this.diamondCount = diamondCount;
-      this.highestPointsMember = highestPointsMember;
-      this.nearNextTierCount = nearNextTierCount;
+  /** Asks for a member ID and finds them, reporting a bad ID. */
+  private Member promptForMember() {
+    String memberId = ui.inputMemberId();
+    if (memberId == null) {
+      return null;
     }
 
-    public int getTotalMembers() {
-      return totalMembers;
+    Member member = data.findMember(memberId);
+    if (member == null) {
+      ui.displayError("No member with ID " + memberId + ".");
+      ui.pause();
+      return null;
     }
-
-    public int getTotalPoints() {
-      return totalPoints;
-    }
-
-    public double getAveragePoints() {
-      return averagePoints;
-    }
-
-    public int getSilverCount() {
-      return silverCount;
-    }
-
-    public int getGoldCount() {
-      return goldCount;
-    }
-
-    public int getPlatinumCount() {
-      return platinumCount;
-    }
-
-    public int getDiamondCount() {
-      return diamondCount;
-    }
-
-    public Member getHighestPointsMember() {
-      return highestPointsMember;
-    }
-
-    public int getNearNextTierCount() {
-      return nearNextTierCount;
-    }
+    return member;
   }
 
-  /**
-   * Enriched redemption row used by the redemption analysis report.
-   */
-  public static class RedemptionReportRow {
-    private final Redemption redemption;
-    private final String memberName;
-    private final String memberTier;
-    private final String rewardName;
-
-    public RedemptionReportRow(Redemption redemption, String memberName,
-        String memberTier, String rewardName) {
-      this.redemption = redemption;
-      this.memberName = memberName;
-      this.memberTier = memberTier;
-      this.rewardName = rewardName;
+  private ListInterface<Member> copyOf(ListInterface<Member> source) {
+    ListInterface<Member> copy = new ArrayList<>();
+    for (int i = 1; i <= source.getNumberOfEntries(); i++) {
+      copy.add(source.getEntry(i));
     }
-
-    public Redemption getRedemption() {
-      return redemption;
-    }
-
-    public String getMemberName() {
-      return memberName;
-    }
-
-    public String getMemberTier() {
-      return memberTier;
-    }
-
-    public String getRewardName() {
-      return rewardName;
-    }
+    return copy;
   }
 
-  /**
-   * Summary metrics for the redemption analysis report.
-   */
-  public static class RedemptionReportSummary {
-    private final int totalMatches;
-    private final int completedCount;
-    private final int pendingCount;
-    private final int rejectedCount;
-    private final int totalCompletedPoints;
-    private final double averageCompletedPoints;
-    private final int highestCompletedPoints;
-
-    public RedemptionReportSummary(int totalMatches, int completedCount,
-        int pendingCount, int rejectedCount, int totalCompletedPoints,
-        double averageCompletedPoints, int highestCompletedPoints) {
-      this.totalMatches = totalMatches;
-      this.completedCount = completedCount;
-      this.pendingCount = pendingCount;
-      this.rejectedCount = rejectedCount;
-      this.totalCompletedPoints = totalCompletedPoints;
-      this.averageCompletedPoints = averageCompletedPoints;
-      this.highestCompletedPoints = highestCompletedPoints;
+  private ListInterface<Redemption> copyOfRedemptions(ListInterface<Redemption> source) {
+    ListInterface<Redemption> copy = new ArrayList<>();
+    for (int i = 1; i <= source.getNumberOfEntries(); i++) {
+      copy.add(source.getEntry(i));
     }
+    return copy;
+  }
 
-    public int getTotalMatches() {
-      return totalMatches;
+  private String percentOf(int part, int whole) {
+    if (whole == 0) {
+      return "";
     }
-
-    public int getCompletedCount() {
-      return completedCount;
-    }
-
-    public int getPendingCount() {
-      return pendingCount;
-    }
-
-    public int getRejectedCount() {
-      return rejectedCount;
-    }
-
-    public int getTotalCompletedPoints() {
-      return totalCompletedPoints;
-    }
-
-    public double getAverageCompletedPoints() {
-      return averageCompletedPoints;
-    }
-
-    public int getHighestCompletedPoints() {
-      return highestCompletedPoints;
-    }
+    return String.format("  (%.1f%%)", (part * 100.0) / whole);
   }
 }
