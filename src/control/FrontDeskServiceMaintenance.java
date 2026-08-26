@@ -94,6 +94,9 @@ public class FrontDeskServiceMaintenance {
           cancelBooking();
           break;
         case 4:
+          deleteBooking();
+          break;
+        case 5:
           markNoShow();
           break;
         default:
@@ -171,18 +174,21 @@ public class FrontDeskServiceMaintenance {
       choice = ui.getSearchMenuChoice();
       switch (choice) {
         case 1:
-          searchByBookingId();
+          searchByConfirmationNumber();
           break;
         case 2:
-          searchByGuestName();
+          searchByBookingId();
           break;
         case 3:
-          searchByRoom();
+          searchByGuestName();
           break;
         case 4:
-          filterByStatus();
+          searchByRoom();
           break;
         case 5:
+          filterByStatus();
+          break;
+        case 6:
           displayAllBookings();
           break;
         default:
@@ -475,6 +481,41 @@ public class FrontDeskServiceMaintenance {
     data.saveAll();
 
     ui.displaySuccess("Booking " + booking.getBookingId() + " cancelled.");
+    ui.pause();
+  }
+
+  /**
+   * Permanently removes only a booking that has not yet affected any room,
+   * invoice, or walk-in record.  Once a booking is connected to operational
+   * data, cancellation preserves the audit trail instead.
+   */
+  private void deleteBooking() {
+    ui.startAction("DELETE AN UNASSIGNED BOOKING");
+
+    Booking booking = promptForBooking();
+    if (booking == null) {
+      return;
+    }
+    if (!Booking.STATUS_PENDING.equals(booking.getBookingStatus())
+        || booking.getRoomNo() != null
+        || booking.getRegId() != null
+        || data.findInvoiceByBooking(booking.getBookingId()) != null) {
+      ui.displayError("Only an unassigned standalone pending booking can be deleted.");
+      ui.displayMessage("  Cancel this booking instead to keep its operational history.");
+      ui.pause();
+      return;
+    }
+
+    ui.displayBooking(booking, data);
+    if (!ui.confirm("Permanently delete this booking?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    data.removeBooking(booking);
+    data.saveFrontDesk();
+    ui.displaySuccess("Booking " + booking.getBookingId() + " deleted.");
     ui.pause();
   }
 
@@ -1117,6 +1158,36 @@ public class FrontDeskServiceMaintenance {
       }
 
       if (!ui.confirmAnother("Look up another booking number?")) {
+        return;
+      }
+    }
+  }
+
+  /** Searches the confirmation-number tree used for fast caller lookup. */
+  private void searchByConfirmationNumber() {
+    while (true) {
+      ui.startAction("SEARCH BY 8-DIGIT CONFIRMATION NUMBER");
+
+      String confirmationNumber = ui.inputConfirmationNumber();
+      if (confirmationNumber == null) {
+        return;
+      }
+
+      Booking booking = data.findBookingByConfirmation(confirmationNumber);
+      if (booking == null) {
+        ui.displayError("No booking has confirmation number " + confirmationNumber
+            + ". Enter another number, or 0 to go back.");
+        ui.pause("Press ENTER to try another number");
+        continue;
+      }
+
+      ui.displayBooking(booking, data);
+      Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+      if (invoice != null) {
+        ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
+      }
+
+      if (!ui.confirmAnother("Look up another confirmation number?")) {
         return;
       }
     }

@@ -113,6 +113,10 @@ public class IntegrationTest {
         candidate -> "BK0001".equals(candidate.getBookingId()));
     runner.check("the tree and the list hold the same booking",
         booking == sameBookingViaList);
+    runner.check("a booking has an eight-digit confirmation number",
+        booking.getConfirmationNumber().matches("\\d{8}"));
+    runner.check("the confirmation tree retrieves that same booking",
+        booking == data.findBookingByConfirmation(booking.getConfirmationNumber()));
   }
 
   // ==================================================================

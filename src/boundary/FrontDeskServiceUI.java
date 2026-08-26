@@ -32,7 +32,7 @@ public class FrontDeskServiceUI {
     MessageUI.displayMenuScreen("FRONT-DESK SERVICE", null,
         "Main Menu  >  Front-Desk Service",
         new String[] {
-          "Bookings (create, amend, cancel)",
+          "Bookings (create, edit, update, delete)",
           "Rooms (availability, assign, expedite cleaning)",
           "Stay (check in, check out)",
           "Billing (payments, loyalty discount)",
@@ -48,12 +48,13 @@ public class FrontDeskServiceUI {
         "Main Menu  >  Front-Desk Service  >  Bookings",
         new String[] {
           "Create a new booking",
-          "Amend a booking (dates or guest count)",
+          "Edit / update a booking (dates or guest count)",
           "Cancel a booking",
+          "Delete an unassigned booking",
           "Mark a booking as no-show"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 4, "go back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
   }
 
   public int getRoomMenuChoice() {
@@ -97,6 +98,7 @@ public class FrontDeskServiceUI {
     MessageUI.displayMenuScreen("SEARCH & DISPLAY", null,
         "Main Menu  >  Front-Desk Service  >  Search & Display",
         new String[] {
+          "Search by 8-digit confirmation number",
           "Search by booking ID",
           "Search by guest name",
           "Search by room number",
@@ -104,7 +106,7 @@ public class FrontDeskServiceUI {
           "Display all bookings (sorted by ID)"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 5, "go back");
+    return MessageUI.readMenuChoice(scanner, 6, "go back");
   }
 
   public int getReportMenuChoice() {
@@ -125,6 +127,11 @@ public class FrontDeskServiceUI {
   public String inputBookingId() {
     String id = MessageUI.readIdNumber(scanner, "Booking number", "BK", 4);
     return MessageUI.isCancelled(id) ? null : id;
+  }
+
+  public String inputConfirmationNumber() {
+    String number = MessageUI.readIdNumber(scanner, "8-digit confirmation number", "", 8);
+    return MessageUI.isCancelled(number) ? null : number;
   }
 
   public String inputRoomNo() {
@@ -347,6 +354,7 @@ public class FrontDeskServiceUI {
 
     MessageUI.displayBlankLine();
     MessageUI.displayField("Booking ID", booking.getBookingId());
+    MessageUI.displayField("Confirmation no.", booking.getConfirmationNumber());
     MessageUI.displayField("Guest", (guest == null ? "-" : guest.getFullName())
         + " (" + booking.getGuestId() + ")");
     MessageUI.displayField("Room type", type == null ? booking.getTypeId()

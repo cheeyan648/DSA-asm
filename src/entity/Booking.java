@@ -40,6 +40,12 @@ public class Booking implements Serializable {
   public static final String SOURCE_CORPORATE = "CORPORATE";
 
   private String bookingId;
+  /**
+   * The eight-digit number given to the guest.  It is deliberately separate
+   * from the internal BK identifier so front-desk staff can retrieve a stay
+   * from the number a caller has in hand without exposing implementation IDs.
+   */
+  private String confirmationNumber;
   private String guestId;
   private String typeId;
   private String roomNo;
@@ -99,6 +105,14 @@ public class Booking implements Serializable {
 
   public void setBookingId(String bookingId) {
     this.bookingId = bookingId;
+  }
+
+  public String getConfirmationNumber() {
+    return confirmationNumber;
+  }
+
+  public void setConfirmationNumber(String confirmationNumber) {
+    this.confirmationNumber = confirmationNumber;
   }
 
   public String getGuestId() {

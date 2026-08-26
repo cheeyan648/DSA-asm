@@ -439,6 +439,9 @@ public class UnitTest {
     runner.checkEquals("a new booking starts PENDING", Booking.STATUS_PENDING,
         booking.getBookingStatus());
     runner.checkEquals("with no room", null, booking.getRoomNo());
+    booking.setConfirmationNumber("12345678");
+    runner.checkEquals("stores an eight-digit confirmation number", "12345678",
+        booking.getConfirmationNumber());
 
     runner.check("a stay inside the range overlaps",
         booking.overlaps(LocalDate.of(2026, 9, 2), LocalDate.of(2026, 9, 3)));

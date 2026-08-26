@@ -22,7 +22,7 @@ public class MessageUI {
    * heading the system prints, and narrow enough to fit an 80-column console
    * without wrapping.
    */
-  public static final int SCREEN_WIDTH = 76;
+  public static final int SCREEN_WIDTH = 91;
 
   /**
    * The block-letter alphabet used by displayBanner(). Each letter is 5 rows

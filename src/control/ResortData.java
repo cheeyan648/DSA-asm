@@ -89,6 +89,8 @@ public class ResortData {
 
   /** Keyed lookup plus a sorted listing for free from an in-order walk. */
   private TreeInterface<String, Booking> bookingTree;
+  /** Fast front-desk lookup by the guest-facing eight-digit confirmation. */
+  private TreeInterface<String, Booking> confirmationTree;
   private TreeInterface<String, Member> memberTree;
 
   // ==================================================================
@@ -223,9 +225,23 @@ public class ResortData {
     }
 
     bookingTree = new BinarySearchTree<>();
+    confirmationTree = new BinarySearchTree<>();
+    int nextConfirmation = 1;
     for (int i = 1; i <= bookingList.getNumberOfEntries(); i++) {
       Booking booking = bookingList.getEntry(i);
       bookingTree.add(booking.getBookingId(), booking);
+
+      // Saved records created before confirmation numbers were introduced are
+      // upgraded in memory on load.  This keeps existing demonstrations and
+      // persisted data searchable without changing other modules.
+      String confirmation = booking.getConfirmationNumber();
+      if (!isEightDigitNumber(confirmation) || confirmationTree.contains(confirmation)) {
+        do {
+          confirmation = String.format("%08d", nextConfirmation++);
+        } while (confirmationTree.contains(confirmation));
+        booking.setConfirmationNumber(confirmation);
+      }
+      confirmationTree.add(confirmation, booking);
     }
 
     memberTree = new BinarySearchTree<>();
@@ -440,6 +456,15 @@ public class ResortData {
     return bookingTree.search(bookingId);
   }
 
+  /**
+   * Retrieves a booking directly from its guest-facing confirmation number.
+   * The binary search tree avoids scanning all booking records during a busy
+   * front-desk call.
+   */
+  public Booking findBookingByConfirmation(String confirmationNumber) {
+    return confirmationTree.search(confirmationNumber);
+  }
+
   public Member findMember(String memberId) {
     return memberTree.search(memberId);
   }
@@ -585,6 +610,18 @@ public class ResortData {
     return nextId("BK", 4, bookingList, Booking::getBookingId);
   }
 
+  /** Issues the next unused eight-digit confirmation number. */
+  public String nextConfirmationNumber() {
+    ListInterface<String> confirmations = new ArrayList<>();
+    for (int i = 1; i <= bookingList.getNumberOfEntries(); i++) {
+      String confirmation = bookingList.getEntry(i).getConfirmationNumber();
+      if (isEightDigitNumber(confirmation)) {
+        confirmations.add(confirmation);
+      }
+    }
+    return IdGenerator.next("", 8, confirmations);
+  }
+
   public String nextAssignmentId() {
     return nextId("RA", 4, assignmentList, RoomAssignment::getAssignmentId);
   }
@@ -637,8 +674,13 @@ public class ResortData {
 
   /** Adds a booking to both the table and the tree. */
   public void addBooking(Booking booking) {
+    if (!isEightDigitNumber(booking.getConfirmationNumber())
+        || confirmationTree.contains(booking.getConfirmationNumber())) {
+      booking.setConfirmationNumber(nextConfirmationNumber());
+    }
     bookingList.add(booking);
     bookingTree.add(booking.getBookingId(), booking);
+    confirmationTree.add(booking.getConfirmationNumber(), booking);
   }
 
   /** Adds a member to both the table and the tree. */
@@ -651,5 +693,18 @@ public class ResortData {
   public void removeBooking(Booking booking) {
     bookingList.removeEntry(booking);
     bookingTree.remove(booking.getBookingId());
+    confirmationTree.remove(booking.getConfirmationNumber());
+  }
+
+  private boolean isEightDigitNumber(String value) {
+    if (value == null || value.length() != 8) {
+      return false;
+    }
+    for (int i = 0; i < value.length(); i++) {
+      if (!Character.isDigit(value.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
   }
 }
