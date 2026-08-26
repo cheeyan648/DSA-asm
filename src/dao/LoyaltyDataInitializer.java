@@ -121,12 +121,14 @@ public class LoyaltyDataInitializer {
     txns.add(new PointTransaction("PT0004", "L0001", null, PointTransaction.EXPIRE,
         -497, 1620, today, "Expired points"));
 
+    // No EARN row is seeded against BK0002: that guest is still checked in and
+    // their bill is not settled, so the points have not been earned yet. They
+    // are awarded when the front desk checks them out, which is what makes the
+    // check-out demonstrable rather than already done.
     txns.add(new PointTransaction("PT0005", "L0002", null, PointTransaction.EARN,
-        5570, 5570, today.minusMonths(2), "Historical stays"));
+        6745, 6745, today.minusMonths(2), "Historical stays"));
     txns.add(new PointTransaction("PT0006", "L0002", null, PointTransaction.REDEEM,
-        -500, 5070, today.minusDays(1), "RD0001 - Room Upgrade"));
-    txns.add(new PointTransaction("PT0007", "L0002", "BK0002", PointTransaction.EARN,
-        1175, 6245, today.minusDays(1), "Stay BK0002 at PLATINUM rate"));
+        -500, 6245, today.minusDays(1), "RD0001 - Room Upgrade"));
 
     txns.add(new PointTransaction("PT0008", "L0003", "BK0003", PointTransaction.EARN,
         909, 909, today.minusDays(1), "Stay BK0003 at SILVER rate"));

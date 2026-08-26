@@ -71,7 +71,9 @@ public class MasterDataInitializer {
     ListInterface<Room> rooms = new ArrayList<>();
     LocalDateTime now = LocalDateTime.now();
 
-    rooms.add(new Room("1001", "RT01", 10, Room.OCCUPIED, Room.DIRTY,
+    // Just checked out of, so empty but not yet cleaned - task HK0001 is
+    // waiting against it.
+    rooms.add(new Room("1001", "RT01", 10, Room.VACANT, Room.DIRTY,
         false, now.minusDays(1).withHour(10).withMinute(20), ""));
     rooms.add(new Room("1002", "RT01", 10, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
         false, now.withHour(9).withMinute(5), ""));
@@ -81,7 +83,9 @@ public class MasterDataInitializer {
         false, now.withHour(8).withMinute(30), "Held for walk-in booking"));
     rooms.add(new Room("1005", "RT03", 10, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(9).withMinute(50), ""));
-    rooms.add(new Room("2001", "RT03", 20, Room.OCCUPIED, Room.DIRTY,
+    // A room with a guest in it was cleaned before they arrived, so it is
+    // occupied AND ready - the two statuses describe different things.
+    rooms.add(new Room("2001", "RT03", 20, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
         false, now.withHour(7).withMinute(15), ""));
     rooms.add(new Room("2002", "RT03", 20, Room.VACANT, Room.DIRTY,
         false, now.minusDays(2).withHour(14).withMinute(0), ""));
