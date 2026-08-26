@@ -5,6 +5,7 @@ import control.ResortData;
 import entity.Booking;
 import entity.Guest;
 import entity.Invoice;
+import entity.Member;
 import entity.Payment;
 import entity.Room;
 import entity.RoomAssignment;
@@ -543,6 +544,43 @@ public class FrontDeskServiceUI {
     MessageUI.displayField("Check-in", checkIn.format(dayFormat));
     MessageUI.displayField("Check-out", checkOut.format(dayFormat));
     MessageUI.displayBlankLine();
+  }
+
+  /**
+   * Shows what a checked-out guest's loyalty account looks like right now.
+   *
+   * Looked up by guest ID against the shared member list rather than passed
+   * in ready-made, so this always reflects the record loyalty itself would
+   * show - the same balance, the same tier - not a snapshot the front desk
+   * happened to be carrying.
+   *
+   * @param guestId whose account to show
+   * @param data the shared registry, used to find the guest and their member
+   * record
+   */
+  public void displayLoyaltyOutcome(String guestId, ResortData data) {
+    Member member = data.findMemberByGuest(guestId);
+    if (member == null) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  This guest is not enrolled in Loyalty & Rewards.");
+      return;
+    }
+
+    Guest guest = data.findGuest(guestId);
+
+    MessageUI.displaySectionHeading("Loyalty & Rewards");
+    MessageUI.displayField("Member", (guest == null ? "-" : guest.getFullName())
+        + " (" + member.getMemberId() + ")");
+    MessageUI.displayField("Tier", member.getTier());
+    MessageUI.displayField("Points balance", String.valueOf(member.getPointsBalance()));
+    MessageUI.displayField("Lifetime points", String.valueOf(member.getLifetimePoints()));
+
+    if (member.getNextTier() != null) {
+      MessageUI.displayField("Points to " + member.getNextTier(),
+          String.valueOf(member.getPointsToNextTier()));
+    } else {
+      MessageUI.displayField("Tier standing", "Highest tier reached");
+    }
   }
 
   public void displayReportHeader(String title) {

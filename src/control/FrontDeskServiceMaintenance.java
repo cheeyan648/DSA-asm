@@ -893,6 +893,12 @@ public class FrontDeskServiceMaintenance {
     ui.displaySuccess(result.getMessage());
     ui.displayMessage("");
     ui.displayMessage("  The room has been sent to housekeeping as DIRTY.");
+
+    // Whatever this stay just did to the guest's loyalty account is looked
+    // up fresh rather than assumed, so it is shown exactly as Loyalty & Rewards
+    // would show it - the same tier, the same balance - not restated from the
+    // one-line message the checkout already printed.
+    ui.displayLoyaltyOutcome(result.getValue().getGuestId(), data);
     ui.pause();
   }
 
