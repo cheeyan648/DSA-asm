@@ -323,6 +323,12 @@ public class MessageUI {
         continue;
       }
 
+      // "00" and "0000" mean the same as "0" - see isCancelKey.
+      if (isCancelKey(input)) {
+        System.out.println();
+        return 0;
+      }
+
       try {
         int choice = Integer.parseInt(input);
         if (choice >= 0 && choice <= maxOption) {
@@ -542,21 +548,50 @@ public class MessageUI {
   }
 
   /**
-   * Waits for the user to press Enter before moving on.
+   * Waits for the user to press ENTER, and accepts nothing else.
    *
-   * Called at the end of every action so its output is still on screen when
-   * the user is ready to leave it - without this the next menu clears the
-   * screen immediately and the result is never read.
+   * Called at the end of an action so its output is still on screen when the
+   * user is ready to leave it. Typing something here is always a mistake -
+   * usually the answer to the prompt before this one, sent a moment too late -
+   * so it is refused rather than swallowed, which would let a stray line be
+   * read as the answer to whatever is asked next.
    *
    * @param scanner the Scanner to read from
    */
   public static void pause(Scanner scanner) {
+    pause(scanner, "Press ENTER to exit");
+  }
+
+  /**
+   * Waits for the user to press ENTER, under a caller-chosen wording.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to tell the user, without its trailing dots
+   */
+  public static void pause(Scanner scanner, String prompt) {
+    // Pausing in the middle of a captured report would print this prompt into
+    // the buffer and wait with a blank screen in front of the user, so the
+    // captured text is shown first and this becomes its closing prompt.
+    if (captureBuffer != null) {
+      endLongOutput(scanner);
+      return;
+    }
+
     displayBlankLine();
-    System.out.print("Press ENTER to continue...");
-    if (scanner.hasNextLine()) {
-      scanner.nextLine();
-    } else {
-      displayBlankLine();
+    while (true) {
+      System.out.print(prompt + "...");
+
+      if (!scanner.hasNextLine()) {
+        displayBlankLine();
+        return;
+      }
+
+      String typed = scanner.nextLine();
+      if (typed.trim().isEmpty()) {
+        return;
+      }
+
+      displayError("Nothing to type here - just press ENTER.");
     }
   }
 
@@ -588,7 +623,7 @@ public class MessageUI {
       System.out.print("  " + prompt + " (0 to cancel): ");
       String input = readLine(scanner);
 
-      if ("0".equals(input)) {
+      if (isCancelKey(input)) {
         return CANCELLED;
       }
       if (input.isEmpty()) {
@@ -609,7 +644,7 @@ public class MessageUI {
   public static String readOptionalText(Scanner scanner, String prompt) {
     System.out.print("  " + prompt + " (ENTER to skip, 0 to cancel): ");
     String input = readLine(scanner, "");
-    return "0".equals(input) ? CANCELLED : input;
+    return isCancelKey(input) ? CANCELLED : input;
   }
 
   /**
@@ -626,7 +661,7 @@ public class MessageUI {
       System.out.printf("  %s (%d-%d, 0 to cancel): ", prompt, min, max);
       String input = readLine(scanner);
 
-      if ("0".equals(input)) {
+      if (isCancelKey(input)) {
         return CANCELLED_INT;
       }
       if (input.isEmpty()) {
@@ -659,7 +694,7 @@ public class MessageUI {
       System.out.print("  " + prompt + " (RM, 0 to cancel): ");
       String input = readLine(scanner);
 
-      if ("0".equals(input)) {
+      if (isCancelKey(input)) {
         return CANCELLED_AMOUNT;
       }
       if (input.isEmpty()) {
@@ -695,7 +730,7 @@ public class MessageUI {
       System.out.print("  " + prompt + " (dd/MM/yyyy, 0 to cancel): ");
       String input = readLine(scanner);
 
-      if ("0".equals(input)) {
+      if (isCancelKey(input)) {
         return null;
       }
       if (input.isEmpty()) {
@@ -755,6 +790,373 @@ public class MessageUI {
     return (picked == CANCELLED_INT) ? CANCELLED : choices[picked - 1];
   }
 
+  /**
+   * Asks for a contact number, re-prompting until a real one is entered.
+   *
+   * Malaysian mobile and landline numbers are 10 or 11 digits and begin with
+   * 0. Digits are the only thing accepted: a name or an address typed into
+   * this field would be stored and later dialled by staff who had no way of
+   * knowing it was never checked. Spaces and dashes are allowed while typing
+   * and stripped before the number is stored, so "012-345 6789" is accepted
+   * and kept as "0123456789".
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the digits of the number, or CANCELLED if the user typed 0
+   */
+  public static String readPhone(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (10-11 digits starting 0, 0 to cancel): ");
+      String input = readLine(scanner);
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      // Separators are how people write phone numbers, so they are accepted
+      // and removed rather than refused.
+      String digits = input.replace(" ", "").replace("-", "");
+
+      if (!isAllDigits(digits)) {
+        displayError("A contact number can only contain digits, spaces and dashes.");
+        continue;
+      }
+      if (!digits.startsWith("0")) {
+        displayError("A contact number must start with 0, e.g. 0123456789.");
+        continue;
+      }
+      if (digits.length() < 10 || digits.length() > 11) {
+        displayError("A contact number must be 10 or 11 digits - that one has "
+            + digits.length() + ".");
+        continue;
+      }
+      return digits;
+    }
+  }
+
+  /**
+   * Asks for an email address, which may be left blank.
+   *
+   * Checked only for the shape every address has - something, then @, then a
+   * dotted domain. Anything stricter would reject valid addresses, and only
+   * sending mail to it can really prove it exists.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the address, "" if skipped, or CANCELLED if the user typed 0
+   */
+  public static String readOptionalEmail(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (ENTER to skip, 0 to cancel): ");
+      String input = readLine(scanner, "");
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        return "";
+      }
+      if (isValidEmail(input)) {
+        return input;
+      }
+      displayError("Please enter a valid email, e.g. name@example.com");
+    }
+  }
+
+  /**
+   * Asks for an IC or passport number, re-prompting until it looks like one.
+   *
+   * A Malaysian IC is twelve digits; a passport is letters and digits. Both
+   * are accepted, but punctuation and spaces inside the number are not, since
+   * the value is what a returning guest is looked up by and a stray character
+   * would silently create a second record for the same person.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the document number in upper case, or CANCELLED if cancelled
+   */
+  public static String readIcPassport(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (0 to cancel): ");
+      String input = readLine(scanner);
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      String cleaned = input.replace("-", "").replace(" ", "");
+
+      if (!isLettersOrDigits(cleaned)) {
+        displayError("An IC or passport number can only contain letters and digits.");
+        continue;
+      }
+      if (cleaned.length() < 6 || cleaned.length() > 15) {
+        displayError("An IC or passport number is between 6 and 15 characters.");
+        continue;
+      }
+      return cleaned.toUpperCase();
+    }
+  }
+
+  /**
+   * Asks for a person's name, re-prompting until it looks like one.
+   *
+   * Digits are refused because a name with a number in it is almost always a
+   * mistyped field, and the name is what appears on the guest's invoice.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what to ask for
+   * @return the name, or CANCELLED if the user typed 0
+   */
+  public static String readName(Scanner scanner, String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (0 to cancel): ");
+      String input = readLine(scanner);
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+      if (input.length() < 2) {
+        displayError("A name must be at least 2 characters.");
+        continue;
+      }
+      if (!isNameLike(input)) {
+        displayError("A name can only contain letters, spaces, apostrophes,"
+            + " dots and hyphens.");
+        continue;
+      }
+      return input;
+    }
+  }
+
+  /**
+   * Asks for a record number by its digits, so the user types 3 or 0003
+   * instead of the full ID with its prefix.
+   *
+   * Typing "WR0003" in full is easy to get wrong - the wrong prefix, the wrong
+   * number of zeros - and the prefix carries no information, since the prompt
+   * already says which kind of record is wanted. The digits are padded back
+   * out to the stored width here.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what the number identifies
+   * @param prefix the ID prefix to rebuild, e.g. "WR"
+   * @param digits how many digits the stored ID uses, e.g. 4
+   * @return the full ID, or CANCELLED if the user typed 0
+   */
+  public static String readIdNumber(Scanner scanner, String prompt, String prefix,
+      int digits) {
+    String example = String.format("%0" + digits + "d", 3);
+
+    while (true) {
+      System.out.printf("  %s (number only, e.g. 3 or %s, 0 to cancel): ",
+          prompt, example);
+      String input = readLine(scanner);
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      // The full ID is accepted too, so somebody reading it off a printout
+      // does not have to strip the prefix themselves.
+      String value = input.toUpperCase();
+      if (value.startsWith(prefix.toUpperCase())) {
+        value = value.substring(prefix.length());
+      }
+
+      if (!isAllDigits(value)) {
+        displayError("Please enter just the number, e.g. 3 or " + example + ".");
+        continue;
+      }
+
+      try {
+        int number = Integer.parseInt(value);
+        if (number <= 0) {
+          displayError("The number must be 1 or more.");
+          continue;
+        }
+        return prefix + String.format("%0" + digits + "d", number);
+      } catch (NumberFormatException tooLong) {
+        displayError("That number is too large.");
+      }
+    }
+  }
+
+  /** Whether every character is a digit, and there is at least one. */
+  public static boolean isAllDigits(String text) {
+    if (text == null || text.isEmpty()) {
+      return false;
+    }
+    for (int i = 0; i < text.length(); i++) {
+      if (!Character.isDigit(text.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether every character is a letter or a digit, and there is at least one. */
+  public static boolean isLettersOrDigits(String text) {
+    if (text == null || text.isEmpty()) {
+      return false;
+    }
+    for (int i = 0; i < text.length(); i++) {
+      if (!Character.isLetterOrDigit(text.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether the text reads as a person's name rather than a mistyped field. */
+  public static boolean isNameLike(String text) {
+    if (text == null || text.isBlank()) {
+      return false;
+    }
+    boolean hasLetter = false;
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
+      if (Character.isLetter(c)) {
+        hasLetter = true;
+      } else if (c != ' ' && c != '\'' && c != '-' && c != '.' && c != '/') {
+        return false;
+      }
+    }
+    return hasLetter;
+  }
+
+  /**
+   * Whether the text has the shape of an email address.
+   *
+   * Written by hand rather than with a regular expression so the rule is
+   * readable, and deliberately checks shape rather than existence - only
+   * sending mail to an address can prove it is real.
+   *
+   * What it insists on: something before the @, exactly one @, then a domain
+   * carrying a dot with at least one character on each side of it. That is
+   * what rejects a guest's name or "123" typed into the field, which was the
+   * defect this was written for, while still accepting a short but perfectly
+   * valid address like 123@gmail.co.
+   *
+   * @param text the address to check
+   * @return true if it has the shape of an email address
+   */
+  public static boolean isValidEmail(String text) {
+    if (text == null || text.isBlank() || text.contains(" ")) {
+      return false;
+    }
+
+    int at = text.indexOf('@');
+
+    // One @, with something on each side of it. A name or a number typed into
+    // the field has no @ at all and stops here.
+    if (at <= 0 || at != text.lastIndexOf('@') || at == text.length() - 1) {
+      return false;
+    }
+
+    String local = text.substring(0, at);
+    String domain = text.substring(at + 1);
+
+    if (!isEmailPart(local) || !isEmailPart(domain)) {
+      return false;
+    }
+
+    // The domain must be dotted - "guest@gmail" is not an address - and the
+    // dot needs a label either side, so neither "@.com" nor "gmail." passes.
+    int dot = domain.indexOf('.');
+    if (dot <= 0 || dot == domain.length() - 1) {
+      return false;
+    }
+
+    // Two dots in a row would leave an empty label, which is what rejects
+    // "gmail..com". Checked by hand rather than by splitting on a regular
+    // expression, so the rule stays readable.
+    for (int i = 1; i < domain.length(); i++) {
+      if (domain.charAt(i) == '.' && domain.charAt(i - 1) == '.') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Whether one side of an email address is made of characters an address may
+   * contain, and does not start or end on a dot.
+   *
+   * @param part the text either side of the @
+   * @return true if the part is usable
+   */
+  private static boolean isEmailPart(String part) {
+    if (part.isEmpty() || part.startsWith(".") || part.endsWith(".")) {
+      return false;
+    }
+    for (int i = 0; i < part.length(); i++) {
+      char c = part.charAt(i);
+      if (!Character.isLetterOrDigit(c) && c != '.' && c != '_'
+          && c != '-' && c != '+') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Whether a contact number is a valid one, without prompting for it.
+   *
+   * Shared with readPhone so a number checked here and a number typed at the
+   * prompt can never disagree about what is valid.
+   *
+   * @param text the number to check, with or without spaces and dashes
+   * @return true if it is 10-11 digits and starts with 0
+   */
+  public static boolean isValidPhone(String text) {
+    if (text == null) {
+      return false;
+    }
+    String digits = text.replace(" ", "").replace("-", "");
+    return isAllDigits(digits) && digits.startsWith("0")
+        && digits.length() >= 10 && digits.length() <= 11;
+  }
+
+  /**
+   * Whether the user typed a cancel - a zero, or a run of nothing but zeros.
+   *
+   * "0" is the documented key, but somebody backing out of a nested screen
+   * often leans on it and sends "00" or "0000". Reading that as an invalid
+   * entry and asking again is the opposite of what they were trying to do, so
+   * any string of zeros is treated as the single zero they meant.
+   *
+   * @param input what the user typed, already trimmed
+   * @return true if it is one or more zeros and nothing else
+   */
+  public static boolean isCancelKey(String input) {
+    if (input == null || input.isEmpty()) {
+      return false;
+    }
+    for (int i = 0; i < input.length(); i++) {
+      if (input.charAt(i) != '0') {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** Whether a prompt was cancelled. */
   public static boolean isCancelled(String value) {
     return CANCELLED.equals(value);
@@ -768,10 +1170,13 @@ public class MessageUI {
   public static final int PAGE_SIZE = 15;
 
   /**
-   * Shows one page of a listing and asks whether to continue.
+   * Shows one page of a listing and asks what to do next.
    *
    * Long listings are paged so the earliest rows are not scrolled off the top
-   * before they can be read.
+   * before they can be read. The last page still stops here rather than
+   * returning straight away: without that pause the final page is wiped by
+   * whatever screen comes next, which is exactly the rows the user was most
+   * likely reading.
    *
    * @param scanner the Scanner to read from
    * @param page which page has just been shown, counting from 1
@@ -780,13 +1185,29 @@ public class MessageUI {
    */
   public static boolean askForNextPage(Scanner scanner, int page, int totalPages) {
     if (page >= totalPages) {
+      // Nothing left to show, but the page on screen still has to be read.
+      if (totalPages > 1) {
+        displayThinRule();
+        System.out.printf("  Page %d of %d - end of list.%n", page, totalPages);
+      }
       return false;
     }
 
     displayThinRule();
-    System.out.printf("  Page %d of %d. Show the next page? (y/n): ", page, totalPages);
-    String input = readLine(scanner, "n").toLowerCase();
-    return input.equals("y") || input.equals("yes");
+    while (true) {
+      System.out.printf("  Page %d of %d. [N]ext page or [Q]uit listing: ",
+          page, totalPages);
+      String input = readLine(scanner, "q").toLowerCase();
+
+      if (input.isEmpty() || input.equals("n") || input.equals("next")
+          || input.equals("y") || input.equals("yes")) {
+        return true;
+      }
+      if (input.equals("q") || input.equals("quit") || input.equals("0")) {
+        return false;
+      }
+      displayError("Please enter N for the next page, or Q to stop.");
+    }
   }
 
   /**
@@ -800,6 +1221,143 @@ public class MessageUI {
       return 1;
     }
     return (rows + PAGE_SIZE - 1) / PAGE_SIZE;
+  }
+
+  /**
+   * The first row number to show on a page.
+   *
+   * @param page the page being shown, counting from 1
+   * @return the 1-based index of the first row on that page
+   */
+  public static int firstRowOnPage(int page) {
+    return ((page - 1) * PAGE_SIZE) + 1;
+  }
+
+  /**
+   * The last row number to show on a page.
+   *
+   * @param page the page being shown, counting from 1
+   * @param totalRows how many rows there are altogether
+   * @return the 1-based index of the last row on that page
+   */
+  public static int lastRowOnPage(int page, int totalRows) {
+    return Math.min(page * PAGE_SIZE, totalRows);
+  }
+
+  // ==================================================================
+  // LONG OUTPUT
+  //
+  // A report is far longer than the console window, so printing it straight
+  // out leaves the user looking at its last line with the heading long gone.
+  // Report output is collected here instead and then shown a screen at a
+  // time, starting at the top.
+  //
+  // Collecting works by swapping System.out for a buffer, which means the
+  // report code itself does not change: it goes on printing exactly as it
+  // did, and only where the text lands is different.
+  // ==================================================================
+
+  /** How many lines of a long report are shown at a time. */
+  public static final int SCREEN_LINES = 22;
+
+  /** Where report output is collected while it is being captured. */
+  private static java.io.ByteArrayOutputStream captureBuffer;
+
+  /** The real console, kept so it can be restored when capturing ends. */
+  private static java.io.PrintStream realOut;
+
+  /**
+   * Starts collecting printed output instead of showing it.
+   *
+   * Called before a report runs. Every print between here and endLongOutput
+   * is held back so the whole report can be shown from its first line.
+   */
+  public static void beginLongOutput() {
+    if (captureBuffer != null) {
+      return;
+    }
+    realOut = System.out;
+    captureBuffer = new java.io.ByteArrayOutputStream();
+    try {
+      System.setOut(new java.io.PrintStream(captureBuffer, true, "UTF-8"));
+    } catch (java.io.UnsupportedEncodingException cannotHappen) {
+      System.setOut(new java.io.PrintStream(captureBuffer, true));
+    }
+  }
+
+  /**
+   * Stops collecting output and shows what was collected, from the top.
+   *
+   * @param scanner the Scanner to read from
+   */
+  public static void endLongOutput(Scanner scanner) {
+    if (captureBuffer == null) {
+      pause(scanner);
+      return;
+    }
+
+    System.out.flush();
+    String collected;
+    try {
+      collected = captureBuffer.toString("UTF-8");
+    } catch (java.io.UnsupportedEncodingException cannotHappen) {
+      collected = captureBuffer.toString();
+    }
+
+    System.setOut(realOut);
+    captureBuffer = null;
+    realOut = null;
+
+    displayPagedText(scanner, collected);
+  }
+
+  /**
+   * Shows a block of already-built text a screen at a time, from the top.
+   *
+   * @param scanner the Scanner to read from
+   * @param text the whole text to show
+   */
+  public static void displayPagedText(Scanner scanner, String text) {
+    String[] lines = text.split("\n", -1);
+
+    // A trailing newline leaves an empty last element that would otherwise be
+    // printed as a line of the report.
+    int count = lines.length;
+    while (count > 0 && lines[count - 1].isBlank()) {
+      count--;
+    }
+
+    // The whole report is written out in one go, from its first line to its
+    // last, and the console's own scrollbar is what moves through it. Breaking
+    // it into screens meant answering a question between every one, which made
+    // reading a report from top to bottom the slowest way to do it.
+    clearScreen();
+    for (int i = 0; i < count; i++) {
+      System.out.println(stripTrailingReturn(lines[i]));
+    }
+
+    // The only prompt is at the very bottom, where the reader ends up.
+    displayBlankLine();
+    displayThinRule();
+    while (true) {
+      System.out.print("End of report. Press ENTER or 0 to exit...");
+
+      if (!scanner.hasNextLine()) {
+        displayBlankLine();
+        return;
+      }
+
+      String typed = scanner.nextLine().trim();
+      if (typed.isEmpty() || isCancelKey(typed)) {
+        return;
+      }
+      displayError("Press ENTER or 0 to leave this report.");
+    }
+  }
+
+  /** Removes the carriage return a Windows line ending leaves behind. */
+  private static String stripTrailingReturn(String line) {
+    return line.endsWith("\r") ? line.substring(0, line.length() - 1) : line;
   }
 
   // ==================================================================

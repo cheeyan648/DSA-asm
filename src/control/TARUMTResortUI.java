@@ -10,7 +10,6 @@ import entity.Room;
 import entity.Staff;
 import entity.WalkInRegistration;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -28,9 +27,6 @@ import utility.MessageUI;
 public class TARUMTResortUI {
 
   private final Scanner scanner = MessageUI.scanner;
-
-  private static final DateTimeFormatter HOME_DATE =
-      DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy");
 
   /** The one copy of every table, shared by all four modules. */
   private final ResortData data;
@@ -50,7 +46,7 @@ public class TARUMTResortUI {
     data = new ResortData();
     service = new ResortService(data);
 
-    staffId = signIn();
+    staffId = onDutyStaffId();
 
     walkIn = new WalkInRegistrationMaintenance(service, staffId);
     frontDesk = new FrontDeskServiceMaintenance(service, staffId);
@@ -59,52 +55,22 @@ public class TARUMTResortUI {
   }
 
   /**
-   * Asks who is on duty.
+   * The staff member every action this session is recorded against.
    *
-   * Every action records the staff member who performed it, so the reports can
-   * say who granted an urgency override or signed off an inspection. Without
-   * this the audit reports would have nobody to name.
+   * Actions still have to name somebody - the reports say who granted an
+   * urgency override or signed off an inspection, and a blank there would make
+   * them worthless - but the system no longer stops to ask on the way in. The
+   * officer rostered first is taken as the one on duty, and the home screen
+   * shows who that is.
    *
-   * @return the chosen staff ID
+   * @return the staff ID on duty, or "-" if no staff are on record
    */
-  private String signIn() {
-    MessageUI.clearScreen();
-    MessageUI.displayBlankLine();
-
-    MessageUI.displayBoxTop();
-    MessageUI.displayBoxBlank();
-    MessageUI.displayBoxCentred("TARUMT RESORT MANAGEMENT SYSTEM");
-    MessageUI.displayBoxBlank();
-    MessageUI.displayBoxDivider();
-    MessageUI.displayBoxLine("  Who is on duty?");
-    MessageUI.displayBoxBlank();
-
+  private String onDutyStaffId() {
     ListInterface<Staff> staffList = data.getStaffList();
-    for (int i = 1; i <= staffList.getNumberOfEntries(); i++) {
-      Staff staff = staffList.getEntry(i);
-      MessageUI.displayBoxLine(String.format("  [%d]  %-26s %-12s %s",
-          i, staff.getFullName(), staff.getRole(), staff.getShift()));
+    if (staffList.isEmpty()) {
+      return "-";
     }
-
-    MessageUI.displayBoxBlank();
-    MessageUI.displayBoxBottom();
-    MessageUI.displayBlankLine();
-
-    int picked = MessageUI.readInt(scanner, "Staff number", 1,
-        staffList.getNumberOfEntries());
-
-    // Signing in cannot be cancelled - somebody has to be on the desk - so a 0
-    // falls back to the first officer rather than leaving nobody signed in.
-    if (picked == MessageUI.CANCELLED_INT) {
-      return staffList.getEntry(1).getStaffId();
-    }
-
-    Staff signedIn = staffList.getEntry(picked);
-    MessageUI.displaySuccess("Signed in as " + signedIn.getFullName()
-        + " (" + signedIn.getStaffId() + ").");
-    MessageUI.pause(scanner);
-
-    return signedIn.getStaffId();
+    return staffList.getEntry(1).getStaffId();
   }
 
   // ==================================================================
@@ -152,40 +118,9 @@ public class TARUMTResortUI {
 
     MessageUI.displayMenuOption(0, "Quit the system");
     MessageUI.displayBoxBlank();
-
-    MessageUI.displayBoxDivider();
-    displayLiveSummary();
-    MessageUI.displayBoxDivider();
-
-    Staff onDuty = data.findStaff(staffId);
-    MessageUI.displayBoxLine("  On duty: "
-        + (onDuty == null ? staffId : onDuty.getFullName() + " (" + staffId + ")"));
-    MessageUI.displayBoxLine("  Today:   " + LocalDate.now().format(HOME_DATE));
     MessageUI.displayBoxBottom();
 
     return MessageUI.readMenuChoice(scanner, 5, "exit");
-  }
-
-  /** The one-line state of each module, drawn on the home page. */
-  private void displayLiveSummary() {
-    int waiting = data.getWaitingList().getNumberOfEntries();
-    int urgentWaiting = data.getWaitingList().getUrgentCount();
-    int toClean = data.getCleaningQueue().getNumberOfEntries();
-    int urgentClean = data.getCleaningQueue().getUrgentCount();
-    int sellable = data.getRoomList().countIf(Room::isAssignable);
-    int rooms = data.getRoomList().getNumberOfEntries();
-    int pendingBookings = data.getBookingList().countIf(
-        booking -> Booking.STATUS_PENDING.equals(booking.getBookingStatus()));
-    int pendingRedemptions = data.getPendingRedemptions().getNumberOfEntries();
-
-    MessageUI.displayBoxLine(String.format(
-        "  Queue: %d waiting (%d urgent)      Cleaning: %d queued (%d urgent)",
-        waiting, urgentWaiting, toClean, urgentClean));
-    MessageUI.displayBoxLine(String.format(
-        "  Rooms sellable now: %d of %d       Bookings without a room: %d",
-        sellable, rooms, pendingBookings));
-    MessageUI.displayBoxLine(String.format(
-        "  Redemptions awaiting a decision: %d", pendingRedemptions));
   }
 
   /**

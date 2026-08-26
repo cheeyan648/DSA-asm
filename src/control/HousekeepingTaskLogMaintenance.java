@@ -39,6 +39,168 @@ public class HousekeepingTaskLogMaintenance {
   }
 
   // ==================================================================
+  // ROOM MANAGEMENT
+  //
+  // Housekeeping owns the rooms themselves, not just the cleaning of them.
+  // It is the module that knows whether a room is fit to be sold, so adding
+  // one, retiring one and taking one out of service belong here rather than
+  // at the desk that is trying to sell it.
+  // ==================================================================
+
+  private void runRoomMenu() {
+    int choice;
+    do {
+      choice = ui.getRoomMenuChoice();
+      switch (choice) {
+        case 1:
+          displayRoomList();
+          break;
+        case 2:
+          addRoom();
+          break;
+        case 3:
+          removeRoom();
+          break;
+        case 4:
+          changeServiceState(true);
+          break;
+        case 5:
+          changeServiceState(false);
+          break;
+        default:
+          break;
+      }
+    } while (choice != 0);
+  }
+
+  /** Shows every room, and whether each may currently be sold. */
+  private void displayRoomList() {
+    ui.startAction("ALL ROOMS");
+    ui.displayRoomList(data.getRoomList(), data);
+    ui.pause();
+  }
+
+  /**
+   * Adds a room to the resort.
+   *
+   * The new room is not sellable straight away - it goes onto the cleaning
+   * queue to be prepared first, which is the same route every dirty room
+   * takes. That is what stops a room being sold the minute it is keyed in.
+   */
+  private void addRoom() {
+    ui.startAction("ADD A ROOM");
+
+    String roomNo = ui.inputNewRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    if (data.findRoom(roomNo) != null) {
+      ui.displayError("Room " + roomNo + " already exists.");
+      ui.pause();
+      return;
+    }
+
+    String typeId = ui.inputRoomType(data.getRoomTypeList());
+    if (typeId == null) {
+      return;
+    }
+
+    int floor = ui.inputFloorNumber();
+    if (floor < 0) {
+      return;
+    }
+
+    ServiceResult<Room> added = service.addRoom(roomNo, typeId, floor, staffId);
+    if (added.isFailure()) {
+      ui.displayError(added.getMessage());
+      ui.pause();
+      return;
+    }
+
+    ui.displaySuccess(added.getMessage());
+    ui.displayMessage("  It cannot be sold until it has been cleaned and inspected.");
+    ui.pause();
+  }
+
+  /**
+   * Retires a room.
+   *
+   * Refused while a guest is in it or a live booking is holding it, because
+   * removing the room would leave that booking pointing at a room number that
+   * no longer exists.
+   */
+  private void removeRoom() {
+    ui.startAction("REMOVE A ROOM");
+
+    if (!ui.displayRoomList(data.getRoomList(), data)) {
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    String roomNo = ui.inputRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    Room room = data.findRoom(roomNo);
+    if (room == null) {
+      ui.displayError("There is no room " + roomNo + ".");
+      ui.pause();
+      return;
+    }
+
+    ui.displayRoom(room, data);
+    ui.displayMessage("");
+
+    if (!ui.confirm("Remove room " + roomNo + " from the resort?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Room> removed = service.removeRoom(roomNo);
+    if (removed.isFailure()) {
+      ui.displayError(removed.getMessage());
+    } else {
+      ui.displaySuccess(removed.getMessage());
+    }
+    ui.pause();
+  }
+
+  /**
+   * Takes a room out of service, or puts it back.
+   *
+   * @param block true to take it out of service, false to return it
+   */
+  private void changeServiceState(boolean block) {
+    ui.startAction(block ? "TAKE A ROOM OUT OF SERVICE" : "RETURN A ROOM TO SERVICE");
+
+    if (!ui.displayRoomList(data.getRoomList(), data)) {
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    String roomNo = ui.inputRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    ServiceResult<Room> changed = service.setRoomOutOfService(roomNo, block, staffId);
+    if (changed.isFailure()) {
+      ui.displayError(changed.getMessage());
+    } else {
+      ui.displaySuccess(changed.getMessage());
+      if (!block) {
+        ui.displayMessage("  It cannot be sold until it has been cleaned again.");
+      }
+    }
+    ui.pause();
+  }
+
+  // ==================================================================
   // MENU
   // ==================================================================
 
@@ -57,9 +219,12 @@ public class HousekeepingTaskLogMaintenance {
           rollbackLastUpdate();
           break;
         case 4:
-          runSearchMenu();
+          runRoomMenu();
           break;
         case 5:
+          runSearchMenu();
+          break;
+        case 6:
           runReportMenu();
           break;
         default:
@@ -568,7 +733,6 @@ public class HousekeepingTaskLogMaintenance {
     displayCompletionsByHour(completed);
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /**
@@ -700,7 +864,6 @@ public class HousekeepingTaskLogMaintenance {
     displayOutstandingWorkload();
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   private int countRoomsAt(String status) {

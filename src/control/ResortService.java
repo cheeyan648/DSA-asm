@@ -209,8 +209,7 @@ public class ResortService {
       return ServiceResult.fail("No guests are waiting.");
     }
 
-    next.setStatus(WalkInRegistration.STATUS_IN_SERVICE);
-    next.setCalledAt(LocalDateTime.now());
+    next.leaveQueue(WalkInRegistration.STATUS_IN_SERVICE, LocalDateTime.now());
     next.setServedBy(staffId);
     data.saveRegistrations();
 
@@ -433,6 +432,190 @@ public class ResortService {
         data.getCleaningQueue().enqueue(task, updated);
       }
     }
+  }
+
+  // ==================================================================
+  // ROOM MANAGEMENT
+  //
+  // Rooms are the thing both modules argue over: the front desk wants to sell
+  // them and housekeeping decides whether they may be sold. Creating and
+  // retiring them lives here, in the one place both can see, so a room cannot
+  // exist for one module and not the other.
+  // ==================================================================
+
+  /**
+   * Adds a room to the resort.
+   *
+   * A new room starts DIRTY rather than ready. Nobody has prepared it yet, and
+   * a room that could be sold the moment it is keyed in is exactly how a guest
+   * ends up in a room nobody made up - so it goes through housekeeping like
+   * any other dirty room before it can be given out.
+   *
+   * @param roomNo the room number, unique across the resort
+   * @param typeId the room type it belongs to
+   * @param floorNo which floor it is on
+   * @param staffId who is adding it
+   * @return the new room
+   */
+  public ServiceResult<Room> addRoom(String roomNo, String typeId, int floorNo,
+      String staffId) {
+    if (roomNo == null || roomNo.isBlank()) {
+      return ServiceResult.fail("A room number is needed.");
+    }
+    if (data.findRoom(roomNo) != null) {
+      return ServiceResult.fail("Room " + roomNo + " already exists.");
+    }
+    if (data.findRoomType(typeId) == null) {
+      return ServiceResult.fail("There is no room type " + typeId + ".");
+    }
+
+    Room room = new Room(roomNo, typeId, floorNo, Room.VACANT, Room.DIRTY,
+        false, null, "Added " + LocalDate.now());
+    data.getRoomList().add(room);
+
+    // Preparing it is a cleaning job like any other, which is what puts the
+    // new room in front of housekeeping instead of leaving it as a room
+    // nobody has been told about.
+    HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
+        HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
+    task.setRemark("New room - prepare before first sale");
+    data.getTaskList().add(task);
+    data.getCleaningQueue().enqueue(task, task.getPriority());
+    logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
+        "Room added");
+
+    data.saveMasters();
+    data.saveHousekeeping();
+
+    return ServiceResult.ok("Room " + roomNo + " added and sent to housekeeping"
+        + " to be prepared (task " + task.getTaskId() + ").", room);
+  }
+
+  /**
+   * Removes a room from the resort.
+   *
+   * Refused while anybody is in it or booked into it. A room number that
+   * disappeared from under a live booking would leave that booking pointing at
+   * nothing, which is worse than keeping a room that is no longer wanted.
+   *
+   * @param roomNo the room to remove
+   * @return what happened
+   */
+  public ServiceResult<Room> removeRoom(String roomNo) {
+    Room room = data.findRoom(roomNo);
+    if (room == null) {
+      return ServiceResult.fail("There is no room " + roomNo + ".");
+    }
+    if (Room.OCCUPIED.equals(room.getOccupancyStatus())) {
+      return ServiceResult.fail("Room " + roomNo
+          + " has a guest in it and cannot be removed.");
+    }
+
+    Booking held = data.getBookingList().search(
+        booking -> roomNo.equals(booking.getRoomNo())
+            && !Booking.STATUS_CANCELLED.equals(booking.getBookingStatus())
+            && !Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus()));
+    if (held != null) {
+      return ServiceResult.fail("Booking " + held.getBookingId()
+          + " is holding room " + roomNo + ". Move it first.");
+    }
+
+    // Any cleaning still queued for it is pointless once the room is gone.
+    ListInterface<HousekeepingTask> queued = data.getTaskList().filter(
+        task -> roomNo.equals(task.getRoomNo()) && task.isPendingCleaning());
+    for (int i = 1; i <= queued.getNumberOfEntries(); i++) {
+      data.getCleaningQueue().removeEntry(queued.getEntry(i));
+    }
+
+    data.getRoomList().removeEntry(room);
+    data.saveMasters();
+    data.saveHousekeeping();
+
+    return ServiceResult.ok("Room " + roomNo + " removed. "
+        + queued.getNumberOfEntries() + " queued cleaning task(s) dropped.", room);
+  }
+
+  /**
+   * Takes a room out of service, or puts it back.
+   *
+   * Blocking is how a room with a fault is kept off the market without
+   * deleting it - the room still exists, its history is intact, and it simply
+   * cannot be sold until somebody returns it to service.
+   *
+   * @param roomNo the room
+   * @param block true to take it out of service, false to return it
+   * @param staffId who is doing it
+   * @return what happened
+   */
+  public ServiceResult<Room> setRoomOutOfService(String roomNo, boolean block,
+      String staffId) {
+    Room room = data.findRoom(roomNo);
+    if (room == null) {
+      return ServiceResult.fail("There is no room " + roomNo + ".");
+    }
+
+    if (block) {
+      if (Room.OCCUPIED.equals(room.getOccupancyStatus())) {
+        return ServiceResult.fail("Room " + roomNo
+            + " has a guest in it and cannot be taken out of service.");
+      }
+      if (room.isOutOfService()) {
+        return ServiceResult.fail("Room " + roomNo + " is already out of service.");
+      }
+
+      room.setOutOfService(true);
+      room.setHousekeepingStatus(Room.BLOCKED);
+      data.saveMasters();
+      return ServiceResult.ok("Room " + roomNo
+          + " is out of service and cannot be sold.", room);
+    }
+
+    if (!room.isOutOfService()) {
+      return ServiceResult.fail("Room " + roomNo + " is not out of service.");
+    }
+
+    // It comes back dirty, not ready: it has to be cleaned and inspected
+    // before anybody may be put in it.
+    room.setOutOfService(false);
+    room.setHousekeepingStatus(Room.DIRTY);
+
+    HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
+        HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
+    task.setRemark("Returned to service - prepare before sale");
+    data.getTaskList().add(task);
+    data.getCleaningQueue().enqueue(task, task.getPriority());
+    logStatusChange(task, Room.BLOCKED, HousekeepingTask.DIRTY, staffId, false,
+        "Returned to service");
+
+    data.saveMasters();
+    data.saveHousekeeping();
+
+    return ServiceResult.ok("Room " + roomNo + " is back in service and queued"
+        + " for cleaning (task " + task.getTaskId() + ").", room);
+  }
+
+  /**
+   * Every booking still waiting for a room, urgent ones first.
+   *
+   * The order is the point. A walk-in guest granted an urgency exception at
+   * the door is still urgent when they reach the front desk, and this is what
+   * carries that ordering across to the officer handing out rooms - so the
+   * urgent guest is served before the normal ones, exactly as the cleaning
+   * queue prepares the urgent room first.
+   *
+   * @return the pending bookings, urgent first and earliest-booked within each
+   */
+  public ListInterface<Booking> pendingBookingsByPriority() {
+    ListInterface<Booking> pending = data.getBookingList().filter(
+        booking -> Booking.STATUS_PENDING.equals(booking.getBookingStatus())
+            && booking.getRoomNo() == null);
+
+    pending.sort(java.util.Comparator
+        .comparing((Booking booking) -> booking.isUrgent() ? 0 : 1)
+        .thenComparing(Booking::getCreatedAt,
+            java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+
+    return pending;
   }
 
   // ==================================================================

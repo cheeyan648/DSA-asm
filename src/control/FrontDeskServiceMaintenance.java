@@ -11,6 +11,7 @@ import entity.Redemption;
 import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomType;
+import entity.WalkInRegistration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -223,7 +224,7 @@ public class FrontDeskServiceMaintenance {
   private void createBooking() {
     ui.startAction("CREATE A NEW BOOKING");
 
-    String icPassport = MessageUI.readRequiredText(MessageUI.scanner,
+    String icPassport = MessageUI.readIcPassport(MessageUI.scanner,
         "Guest IC / Passport number");
     if (MessageUI.isCancelled(icPassport)) {
       ui.displayMessage("  Booking cancelled.");
@@ -233,19 +234,19 @@ public class FrontDeskServiceMaintenance {
 
     Guest guest = data.findGuestByIc(icPassport);
     if (guest == null) {
-      String name = MessageUI.readRequiredText(MessageUI.scanner, "Full name");
+      String name = MessageUI.readName(MessageUI.scanner, "Full name");
       if (MessageUI.isCancelled(name)) {
         ui.displayMessage("  Booking cancelled.");
         ui.pause();
         return;
       }
-      String contact = MessageUI.readRequiredText(MessageUI.scanner, "Contact number");
+      String contact = MessageUI.readPhone(MessageUI.scanner, "Contact number");
       if (MessageUI.isCancelled(contact)) {
         ui.displayMessage("  Booking cancelled.");
         ui.pause();
         return;
       }
-      String email = MessageUI.readOptionalText(MessageUI.scanner, "Email");
+      String email = MessageUI.readOptionalEmail(MessageUI.scanner, "Email");
       if (MessageUI.isCancelled(email)) {
         ui.displayMessage("  Booking cancelled.");
         ui.pause();
@@ -268,28 +269,60 @@ public class FrontDeskServiceMaintenance {
     }
     RoomType type = data.findRoomType(typeId);
 
-    LocalDate checkIn = ui.inputDate("Check-in date");
-    if (checkIn == null) {
-      ui.displayMessage("  Booking cancelled.");
-      ui.pause();
-      return;
-    }
-    if (checkIn.isBefore(LocalDate.now())) {
-      ui.displayError("The check-in date cannot be in the past.");
-      ui.pause();
-      return;
+    // A guest sent over from the walk-in queue already said how many nights
+    // they wanted when they registered. Those dates are worked out and offered
+    // here rather than asked for again, so the answer they gave at the door is
+    // the answer the booking is made with.
+    final String bookingGuestId = guest.getGuestId();
+    WalkInRegistration calledWalkIn = data.getRegistrationList().search(
+        reg -> bookingGuestId.equals(reg.getGuestId())
+            && WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
+
+    LocalDate checkIn;
+    LocalDate checkOut;
+
+    if (calledWalkIn != null) {
+      checkIn = LocalDate.now();
+      checkOut = checkIn.plusDays(calledWalkIn.getRequestedNights());
+
+      ui.displayMessage("");
+      ui.displaySuccess("This guest was sent over from the walk-in queue ("
+          + calledWalkIn.getRegId() + ").");
+      ui.displayWalkInStay(calledWalkIn, checkIn, checkOut);
+
+      if (!ui.confirm("Use these dates?")) {
+        checkIn = null;
+        checkOut = null;
+      }
+    } else {
+      checkIn = null;
+      checkOut = null;
     }
 
-    LocalDate checkOut = ui.inputDate("Check-out date");
-    if (checkOut == null) {
-      ui.displayMessage("  Booking cancelled.");
-      ui.pause();
-      return;
-    }
-    if (!checkOut.isAfter(checkIn)) {
-      ui.displayError("The check-out date must be after the check-in date.");
-      ui.pause();
-      return;
+    if (checkIn == null) {
+      checkIn = ui.inputDate("Check-in date");
+      if (checkIn == null) {
+        ui.displayMessage("  Booking cancelled.");
+        ui.pause();
+        return;
+      }
+      if (checkIn.isBefore(LocalDate.now())) {
+        ui.displayError("The check-in date cannot be in the past.");
+        ui.pause();
+        return;
+      }
+
+      checkOut = ui.inputDate("Check-out date");
+      if (checkOut == null) {
+        ui.displayMessage("  Booking cancelled.");
+        ui.pause();
+        return;
+      }
+      if (!checkOut.isAfter(checkIn)) {
+        ui.displayError("The check-out date must be after the check-in date.");
+        ui.pause();
+        return;
+      }
     }
 
     int guests = ui.inputGuestCount(type.getMaxOccupancy());
@@ -557,30 +590,43 @@ public class FrontDeskServiceMaintenance {
     ui.pause();
   }
 
+  /**
+   * Hands out a room to a booking that is waiting for one.
+   *
+   * The waiting bookings are listed urgent first, which is what carries the
+   * urgency a walk-in guest was granted at the door all the way through to the
+   * officer handing out rooms - the same ordering housekeeping uses when it
+   * decides which room to prepare next. The booking is then picked by its
+   * position in that list, so working down it from the top serves the urgent
+   * guests before the normal ones without anyone having to remember to.
+   */
   private void assignRoomToBooking() {
-    ui.startAction("ASSIGN A ROOM");
+    while (true) {
+      ui.startAction("ASSIGN A ROOM");
 
-    ListInterface<Booking> pending = data.getBookingList().filter(
-        booking -> Booking.STATUS_PENDING.equals(booking.getBookingStatus()));
+      ListInterface<Booking> pending = service.pendingBookingsByPriority();
 
-    if (!ui.displayBookingList(pending, data, "No booking is waiting for a room.")) {
-      ui.pause();
-      return;
+      if (!ui.displayBookingList(pending, data,
+          "No booking is waiting for a room.")) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayMessage("");
+      ui.displayMessage("  Urgent bookings are listed first - work down from the top.");
+
+      int position = ui.inputListPosition(pending.getNumberOfEntries(),
+          "Position of the booking to give a room");
+      if (position < 0) {
+        return;
+      }
+
+      assignRoomTo(pending.getEntry(position));
+
+      if (!ui.confirmAnother("Give a room to another booking?")) {
+        return;
+      }
     }
-
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
-    }
-    if (!Booking.STATUS_PENDING.equals(booking.getBookingStatus())) {
-      ui.displayError("Only a PENDING booking needs a room - this one is "
-          + booking.getBookingStatus() + ".");
-      ui.pause();
-      return;
-    }
-
-    assignRoomTo(booking);
-    ui.pause();
   }
 
   /**
@@ -1038,38 +1084,63 @@ public class FrontDeskServiceMaintenance {
   }
 
   private void searchByBookingId() {
-    ui.startAction("SEARCH BY BOOKING ID");
+    // Redrawn for each number entered rather than ending after one lookup, so
+    // working through several bookings does not mean leaving and re-entering
+    // the screen between each.
+    while (true) {
+      ui.startAction("SEARCH BY BOOKING NUMBER");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
+      String bookingId = ui.inputBookingId();
+      if (bookingId == null) {
+        return;
+      }
+
+      Booking booking = data.findBooking(bookingId);
+      if (booking == null) {
+        ui.displayError("No booking " + bookingId
+            + ". Enter another number, or 0 to go back.");
+        ui.pause("Press ENTER to try another number");
+        continue;
+      }
+
+      ui.displayBooking(booking, data);
+
+      Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+      if (invoice != null) {
+        ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
+      }
+
+      if (!ui.confirmAnother("Look up another booking number?")) {
+        return;
+      }
     }
-
-    ui.displayBooking(booking, data);
-
-    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-    if (invoice != null) {
-      ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
-    }
-    ui.pause();
   }
 
   private void searchByGuestName() {
-    ui.startAction("SEARCH BY GUEST NAME");
+    while (true) {
+      ui.startAction("SEARCH BY GUEST NAME");
 
-    String term = ui.inputGuestName();
-    if (term == null) {
-      return;
+      String term = ui.inputGuestName();
+      if (term == null) {
+        return;
+      }
+
+      final String lower = term.toLowerCase();
+      ListInterface<Booking> matches = data.getBookingList().filter(booking -> {
+        Guest guest = data.findGuest(booking.getGuestId());
+        return guest != null && guest.getFullName().toLowerCase().contains(lower);
+      });
+
+      // Newest first, so the booking just made is at the top.
+      matches.sort(java.util.Comparator.comparing(Booking::getCreatedAt,
+          java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+
+      ui.displayBookingList(matches, data, "No booking matched \"" + term + "\".");
+
+      if (!ui.confirmAnother("Search for another name?")) {
+        return;
+      }
     }
-
-    final String lower = term.toLowerCase();
-    ListInterface<Booking> matches = data.getBookingList().filter(booking -> {
-      Guest guest = data.findGuest(booking.getGuestId());
-      return guest != null && guest.getFullName().toLowerCase().contains(lower);
-    });
-
-    ui.displayBookingList(matches, data, "No booking matched \"" + term + "\".");
-    ui.pause();
   }
 
   /**
@@ -1100,18 +1171,26 @@ public class FrontDeskServiceMaintenance {
   }
 
   private void filterByStatus() {
-    ui.startAction("FILTER BOOKINGS BY STATUS");
+    while (true) {
+      ui.startAction("FILTER BOOKINGS BY STATUS");
 
-    String status = ui.inputStatusFilter();
-    if (status == null) {
-      return;
+      String status = ui.inputStatusFilter();
+      if (status == null) {
+        return;
+      }
+
+      ListInterface<Booking> matches = data.getBookingList().filter(
+          booking -> status.equals(booking.getBookingStatus()));
+
+      matches.sort(java.util.Comparator.comparing(Booking::getCreatedAt,
+          java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+
+      ui.displayBookingList(matches, data, "No booking is " + status + ".");
+
+      if (!ui.confirmAnother("Filter by another status?")) {
+        return;
+      }
     }
-
-    ListInterface<Booking> matches = data.getBookingList().filter(
-        booking -> status.equals(booking.getBookingStatus()));
-
-    ui.displayBookingList(matches, data, "No booking is " + status + ".");
-    ui.pause();
   }
 
   /**
@@ -1198,7 +1277,6 @@ public class FrontDeskServiceMaintenance {
     displayBookingsBySource(bookings);
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /** What has been billed and what has been collected. */
@@ -1289,7 +1367,6 @@ public class FrontDeskServiceMaintenance {
       ui.displayMessage("");
       ui.displayMessage("  Every invoice is settled. Nothing is outstanding.");
       ui.displayReportFooter();
-      ui.pause();
       return;
     }
 
@@ -1357,7 +1434,6 @@ public class FrontDeskServiceMaintenance {
     }
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   private String truncate(String text, int width) {

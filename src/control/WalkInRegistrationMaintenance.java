@@ -112,13 +112,9 @@ public class WalkInRegistrationMaintenance {
           serveNextGuest();
           break;
         case 2:
-          displayQueue();
-          ui.pause();
-          break;
-        case 3:
           cancelWaitingGuest();
           break;
-        case 4:
+        case 3:
           markNoShow();
           break;
         default:
@@ -133,29 +129,23 @@ public class WalkInRegistrationMaintenance {
       choice = ui.getSearchMenuChoice();
       switch (choice) {
         case 1:
-          searchByRegistrationId();
+          displayQueue();
+          ui.pause();
           break;
         case 2:
-          searchByName();
+          searchByRegistrationId();
           break;
         case 3:
-          filterByStatus();
+          searchByName();
           break;
         case 4:
+          filterByStatus();
+          break;
+        case 5:
           filterByPriority();
           break;
         default:
           break;
-      }
-    } while (choice != 0);
-  }
-
-  private void runSortMenu() {
-    int choice;
-    do {
-      choice = ui.getSortMenuChoice();
-      if (choice >= 1 && choice <= 4) {
-        displaySorted(choice);
       }
     } while (choice != 0);
   }
@@ -353,9 +343,11 @@ public class WalkInRegistrationMaintenance {
   /**
    * Calls the next guest and hands them to the front desk.
    *
-   * This is the handover that makes the two modules one system: the guest
-   * leaves the queue here, and a booking is created for them there, carrying
-   * the urgency they were granted at the door.
+   * This is the handover that makes the two modules one system. The guest
+   * leaves the queue here and their booking is made at the front desk, which
+   * is where every walk-in booking is made - offering to create one here as
+   * well would have put the same job in two places, each with its own idea of
+   * what a booking needs.
    */
   private void serveNextGuest() {
     ui.startAction("SERVE NEXT GUEST");
@@ -391,96 +383,58 @@ public class WalkInRegistrationMaintenance {
     }
 
     ui.displaySuccess(called.getMessage());
-    ui.displayMessage("  They have left the waiting list.");
-    ui.displayMessage("  Guests still waiting: "
-        + data.getWaitingList().getNumberOfEntries());
+    ui.displayMessage("  They have left the waiting list and are now IN_SERVICE.");
+    ui.displayMessage("  Their booking is made at the Front Desk.");
     ui.displayMessage("");
 
-    if (!ui.confirm("Create their booking now?")) {
-      ui.displayMessage("  The guest stays IN_SERVICE and can be booked in from Front Desk.");
-      ui.pause();
-      return;
-    }
-
-    createBookingForGuest(called.getValue());
+    reportNextInQueue();
     ui.pause();
   }
 
   /**
-   * Turns a called guest into a booking, and finds them a room.
+   * Says who will be called next, and how many are left behind them.
    *
-   * Everything from here on belongs to the front desk and housekeeping - this
-   * module only starts it off, then reports back what happened.
+   * Shown after every guest leaves the queue so the officer can call the next
+   * name without going back to the queue display to find it.
    */
-  private void createBookingForGuest(WalkInRegistration reg) {
-    LocalDate checkIn = LocalDate.now();
-    LocalDate checkOut = checkIn.plusDays(reg.getRequestedNights());
+  private void reportNextInQueue() {
+    int waiting = data.getWaitingList().getNumberOfEntries();
+    ui.displayMessage("  " + capitalise(WalkInRegistrationUI.waitingSentence(waiting)) + ".");
 
-    RoomType type = data.findRoomType(reg.getRequestedTypeId());
-    int maxGuests = (type == null) ? 4 : type.getMaxOccupancy();
-
-    int guests = utility.MessageUI.readInt(utility.MessageUI.scanner,
-        "Number of guests staying", 1, maxGuests);
-    if (guests == utility.MessageUI.CANCELLED_INT) {
-      ui.displayMessage("  Booking cancelled. The guest remains IN_SERVICE.");
+    WalkInRegistration upcoming = data.getWaitingList().peekNext();
+    if (upcoming == null) {
+      ui.displayMessage("  The queue is now empty.");
       return;
     }
 
-    ServiceResult<entity.Booking> booked = service.convertRegistrationToBooking(
-        reg.getRegId(), checkIn, checkOut, guests, staffId);
-    if (booked.isFailure()) {
-      ui.displayError(booked.getMessage());
-      return;
+    Guest nextGuest = data.findGuest(upcoming.getGuestId());
+
+    // Written as a sentence rather than as a row of bracketed codes: this is
+    // read aloud to call the guest, so the priority is spelled out as the kind
+    // of booking it is, and the wait is left until last where it belongs.
+    ui.displayMessage("  Next to be called: "
+        + (nextGuest == null ? "-" : nextGuest.getFullName())
+        + ", " + bookingKind(upcoming)
+        + ", arrived " + upcoming.getFormattedArrivalTime()
+        + ", waited " + upcoming.getFormattedWaitingTime() + ".");
+  }
+
+  /**
+   * How a registration's priority reads in a sentence.
+   *
+   * @param reg the registration
+   * @return "urgent booking" or "normal booking"
+   */
+  private String bookingKind(WalkInRegistration reg) {
+    return reg.isUrgent() ? "urgent booking" : "normal booking";
+  }
+
+  /** A sentence that starts with a capital letter. */
+  private String capitalise(String sentence) {
+    if (sentence == null || sentence.isEmpty()) {
+      return sentence;
     }
-
-    ui.displaySuccess(booked.getMessage());
-    entity.Booking booking = booked.getValue();
-
-    // Housekeeping decides what may be given out; the front desk only asks.
-    ListInterface<entity.Room> ready = service.findAvailableRooms(
-        booking.getTypeId(), checkIn, checkOut);
-
-    if (!ready.isEmpty()) {
-      entity.Room room = ready.getEntry(1);
-      ServiceResult<entity.Booking> assigned = service.assignRoom(
-          booking.getBookingId(), room.getRoomNo(), staffId,
-          entity.RoomAssignment.REASON_INITIAL);
-
-      if (assigned.isSuccess()) {
-        ui.displaySuccess(assigned.getMessage());
-      } else {
-        ui.displayError(assigned.getMessage());
-      }
-      return;
-    }
-
-    // Nothing is ready. An urgent guest can have a room cleaned out of turn
-    // rather than being turned away.
-    ui.displayMessage("");
-    ui.displayError("No " + reg.getRequestedTypeId()
-        + " room is ready for check-in right now.");
-
-    if (booking.isUrgent()) {
-      ServiceResult<entity.HousekeepingTask> expedited =
-          service.requestUrgentCleaning(booking.getBookingId(), staffId);
-
-      if (expedited.isSuccess()) {
-        ui.displaySuccess(expedited.getMessage());
-        ui.displayMessage("  The booking stays PENDING until the room is ready.");
-      } else {
-        ui.displayError(expedited.getMessage());
-      }
-      return;
-    }
-
-    ListInterface<entity.Room> cleanable = service.findCleanableRooms(
-        booking.getTypeId(), checkIn, checkOut);
-    if (cleanable.isEmpty()) {
-      ui.displayMessage("  No room of that type can be made ready. Offer another type.");
-    } else {
-      ui.displayMessage("  " + cleanable.getNumberOfEntries()
-          + " room(s) of that type are being cleaned. The booking stays PENDING.");
-    }
+    return Character.toUpperCase(sentence.charAt(0)) + sentence.substring(1);
   }
 
   /** Shows who is waiting, in the order they will be called. */
@@ -491,34 +445,32 @@ public class WalkInRegistrationMaintenance {
         data.getWaitingList().getNormalCount());
   }
 
-  /** Removes a guest who has given up waiting and left. */
+  /**
+   * Removes a guest who has given up waiting and left.
+   *
+   * The guest is picked by their position in the queue rather than by their
+   * registration ID: the position is on the screen the officer is already
+   * looking at, and it is what the guest themselves was told.
+   */
   private void cancelWaitingGuest() {
     ui.startAction("CANCEL A WAITING GUEST");
 
-    if (!displayQueueRows()) {
+    ListInterface<WalkInRegistration> queue = data.getWaitingList().toServiceOrder();
+    if (!ui.displayQueue(queue, data, data.getWaitingList().getUrgentCount(),
+        data.getWaitingList().getNormalCount())) {
       ui.pause();
       return;
     }
 
-    String regId = ui.inputRegistrationId();
-    if (regId == null) {
-      ui.displayMessage("  Cancelled.");
+    ui.displayMessage("");
+    int position = ui.inputQueuePosition(queue.getNumberOfEntries());
+    if (position < 0) {
+      ui.displayMessage("  Cancelled - nothing has been changed.");
       ui.pause();
       return;
     }
 
-    WalkInRegistration reg = data.findRegistration(regId);
-    if (reg == null) {
-      ui.displayError("No registration with ID " + regId + ".");
-      ui.pause();
-      return;
-    }
-    if (!reg.isWaiting()) {
-      ui.displayError("Only a WAITING guest can be cancelled - " + regId
-          + " is " + reg.getStatus() + ".");
-      ui.pause();
-      return;
-    }
+    WalkInRegistration reg = queue.getEntry(position);
 
     Guest guest = data.findGuest(reg.getGuestId());
     RoomType type = data.findRoomType(reg.getRequestedTypeId());
@@ -532,22 +484,29 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
-    reg.setStatus(WalkInRegistration.STATUS_CANCELLED);
+    // Leaving the queue is stamped here too, so a cancelled guest still has a
+    // measurable wait rather than one that runs on for ever.
+    reg.leaveQueue(WalkInRegistration.STATUS_CANCELLED, LocalDateTime.now());
     reg.setServedBy(staffId);
     data.getWaitingList().removeEntry(reg);
     data.saveRegistrations();
 
-    ui.displaySuccess(regId + " cancelled. Guests still waiting: "
-        + data.getWaitingList().getNumberOfEntries());
+    ui.displaySuccess(reg.getRegId() + " cancelled. "
+        + capitalise(WalkInRegistrationUI.waitingSentence(
+            data.getWaitingList().getNumberOfEntries())) + ".");
+    ui.displayMessage("");
+    reportNextInQueue();
     ui.pause();
   }
 
   /**
    * Records that a guest who was called never came forward.
    *
-   * Kept separate from a cancellation: a guest who left before being called
-   * and one who was called and did not appear are different things, and the
-   * queue report counts them separately.
+   * A no-show is only possible after a guest has been called, which is why it
+   * is picked from the list of guests currently IN_SERVICE rather than from
+   * the queue: a guest still waiting has not yet had their turn to miss. It
+   * stays in this module because the guest never reached the front desk - had
+   * they arrived there, it would be the front desk that recorded what happened.
    */
   private void markNoShow() {
     ui.startAction("MARK A CALLED GUEST AS NO-SHOW");
@@ -555,167 +514,244 @@ public class WalkInRegistrationMaintenance {
     ListInterface<WalkInRegistration> inService = data.getRegistrationList().filter(
         reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
 
+    ui.displayMessage("  A guest can only be a no-show once they have been called");
+    ui.displayMessage("  to the counter and have not come forward.");
+
     if (!ui.displayRegistrationList(inService, data,
         "No guest has been called and is still waiting to be dealt with.")) {
       ui.pause();
       return;
     }
 
-    String regId = ui.inputRegistrationId();
-    if (regId == null) {
-      ui.displayMessage("  Cancelled.");
+    ui.displayMessage("");
+    int position = ui.inputListPosition(inService.getNumberOfEntries(),
+        "Position to mark as a no-show");
+    if (position < 0) {
+      ui.displayMessage("  Cancelled - nothing has been changed.");
       ui.pause();
       return;
     }
 
-    WalkInRegistration reg = data.findRegistration(regId);
-    if (reg == null || !WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus())) {
-      ui.displayError("Only a guest who has been called can be marked as a no-show.");
-      ui.pause();
-      return;
-    }
+    WalkInRegistration reg = inService.getEntry(position);
 
-    if (!ui.confirm("Mark " + regId + " as a no-show?")) {
+    if (!ui.confirm("Mark " + reg.getRegId() + " as a no-show?")) {
       ui.displayMessage("  Nothing has been changed.");
       ui.pause();
       return;
     }
 
+    // The wait ended when they were called, so that stamp is kept rather than
+    // being overwritten with the moment somebody got round to recording it.
     reg.setStatus(WalkInRegistration.STATUS_NO_SHOW);
+    if (reg.getServedAt() == null) {
+      reg.setServedAt(LocalDateTime.now());
+    }
     data.saveRegistrations();
 
     // They are not put back in the queue: they had their turn.
-    ui.displaySuccess(regId + " recorded as a no-show.");
+    ui.displaySuccess(reg.getRegId() + " recorded as a no-show.");
+    ui.displayMessage("");
+    reportNextInQueue();
     ui.pause();
-  }
-
-  /** Draws the queue table without the action header. */
-  private boolean displayQueueRows() {
-    return ui.displayQueue(data.getWaitingList().toServiceOrder(), data,
-        data.getWaitingList().getUrgentCount(),
-        data.getWaitingList().getNormalCount());
   }
 
   // ==================================================================
   // SEARCH AND SORT
   // ==================================================================
 
+  /**
+   * Looks a registration up by its number, and keeps looking.
+   *
+   * The screen is redrawn for each number entered rather than ending with a
+   * pause, so an officer working through a handful of registrations types
+   * 3, then 5, then 7 and sees each one replace the last. Ending the action
+   * after every single lookup made that the slowest way to do the commonest
+   * job on this screen.
+   */
   private void searchByRegistrationId() {
-    ui.startAction("SEARCH BY REGISTRATION ID");
+    while (true) {
+      ui.startAction("SEARCH BY REGISTRATION NUMBER");
 
-    String regId = ui.inputRegistrationId();
-    if (regId == null) {
-      return;
+      String regId = ui.inputRegistrationId();
+      if (regId == null) {
+        return;
+      }
+
+      WalkInRegistration reg = data.findRegistration(regId);
+      if (reg == null) {
+        // Not found is a typo, not a decision to stop, so the loop simply
+        // comes round again with the message still on screen.
+        ui.displayError("No registration " + regId
+            + ". Enter another number, or 0 to go back.");
+        ui.pause("Press ENTER to try another number");
+        continue;
+      }
+
+      showRegistrationDetail(reg);
+
+      if (!ui.confirmAnother("Look up another registration number?")) {
+        return;
+      }
     }
+  }
 
-    WalkInRegistration reg = data.findRegistration(regId);
-    if (reg == null) {
-      ui.displayError("No registration with ID " + regId + ".");
-      ui.pause();
-      return;
-    }
-
+  /** Shows one registration in full, with its guest and room type resolved. */
+  private void showRegistrationDetail(WalkInRegistration reg) {
     Guest guest = data.findGuest(reg.getGuestId());
     RoomType type = data.findRoomType(reg.getRequestedTypeId());
     ui.displayRegistration(reg, guest == null ? "-" : guest.getFullName(),
         type == null ? reg.getRequestedTypeId() : type.getTypeName());
-    ui.pause();
-  }
-
-  /** Finds registrations by part of the guest's name. */
-  private void searchByName() {
-    ui.startAction("SEARCH BY GUEST NAME");
-
-    String term = ui.inputSearchName();
-    if (term == null) {
-      return;
-    }
-
-    final String lower = term.toLowerCase();
-    ListInterface<WalkInRegistration> matches = data.getRegistrationList().filter(reg -> {
-      Guest guest = data.findGuest(reg.getGuestId());
-      return guest != null && guest.getFullName().toLowerCase().contains(lower);
-    });
-
-    ui.displayRegistrationList(matches, data, "No guest matched \"" + term + "\".");
-    ui.pause();
-  }
-
-  private void filterByStatus() {
-    ui.startAction("FILTER BY STATUS");
-
-    String status = ui.inputStatusFilter();
-    if (status == null) {
-      return;
-    }
-
-    ListInterface<WalkInRegistration> matches =
-        data.getRegistrationList().filter(reg -> status.equals(reg.getStatus()));
-    ui.displayRegistrationList(matches, data, "No registration is " + status + ".");
-    ui.pause();
-  }
-
-  private void filterByPriority() {
-    ui.startAction("FILTER BY PRIORITY");
-
-    String priority = ui.inputPriorityFilter();
-    if (priority == null) {
-      return;
-    }
-
-    ListInterface<WalkInRegistration> matches =
-        data.getRegistrationList().filter(reg -> priority.equals(reg.getPriority()));
-    ui.displayRegistrationList(matches, data, "No " + priority + " registration found.");
-    ui.pause();
   }
 
   /**
-   * Lists the registrations in a chosen order.
+   * Finds registrations by part of the guest's name.
    *
-   * The fourth option is the one worth reading: it sorts by the order guests
-   * will actually be called, which is not the same as arrival order, and shows
-   * why at a glance.
+   * The matches come back newest first - the guest who joined the queue most
+   * recently at the top - because when several guests share a name it is
+   * almost always the one who has just arrived that is being asked about.
    */
-  private void displaySorted(int choice) {
-    ListInterface<WalkInRegistration> sorted = copyOf(data.getRegistrationList());
-    String title;
+  private void searchByName() {
+    while (true) {
+      ui.startAction("SEARCH BY GUEST NAME");
 
-    switch (choice) {
-      case 1:
-        sorted.sort(Comparator.comparing(WalkInRegistration::getArrivalTime));
-        title = "SORTED BY ARRIVAL TIME";
-        break;
+      String term = ui.inputSearchName();
+      if (term == null) {
+        return;
+      }
 
-      case 2:
-        sorted.sort((a, b) -> {
-          Guest first = data.findGuest(a.getGuestId());
-          Guest second = data.findGuest(b.getGuestId());
-          String nameA = (first == null) ? "" : first.getFullName();
-          String nameB = (second == null) ? "" : second.getFullName();
-          return nameA.compareToIgnoreCase(nameB);
-        });
-        title = "SORTED BY GUEST NAME";
-        break;
+      final String lower = term.toLowerCase();
+      ListInterface<WalkInRegistration> matches =
+          data.getRegistrationList().filter(reg -> {
+            Guest guest = data.findGuest(reg.getGuestId());
+            return guest != null && guest.getFullName().toLowerCase().contains(lower);
+          });
 
-      case 3:
-        sorted.sort(Comparator.comparingLong(WalkInRegistration::getWaitingMinutes).reversed());
-        title = "SORTED BY WAITING TIME";
-        break;
+      sortNewestFirst(matches);
+      ui.displayRegistrationList(matches, data, "No guest matched \"" + term + "\".");
 
-      default:
-        // Urgent before normal, and earliest arrival within each - exactly
-        // what the queue itself will do.
-        sorted = data.getRegistrationList().filter(reg -> reg.isWaiting());
-        sorted.sort(Comparator
-            .comparing((WalkInRegistration reg) -> reg.isUrgent() ? 0 : 1)
-            .thenComparing(WalkInRegistration::getArrivalTime));
-        title = "SORTED BY SERVICE ORDER";
-        break;
+      if (!ui.confirmAnother("Search for another name?")) {
+        return;
+      }
     }
+  }
 
-    ui.startAction(title);
-    ui.displayRegistrationList(sorted, data, "There are no registrations.");
-    ui.pause();
+  private void filterByStatus() {
+    while (true) {
+      ui.startAction("FILTER BY STATUS");
+
+      String status = ui.inputStatusFilter();
+      if (status == null) {
+        return;
+      }
+
+      ListInterface<WalkInRegistration> matches =
+          data.getRegistrationList().filter(reg -> status.equals(reg.getStatus()));
+
+      sortNewestFirst(matches);
+      ui.displayRegistrationList(matches, data, "No registration is " + status + ".");
+
+      if (!ui.confirmAnother("Filter by another status?")) {
+        return;
+      }
+    }
+  }
+
+  private void filterByPriority() {
+    while (true) {
+      ui.startAction("FILTER BY PRIORITY");
+
+      String priority = ui.inputPriorityFilter();
+      if (priority == null) {
+        return;
+      }
+
+      ListInterface<WalkInRegistration> matches =
+          data.getRegistrationList().filter(reg -> priority.equals(reg.getPriority()));
+
+      sortNewestFirst(matches);
+      ui.displayRegistrationList(matches, data,
+          "No " + priority + " registration found.");
+
+      if (!ui.confirmAnother("Filter by another priority?")) {
+        return;
+      }
+    }
+  }
+
+  /**
+   * Puts a listing in queue order, newest first.
+   *
+   * Every search and filter screen shows its results this way so they can be
+   * read the same: the guest who joined the queue most recently is at the top
+   * and the earliest is at the bottom.
+   *
+   * @param list the listing to reorder in place
+   */
+  private void sortNewestFirst(ListInterface<WalkInRegistration> list) {
+    list.sort(Comparator.comparing(WalkInRegistration::getQueuedAt,
+        Comparator.nullsLast(Comparator.reverseOrder())));
+  }
+
+  /**
+   * Lists the registrations in a chosen order, and keeps offering the choice.
+   *
+   * The order is picked from a menu that stays on screen underneath the
+   * listing, so trying arrival order and then waiting time is two keystrokes
+   * rather than two trips out to the menu and back.
+   */
+  private void runSortMenu() {
+    int choice = 1;
+
+    while (true) {
+      ListInterface<WalkInRegistration> sorted = copyOf(data.getRegistrationList());
+      String title;
+
+      switch (choice) {
+        case 1:
+          sorted.sort(Comparator.comparing(WalkInRegistration::getArrivalTime));
+          title = "SORTED BY ARRIVAL TIME (EARLIEST FIRST)";
+          break;
+
+        case 2:
+          sorted.sort((a, b) -> {
+            Guest first = data.findGuest(a.getGuestId());
+            Guest second = data.findGuest(b.getGuestId());
+            String nameA = (first == null) ? "" : first.getFullName();
+            String nameB = (second == null) ? "" : second.getFullName();
+            return nameA.compareToIgnoreCase(nameB);
+          });
+          title = "SORTED BY GUEST NAME (A-Z)";
+          break;
+
+        case 3:
+          sorted.sort(Comparator
+              .comparingLong(WalkInRegistration::getWaitingMinutes).reversed());
+          title = "SORTED BY WAITING TIME (LONGEST FIRST)";
+          break;
+
+        default:
+          // Groups the registrations by what became of them. The queue's own
+          // order is not repeated here - "Display current waiting queue" under
+          // Search & Filter is the one place that shows it, so the two cannot
+          // disagree about who is next.
+          sorted.sort(Comparator
+              .comparing(WalkInRegistration::getStatus)
+              .thenComparing(WalkInRegistration::getArrivalTime));
+          title = "SORTED BY STATUS, THEN ARRIVAL TIME";
+          break;
+      }
+
+      ui.startAction(title);
+      ui.displayRegistrationList(sorted, data, "There are no registrations.");
+
+      // The chooser sits under the listing that is already on screen, so the
+      // next order replaces this one rather than following it.
+      int next = ui.getSortChoiceInline();
+      if (next == 0) {
+        return;
+      }
+      choice = next;
+    }
   }
 
   /** A copy of a list, so sorting a listing does not reorder the records. */
@@ -823,7 +859,6 @@ public class WalkInRegistrationMaintenance {
     displayArrivalsByHour(all);
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /**
@@ -897,7 +932,6 @@ public class WalkInRegistrationMaintenance {
       ui.displayMessage("");
       ui.displayMessage("  No urgency override has been used.");
       ui.displayReportFooter();
-      ui.pause();
       return;
     }
 
@@ -933,7 +967,6 @@ public class WalkInRegistrationMaintenance {
     displayWaitSaved(all);
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /**

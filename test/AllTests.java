@@ -19,6 +19,7 @@ public class AllTests {
     System.out.println("#".repeat(76));
 
     boolean units = new UnitTest().runAll();
+    boolean validation = new ValidationTest().runAll();
     boolean integration = new IntegrationTest().runAll();
     boolean system = new SystemTest().runAll();
 
@@ -27,11 +28,12 @@ public class AllTests {
     System.out.println("#  OVERALL");
     System.out.println("#".repeat(76));
     System.out.printf("#    Unit tests         %s%n", units ? "PASSED" : "FAILED");
+    System.out.printf("#    Validation tests   %s%n", validation ? "PASSED" : "FAILED");
     System.out.printf("#    Integration tests  %s%n", integration ? "PASSED" : "FAILED");
     System.out.printf("#    System tests       %s%n", system ? "PASSED" : "FAILED");
     System.out.println("#".repeat(76));
 
-    boolean allPassed = units && integration && system;
+    boolean allPassed = units && validation && integration && system;
     System.out.println(allPassed
         ? "#  Everything passed."
         : "#  Something failed - see the summaries above.");

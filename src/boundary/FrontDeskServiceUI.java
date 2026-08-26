@@ -9,6 +9,7 @@ import entity.Payment;
 import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomType;
+import entity.WalkInRegistration;
 import java.time.LocalDate;
 import java.util.Scanner;
 import utility.MessageUI;
@@ -121,17 +122,17 @@ public class FrontDeskServiceUI {
   // ==================================================================
 
   public String inputBookingId() {
-    String id = MessageUI.readRequiredText(scanner, "Booking ID (e.g. BK0004)");
+    String id = MessageUI.readIdNumber(scanner, "Booking number", "BK", 4);
     return MessageUI.isCancelled(id) ? null : id;
   }
 
   public String inputRoomNo() {
-    String roomNo = MessageUI.readRequiredText(scanner, "Room number (e.g. 1005)");
+    String roomNo = MessageUI.readIdNumber(scanner, "Room number", "", 4);
     return MessageUI.isCancelled(roomNo) ? null : roomNo;
   }
 
   public String inputInvoiceId() {
-    String id = MessageUI.readRequiredText(scanner, "Invoice ID (e.g. INV0004)");
+    String id = MessageUI.readIdNumber(scanner, "Invoice number", "INV", 4);
     return MessageUI.isCancelled(id) ? null : id;
   }
 
@@ -161,13 +162,15 @@ public class FrontDeskServiceUI {
    */
   public String inputRoomType(ListInterface<RoomType> types) {
     MessageUI.displaySectionHeading("Room types");
-    MessageUI.displayTableHeading(String.format("  %-6s %-18s %5s %12s  %s",
-        "TYPE", "NAME", "MAX", "RATE/NIGHT", "DESCRIPTION"));
+    MessageUI.displayTableHeading(String.format("  %-5s %-6s %-18s %5s %12s  %s",
+        "NO", "TYPE", "NAME", "MAX", "RATE/NIGHT", "DESCRIPTION"));
 
+    // The number in the first column is what the officer types, so the table
+    // and the prompt below it are asking for the same thing.
     for (int i = 1; i <= types.getNumberOfEntries(); i++) {
       RoomType type = types.getEntry(i);
-      System.out.printf("  %-6s %-18s %5d %12.2f  %s%n",
-          type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
+      System.out.printf("  [%d]   %-6s %-18s %5d %12.2f  %s%n",
+          i, type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
           type.getBaseRatePerNight(), type.getDescription());
     }
     MessageUI.displayThinRule();
@@ -239,6 +242,68 @@ public class FrontDeskServiceUI {
 
   public boolean confirm(String question) {
     return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Asks whether to run the same lookup again with a different value.
+   *
+   * Sits under a result that is already on screen, so answering no is what
+   * ends the action - these screens no longer finish with a pause, because
+   * the question doubles as the way out.
+   *
+   * @param question what running it again would do
+   * @return true to go round again
+   */
+  /**
+   * Asks for a row number from the listing just shown.
+   *
+   * Re-prompts until the number names a row that is actually there, so a typo
+   * costs one line rather than ending the action.
+   *
+   * @param size how many rows the listing had
+   * @param prompt what the number is being asked for
+   * @return the 1-based row number, or -1 if the user typed 0 to quit
+   */
+  public int inputListPosition(int size, String prompt) {
+    while (true) {
+      System.out.printf("  %s (1-%d, 0 to quit): ", prompt, size);
+      String input = MessageUI.readLine(scanner);
+
+      if (MessageUI.isCancelKey(input)) {
+        return -1;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        int position = Integer.parseInt(input);
+        if (position < 1 || position > size) {
+          MessageUI.displayError("There is no number " + position
+              + " in that list. Enter a number from 1 to " + size + ".");
+          continue;
+        }
+        return position;
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Please enter one of the numbers shown in the"
+            + " first column, e.g. 1.");
+      }
+    }
+  }
+
+  public boolean confirmAnother(String question) {
+    MessageUI.displayBlankLine();
+    return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Pauses under a caller-chosen wording.
+   *
+   * @param prompt what to tell the user, without its trailing dots
+   */
+  public void pause(String prompt) {
+    MessageUI.pause(scanner, prompt);
   }
 
   public void pause() {
@@ -368,20 +433,27 @@ public class FrontDeskServiceUI {
       return false;
     }
 
-    int totalPages = MessageUI.pageCount(bookings.getNumberOfEntries());
-    int shown = 0;
+    int total = bookings.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
 
     for (int page = 1; page <= totalPages; page++) {
       MessageUI.displayBlankLine();
-      MessageUI.displayTableHeading(String.format("  %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s",
-          "BOOKING", "GUEST", "TYPE", "ROOM", "CHECK IN", "CHECK OUT", "STATUS", "PRI"));
+      MessageUI.displayTableHeading(String.format(
+          "  %-4s %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s",
+          "NO", "BOOKING", "GUEST", "TYPE", "ROOM", "CHECK IN", "CHECK OUT",
+          "STATUS", "PRI"));
 
-      int upTo = Math.min(shown + MessageUI.PAGE_SIZE, bookings.getNumberOfEntries());
-      for (int i = shown + 1; i <= upTo; i++) {
+      // NO counts from the top of the whole listing, not the page, because it
+      // is the number the officer types to act on a booking.
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
         Booking booking = bookings.getEntry(i);
         Guest guest = data.findGuest(booking.getGuestId());
 
-        System.out.printf("  %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s%n",
+        System.out.printf("  %-4d %-7s %-20s %-6s %-6s %-11s %-11s %-12s %s%n",
+            i,
             booking.getBookingId(),
             guest == null ? "-" : truncate(guest.getFullName(), 20),
             booking.getTypeId(),
@@ -390,10 +462,9 @@ public class FrontDeskServiceUI {
             booking.getBookingStatus(),
             booking.isUrgent() ? "URG" : "-");
       }
-      shown = upTo;
 
       MessageUI.displayThinRule();
-      System.out.printf("  %d booking(s).%n", bookings.getNumberOfEntries());
+      System.out.printf("  %d booking(s).%n", total);
 
       if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
         break;
@@ -450,8 +521,32 @@ public class FrontDeskServiceUI {
   // REPORTS
   // ==================================================================
 
+  /**
+   * Shows the stay a walk-in guest asked for, and the dates it works out to.
+   *
+   * Printed before the officer is asked to accept them so the nights the guest
+   * gave at the door, and the check-in and check-out those imply, are both on
+   * screen at the moment the decision is made.
+   *
+   * @param reg the registration the guest was called from
+   * @param checkIn the arrival date those nights work out to
+   * @param checkOut the departure date those nights work out to
+   */
+  public void displayWalkInStay(WalkInRegistration reg, java.time.LocalDate checkIn,
+      java.time.LocalDate checkOut) {
+    java.time.format.DateTimeFormatter dayFormat =
+        java.time.format.DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy");
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Nights requested",
+        reg.getRequestedNights() + " night(s)");
+    MessageUI.displayField("Check-in", checkIn.format(dayFormat));
+    MessageUI.displayField("Check-out", checkOut.format(dayFormat));
+    MessageUI.displayBlankLine();
+  }
+
   public void displayReportHeader(String title) {
-    MessageUI.clearScreen();
+    MessageUI.beginLongOutput();
     MessageUI.displayBlankLine();
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -486,5 +581,6 @@ public class FrontDeskServiceUI {
     MessageUI.displayRule();
     MessageUI.displayMessage("  END OF REPORT");
     MessageUI.displayRule();
+    MessageUI.endLongOutput(scanner);
   }
 }

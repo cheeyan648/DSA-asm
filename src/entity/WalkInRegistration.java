@@ -24,7 +24,7 @@ import java.util.Objects;
  */
 public class WalkInRegistration implements Serializable {
 
-  private static final long serialVersionUID = 2L;
+  private static final long serialVersionUID = 3L;
 
   public static final String STATUS_WAITING = "WAITING";
   public static final String STATUS_IN_SERVICE = "IN_SERVICE";
@@ -41,6 +41,18 @@ public class WalkInRegistration implements Serializable {
   private String regId;
   private String guestId;
   private LocalDateTime arrivalTime;
+
+  /**
+   * When the guest joined the waiting queue, and when they left it.
+   *
+   * A registration is recorded at both ends of the wait rather than only at
+   * the end: queuedAt is stamped as they join the line and never changes, and
+   * servedAt is stamped when the status leaves WAITING. Keeping both means the
+   * wait can still be measured after the guest has gone, which a single
+   * timestamp overwritten in place could not do.
+   */
+  private LocalDateTime queuedAt;
+  private LocalDateTime servedAt;
   private String priority;
   private String urgencyReason;
   private String requestedTypeId;
@@ -64,6 +76,7 @@ public class WalkInRegistration implements Serializable {
     this.requestedTypeId = requestedTypeId;
     this.requestedNights = requestedNights;
     this.status = STATUS_WAITING;
+    this.queuedAt = arrivalTime;
   }
 
   public String getRegId() {
@@ -162,6 +175,50 @@ public class WalkInRegistration implements Serializable {
     this.bookingId = bookingId;
   }
 
+  public LocalDateTime getQueuedAt() {
+    return queuedAt;
+  }
+
+  public void setQueuedAt(LocalDateTime queuedAt) {
+    this.queuedAt = queuedAt;
+  }
+
+  public LocalDateTime getServedAt() {
+    return servedAt;
+  }
+
+  public void setServedAt(LocalDateTime servedAt) {
+    this.servedAt = servedAt;
+  }
+
+  /**
+   * Records that the guest has left the waiting queue.
+   *
+   * Every way out of the queue comes through here - called to the counter,
+   * cancelled, or marked a no-show - so the moment the wait ended is stamped
+   * once, in one place, whatever ended it.
+   *
+   * @param newStatus what the registration becomes
+   * @param when the moment they left the queue
+   */
+  public void leaveQueue(String newStatus, LocalDateTime when) {
+    this.status = newStatus;
+    this.servedAt = when;
+    if (STATUS_IN_SERVICE.equals(newStatus)) {
+      this.calledAt = when;
+    }
+  }
+
+  /** The moment the guest joined the queue, formatted for display. */
+  public String getFormattedQueuedAt() {
+    return (queuedAt == null) ? "-" : queuedAt.format(TIME_FORMAT);
+  }
+
+  /** The moment the guest left the queue, formatted for display. */
+  public String getFormattedServedAt() {
+    return (servedAt == null) ? "-" : servedAt.format(TIME_FORMAT);
+  }
+
   public boolean isUrgent() {
     return PRIORITY_URGENT.equals(priority);
   }
@@ -180,11 +237,19 @@ public class WalkInRegistration implements Serializable {
    * @return the wait in minutes, or 0 if the arrival time is unknown
    */
   public long getWaitingMinutes() {
-    if (arrivalTime == null) {
+    LocalDateTime start = (queuedAt != null) ? queuedAt : arrivalTime;
+    if (start == null) {
       return 0;
     }
-    LocalDateTime end = (calledAt != null) ? calledAt : LocalDateTime.now();
-    long minutes = Duration.between(arrivalTime, end).toMinutes();
+
+    // A finished wait is measured between the two stored stamps; one still
+    // running is measured to now, so the figure keeps growing on screen.
+    LocalDateTime end = servedAt;
+    if (end == null) {
+      end = (calledAt != null) ? calledAt : LocalDateTime.now();
+    }
+
+    long minutes = Duration.between(start, end).toMinutes();
     return (minutes < 0) ? 0 : minutes;
   }
 

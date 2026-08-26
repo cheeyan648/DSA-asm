@@ -931,7 +931,6 @@ public class LoyaltyRewardsMaintenance {
             m -> ChronoUnit.DAYS.between(m.getJoinDate(), today) <= 30)));
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /** How the members split across the four tiers. */
@@ -1013,7 +1012,6 @@ public class LoyaltyRewardsMaintenance {
     displayRejectionReasons(all);
 
     ui.displayReportFooter();
-    ui.pause();
   }
 
   /** Which rewards people actually want. */

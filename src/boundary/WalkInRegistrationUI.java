@@ -42,8 +42,7 @@ public class WalkInRegistrationUI {
   // ==================================================================
 
   public int getMenuChoice() {
-    MessageUI.displayMenuScreen("WALK-IN REGISTRATION",
-        "& S T A N D A R D   B O O K I N G",
+    MessageUI.displayMenuScreen("WALK-IN REGISTRATION", null,
         "Main Menu  >  Walk-In Registration",
         new String[] {
           "Guest registration",
@@ -73,38 +72,25 @@ public class WalkInRegistrationUI {
         "Main Menu  >  Walk-In Registration  >  Queue Operations",
         new String[] {
           "Serve next guest (hands over to Front Desk)",
-          "Display current waiting queue",
           "Cancel a waiting guest",
           "Mark a called guest as no-show"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 4, "go back");
+    return MessageUI.readMenuChoice(scanner, 3, "go back");
   }
 
   public int getSearchMenuChoice() {
     MessageUI.displayMenuScreen("SEARCH & FILTER", null,
         "Main Menu  >  Walk-In Registration  >  Search & Filter",
         new String[] {
-          "Search by registration ID",
+          "Display current waiting queue",
+          "Search by registration number",
           "Search by guest name (partial match)",
           "Filter by status",
           "Filter by priority"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 4, "go back");
-  }
-
-  public int getSortMenuChoice() {
-    MessageUI.displayMenuScreen("SORTED LISTINGS", null,
-        "Main Menu  >  Walk-In Registration  >  Sorted Listings",
-        new String[] {
-          "By arrival time (earliest first)",
-          "By guest name (A-Z)",
-          "By waiting time (longest first)",
-          "By service order (urgent lane first, then arrival)"
-        },
-        "Back");
-    return MessageUI.readMenuChoice(scanner, 4, "go back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
   }
 
   public int getReportMenuChoice() {
@@ -128,7 +114,7 @@ public class WalkInRegistrationUI {
    * @return the IC or passport number, or null if cancelled
    */
   public String inputIcPassport() {
-    String ic = MessageUI.readRequiredText(scanner, "IC / Passport number");
+    String ic = MessageUI.readIcPassport(scanner, "IC / Passport number");
     return MessageUI.isCancelled(ic) ? null : ic;
   }
 
@@ -144,17 +130,17 @@ public class WalkInRegistrationUI {
     MessageUI.displayMessage("  This guest is not on record. Please take their details.");
     MessageUI.displayMessage("");
 
-    String name = MessageUI.readRequiredText(scanner, "Full name");
+    String name = MessageUI.readName(scanner, "Full name");
     if (MessageUI.isCancelled(name)) {
       return null;
     }
 
-    String contact = MessageUI.readRequiredText(scanner, "Contact number");
+    String contact = MessageUI.readPhone(scanner, "Contact number");
     if (MessageUI.isCancelled(contact)) {
       return null;
     }
 
-    String email = MessageUI.readOptionalText(scanner, "Email");
+    String email = MessageUI.readOptionalEmail(scanner, "Email");
     if (MessageUI.isCancelled(email)) {
       return null;
     }
@@ -175,13 +161,16 @@ public class WalkInRegistrationUI {
   public String inputRoomType(ListInterface<RoomType> types) {
     MessageUI.displaySectionHeading("Room types");
     MessageUI.displayTableHeading(
-        String.format("  %-6s %-18s %5s %12s  %s",
-            "TYPE", "NAME", "MAX", "RATE/NIGHT", "DESCRIPTION"));
+        String.format("  %-5s %-6s %-18s %5s %12s  %s",
+            "NO", "TYPE", "NAME", "MAX", "RATE/NIGHT", "DESCRIPTION"));
 
+    // The number in the first column is what the officer types. Without it the
+    // table showed only type IDs like RT01 while the prompt asked for 1-5,
+    // leaving the reader to work out that the two lined up.
     for (int i = 1; i <= types.getNumberOfEntries(); i++) {
       RoomType type = types.getEntry(i);
-      System.out.printf("  %-6s %-18s %5d %12.2f  %s%n",
-          type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
+      System.out.printf("  [%d]   %-6s %-18s %5d %12.2f  %s%n",
+          i, type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
           type.getBaseRatePerNight(), type.getDescription());
     }
     MessageUI.displayThinRule();
@@ -259,8 +248,82 @@ public class WalkInRegistrationUI {
   }
 
   public String inputRegistrationId() {
-    String id = MessageUI.readRequiredText(scanner, "Registration ID (e.g. WR0003)");
+    String id = MessageUI.readIdNumber(scanner, "Registration number", "WR", 4);
     return MessageUI.isCancelled(id) ? null : id;
+  }
+
+  /**
+   * Asks which waiting guest to act on, by their position in the queue.
+   *
+   * The position is what the officer can see on the screen in front of them
+   * and on the queue display the guest is standing next to; the registration
+   * ID is not. Asking for the ID meant reading it off the table and retyping
+   * its prefix, which is the step that went wrong.
+   *
+   * Re-prompts until a position that is actually in the queue is entered, so a
+   * typo costs one line rather than sending the officer back to the menu.
+   *
+   * @param queueSize how many guests are waiting
+   * @return the 1-based position, or -1 if the user typed 0 to quit
+   */
+  public int inputQueuePosition(int queueSize) {
+    return inputListPosition(queueSize, "Position to cancel");
+  }
+
+  /**
+   * Asks for a row number from the listing just shown.
+   *
+   * Re-prompts until the number names a row that is actually there, so a typo
+   * costs one line rather than sending the officer back to the menu to start
+   * the action again.
+   *
+   * @param size how many rows the listing had
+   * @param prompt what the number is being asked for
+   * @return the 1-based row number, or -1 if the user typed 0 to quit
+   */
+  public int inputListPosition(int size, String prompt) {
+    while (true) {
+      System.out.printf("  %s (1-%d, 0 to quit): ", prompt, size);
+      String input = MessageUI.readLine(scanner);
+
+      if ("0".equals(input)) {
+        return -1;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        int position = Integer.parseInt(input);
+        if (position < 1 || position > size) {
+          MessageUI.displayError("There is no number " + position
+              + " in that list. Enter a number from 1 to " + size + ".");
+          continue;
+        }
+        return position;
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Please enter one of the numbers shown in the"
+            + " first column, e.g. 1.");
+      }
+    }
+  }
+
+  /**
+   * Says how many guests are still waiting, in a sentence that reads properly
+   * whatever the number is.
+   *
+   * @param waiting how many guests are still in the queue
+   * @return e.g. "1 guest is still waiting" or "3 guests are still waiting"
+   */
+  public static String waitingSentence(int waiting) {
+    if (waiting == 0) {
+      return "no guests are still waiting";
+    }
+    if (waiting == 1) {
+      return "1 guest is still waiting";
+    }
+    return waiting + " guests are still waiting";
   }
 
   public String inputSearchName() {
@@ -274,6 +337,52 @@ public class WalkInRegistrationUI {
 
   public void pause() {
     MessageUI.pause(scanner);
+  }
+
+  /**
+   * Pauses under a caller-chosen wording.
+   *
+   * @param prompt what to tell the user, without its trailing dots
+   */
+  public void pause(String prompt) {
+    MessageUI.pause(scanner, prompt);
+  }
+
+  /**
+   * Asks whether to run the same lookup again with a different value.
+   *
+   * Sits under a result that is already on screen. Answering no is what ends
+   * the action, which is why these screens no longer finish with a pause: the
+   * question doubles as the way out.
+   *
+   * @param question what running it again would do
+   * @return true to go round again
+   */
+  public boolean confirmAnother(String question) {
+    MessageUI.displayBlankLine();
+    return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Offers the sort orders underneath a listing that is already on screen.
+   *
+   * Drawn as a compact chooser rather than a full menu screen so the listing
+   * above it stays visible while the next order is picked.
+   *
+   * @return the chosen order, or 0 to leave
+   */
+  public int getSortChoiceInline() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayThinRule();
+    MessageUI.displayMessage("  Sort this listing by:");
+    MessageUI.displayMessage("    [1]  Arrival time (earliest first)");
+    MessageUI.displayMessage("    [2]  Guest name (A-Z)");
+    MessageUI.displayMessage("    [3]  Waiting time (longest first)");
+    MessageUI.displayMessage("    [4]  Status, then arrival time");
+    MessageUI.displayMessage("    [0]  Back");
+    MessageUI.displayThinRule();
+
+    return MessageUI.readMenuChoice(scanner, 4, "go back");
   }
 
   // ==================================================================
@@ -313,6 +422,10 @@ public class WalkInRegistrationUI {
     }
     MessageUI.displayField("Requested", typeName + ", " + reg.getRequestedNights() + " night(s)");
     MessageUI.displayField("Arrived", reg.getFormattedArrivalTime());
+    MessageUI.displayField("Joined queue", reg.getFormattedQueuedAt());
+    if (reg.getServedAt() != null) {
+      MessageUI.displayField("Left queue", reg.getFormattedServedAt());
+    }
     MessageUI.displayField("Waiting", reg.getFormattedWaitingTime());
     MessageUI.displayField("Status", reg.getStatus());
 
@@ -340,29 +453,34 @@ public class WalkInRegistrationUI {
       return false;
     }
 
-    int totalPages = MessageUI.pageCount(list.getNumberOfEntries());
-    int shown = 0;
+    int total = list.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
 
     for (int page = 1; page <= totalPages; page++) {
       MessageUI.displayBlankLine();
-      MessageUI.displayTableHeading(String.format("  %-7s %-24s %-8s %-6s %-6s %-11s %s",
-          "REG ID", "GUEST", "PRIORITY", "TYPE", "NIGHTS", "STATUS", "ARRIVED"));
+      MessageUI.displayTableHeading(String.format(
+          "  %-4s %-7s %-22s %-8s %-5s %-11s %-16s %s",
+          "NO", "REG ID", "GUEST", "PRIORITY", "TYPE", "STATUS",
+          "QUEUED", "LEFT QUEUE"));
 
-      int upTo = Math.min(shown + MessageUI.PAGE_SIZE, list.getNumberOfEntries());
-      for (int i = shown + 1; i <= upTo; i++) {
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
         WalkInRegistration reg = list.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
 
-        System.out.printf("  %-7s %-24s %-8s %-6s %6d %-11s %s%n",
-            reg.getRegId(), truncate(name, 24), reg.getPriority(),
-            reg.getRequestedTypeId(), reg.getRequestedNights(), reg.getStatus(),
-            reg.getFormattedArrivalTime());
+        // Both ends of the wait are shown: when they joined the queue, and
+        // when they left it. A guest still waiting has no second stamp yet.
+        System.out.printf("  %-4d %-7s %-22s %-8s %-5s %-11s %-16s %s%n",
+            i, reg.getRegId(), truncate(name, 22), reg.getPriority(),
+            reg.getRequestedTypeId(), reg.getStatus(),
+            reg.getFormattedQueuedAt(), reg.getFormattedServedAt());
       }
-      shown = upTo;
 
       MessageUI.displayThinRule();
-      System.out.printf("  %d registration(s).%n", list.getNumberOfEntries());
+      System.out.printf("  %d registration(s).%n", total);
 
       if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
         break;
@@ -392,20 +510,24 @@ public class WalkInRegistrationUI {
       return false;
     }
 
-    MessageUI.displayBlankLine();
-    System.out.printf("  Urgent: %d     Normal: %d     Total: %d%n",
-        urgentCount, normalCount, serviceOrder.getNumberOfEntries());
-
-    int totalPages = MessageUI.pageCount(serviceOrder.getNumberOfEntries());
-    int shown = 0;
+    int total = serviceOrder.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
 
     for (int page = 1; page <= totalPages; page++) {
       MessageUI.displayBlankLine();
+      System.out.printf("  Urgent: %d     Normal: %d     Total: %d%n",
+          urgentCount, normalCount, total);
+      MessageUI.displayBlankLine();
+
       MessageUI.displayTableHeading(String.format("  %-4s %-7s %-24s %-8s %-8s %-7s %s",
           "POS", "REG ID", "GUEST", "PRIORITY", "ARRIVED", "WAITED", "AHEAD"));
 
-      int upTo = Math.min(shown + MessageUI.PAGE_SIZE, serviceOrder.getNumberOfEntries());
-      for (int i = shown + 1; i <= upTo; i++) {
+      // POS counts from the front of the whole queue, not from the top of the
+      // page, because it is the number the officer types to act on a guest.
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
         WalkInRegistration reg = serviceOrder.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
@@ -414,7 +536,6 @@ public class WalkInRegistrationUI {
             i, reg.getRegId(), truncate(name, 24), reg.getPriority(),
             shortTime(reg), reg.getFormattedWaitingTime(), i - 1);
       }
-      shown = upTo;
 
       MessageUI.displayThinRule();
       MessageUI.displayMessage("  Position 1 is served next.");
@@ -448,7 +569,7 @@ public class WalkInRegistrationUI {
   // ==================================================================
 
   public void displayReportHeader(String title) {
-    MessageUI.clearScreen();
+    MessageUI.beginLongOutput();
     MessageUI.displayBlankLine();
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -479,5 +600,6 @@ public class WalkInRegistrationUI {
     MessageUI.displayRule();
     MessageUI.displayMessage("  END OF REPORT");
     MessageUI.displayRule();
+    MessageUI.endLongOutput(scanner);
   }
 }

@@ -25,7 +25,7 @@ public class LoyaltyRewardsUI {
   // ==================================================================
 
   public int getMenuChoice() {
-    MessageUI.displayMenuScreen("LOYALTY", "& R E W A R D S",
+    MessageUI.displayMenuScreen("LOYALTY", null,
         "Main Menu  >  Loyalty & Rewards",
         new String[] {
           "Members (enrol, search, list)",
@@ -107,17 +107,17 @@ public class LoyaltyRewardsUI {
   // ==================================================================
 
   public String inputMemberId() {
-    String id = MessageUI.readRequiredText(scanner, "Member ID (e.g. L0001)");
+    String id = MessageUI.readIdNumber(scanner, "Member number", "L", 4);
     return MessageUI.isCancelled(id) ? null : id;
   }
 
   public String inputGuestId() {
-    String id = MessageUI.readRequiredText(scanner, "Guest ID (e.g. G0004)");
+    String id = MessageUI.readIdNumber(scanner, "Guest number", "G", 4);
     return MessageUI.isCancelled(id) ? null : id;
   }
 
   public String inputBookingId() {
-    String id = MessageUI.readRequiredText(scanner, "Booking ID (e.g. BK0001)");
+    String id = MessageUI.readIdNumber(scanner, "Booking number", "BK", 4);
     return MessageUI.isCancelled(id) ? null : id;
   }
 
@@ -171,6 +171,30 @@ public class LoyaltyRewardsUI {
 
   public boolean confirm(String question) {
     return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Asks whether to run the same lookup again with a different value.
+   *
+   * Sits under a result that is already on screen, so answering no is what
+   * ends the action - these screens no longer finish with a pause, because
+   * the question doubles as the way out.
+   *
+   * @param question what running it again would do
+   * @return true to go round again
+   */
+  public boolean confirmAnother(String question) {
+    MessageUI.displayBlankLine();
+    return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Pauses under a caller-chosen wording.
+   *
+   * @param prompt what to tell the user, without its trailing dots
+   */
+  public void pause(String prompt) {
+    MessageUI.pause(scanner, prompt);
   }
 
   public void pause() {
@@ -450,7 +474,7 @@ public class LoyaltyRewardsUI {
   // ==================================================================
 
   public void displayReportHeader(String title) {
-    MessageUI.clearScreen();
+    MessageUI.beginLongOutput();
     MessageUI.displayBlankLine();
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -485,5 +509,6 @@ public class LoyaltyRewardsUI {
     MessageUI.displayRule();
     MessageUI.displayMessage("  END OF REPORT");
     MessageUI.displayRule();
+    MessageUI.endLongOutput(scanner);
   }
 }
