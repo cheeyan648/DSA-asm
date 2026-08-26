@@ -5,33 +5,49 @@ import java.time.LocalDate;
 import java.util.Objects;
 
 /**
+ * A member's request to exchange points for a reward.
  *
- * @author Kat Tan
+ * pointsUsed is a snapshot taken when the request is made, so a later change to
+ * the reward's price cannot alter a request already in the queue.
+ *
+ * Points are only ever deducted when a request is approved. A rejected request
+ * costs the member nothing, and the check that decides it happens at
+ * processing time rather than at request time so the reason for a refusal is
+ * recorded and can be reviewed.
+ *
+ * @author Ivan Wong
  */
 public class Redemption implements Serializable {
 
-  public static final String STATUS_PENDING = "PENDING";
-  public static final String STATUS_COMPLETED = "COMPLETED";
-  public static final String STATUS_REJECTED = "REJECTED";
+  private static final long serialVersionUID = 2L;
+
+  public static final String PENDING = "PENDING";
+  public static final String APPROVED = "APPROVED";
+  public static final String REJECTED = "REJECTED";
+  public static final String CANCELLED = "CANCELLED";
 
   private String redemptionId;
   private String memberId;
   private String rewardId;
   private int pointsUsed;
   private LocalDate requestDate;
+  private LocalDate processedDate;
   private String status;
+  private String rejectReason;
+  private String processedBy;
+  private String invoiceId;
 
   public Redemption() {
   }
 
   public Redemption(String redemptionId, String memberId, String rewardId,
-      int pointsUsed, LocalDate requestDate, String status) {
+      int pointsUsed, LocalDate requestDate) {
     this.redemptionId = redemptionId;
     this.memberId = memberId;
     this.rewardId = rewardId;
     this.pointsUsed = pointsUsed;
     this.requestDate = requestDate;
-    this.status = status;
+    this.status = PENDING;
   }
 
   public String getRedemptionId() {
@@ -74,12 +90,48 @@ public class Redemption implements Serializable {
     this.requestDate = requestDate;
   }
 
+  public LocalDate getProcessedDate() {
+    return processedDate;
+  }
+
+  public void setProcessedDate(LocalDate processedDate) {
+    this.processedDate = processedDate;
+  }
+
   public String getStatus() {
     return status;
   }
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  public String getRejectReason() {
+    return rejectReason;
+  }
+
+  public void setRejectReason(String rejectReason) {
+    this.rejectReason = rejectReason;
+  }
+
+  public String getProcessedBy() {
+    return processedBy;
+  }
+
+  public void setProcessedBy(String processedBy) {
+    this.processedBy = processedBy;
+  }
+
+  public String getInvoiceId() {
+    return invoiceId;
+  }
+
+  public void setInvoiceId(String invoiceId) {
+    this.invoiceId = invoiceId;
+  }
+
+  public boolean isPending() {
+    return PENDING.equals(status);
   }
 
   @Override
@@ -95,13 +147,13 @@ public class Redemption implements Serializable {
     if (obj == null || getClass() != obj.getClass()) {
       return false;
     }
-    final Redemption other = (Redemption) obj;
-    return Objects.equals(this.redemptionId, other.redemptionId);
+    return Objects.equals(this.redemptionId, ((Redemption) obj).redemptionId);
   }
 
   @Override
   public String toString() {
-    return String.format("%-10s %-10s %-8s %8d %-12s %-10s",
-        redemptionId, memberId, rewardId, pointsUsed, requestDate, status);
+    return String.format("%-7s %-7s %-6s %7d  %-11s %-10s %s",
+        redemptionId, memberId, rewardId, pointsUsed, requestDate, status,
+        (processedDate == null ? "-" : processedDate.toString()));
   }
 }
