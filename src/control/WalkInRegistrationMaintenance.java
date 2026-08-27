@@ -11,34 +11,27 @@ import entity.WalkInRegistration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import utility.MessageUI;
 
 /**
  * Walk-In Registration - who is waiting, and whose turn it is.
  *
- * This module answers one question: which guest should be served next, and is
- * that fair. It knows nothing about rooms, dates or money; the moment a guest
- * is called it hands them to the front desk, which is the module that turns a
- * person at the counter into a booking.
- *
- * The fairness problem it exists to solve: serving strictly in arrival order
- * is unfair to an elderly guest or one with a medical need, but letting staff
- * reorder the queue freely invites abuse. The answer is to allow the exception
- * and force a reason to be recorded, so every override can be reviewed.
+ * Three ADTs do the work: a List holds every registration and answers the
+ * searches, filters and reports; a DualLaneQueue holds only those still
+ * waiting and decides who is called next; a Stack remembers this session's
+ * registrations so the last one can be undone.
  *
  * @author Tan Chee Yan
  */
 public class WalkInRegistrationMaintenance {
-
   private final WalkInRegistrationUI ui = new WalkInRegistrationUI();
   private final ResortData data;
   private final ResortService service;
 
   /**
-   * The registrations made in this session, newest on top.
-   *
-   * Not saved to file: an undo only makes sense to the officer who made the
-   * mistake, in the session they made it. Restoring it on the next run would
-   * let somebody undo a registration made hours earlier by somebody else.
+   * Stack ADT - last in, first out, so pop() always returns the newest
+   * registration. Not persisted: an undo only makes sense in the session
+   * that made the mistake.
    */
   private final StackInterface<WalkInRegistration> undoStack = new ArrayStack<>();
 
@@ -132,8 +125,6 @@ public class WalkInRegistrationMaintenance {
           displayQueue();
           ui.pause();
           break;
-        // The searches keep prompting until 0, so they need no pause here.
-        // The filters run once and pause so the result can be read.
         case 2:
           searchByRegistrationId();
           break;
@@ -175,15 +166,6 @@ public class WalkInRegistrationMaintenance {
   // REGISTRATION
   // ==================================================================
 
-  /**
-   * Registers a guest who has just walked in.
-   *
-   * The guest is looked up by their identity document first, so a returning
-   * visitor keeps the record - and the loyalty membership - they already have,
-   * rather than becoming a second version of themselves.
-   *
-   * @param urgent whether this is an exception case that jumps the queue
-   */
   private void registerGuest(boolean urgent) {
     ui.startAction(urgent ? "REGISTER URGENT WALK-IN" : "REGISTER NORMAL WALK-IN");
 
@@ -210,7 +192,7 @@ public class WalkInRegistrationMaintenance {
           + " (" + guest.getGuestId() + ").");
     }
 
-    // One person cannot hold two places in the line at once.
+    // List.search - first entry matching the condition, or null.
     final String guestId = guest.getGuestId();
     WalkInRegistration active = data.getRegistrationList().search(
         reg -> guestId.equals(reg.getGuestId())
@@ -252,6 +234,8 @@ public class WalkInRegistrationMaintenance {
         urgent ? WalkInRegistration.PRIORITY_URGENT : WalkInRegistration.PRIORITY_NORMAL,
         reason, typeId, nights);
 
+    // One registration, three ADTs: stored in the List, queued in the lane
+    // its priority names, and pushed onto the Stack in case it is undone.
     data.getRegistrationList().add(reg);
     data.getWaitingList().enqueue(reg, reg.getPriority());
     undoStack.push(reg);
@@ -272,10 +256,9 @@ public class WalkInRegistrationMaintenance {
   }
 
   /**
-   * How many guests will be called before this one.
-   *
-   * Worked out from the queue rather than stored, because it changes every
-   * time anyone else is served.
+   * Walks the queue in service order to find a guest's place in it. Worked
+   * out on demand rather than stored, because it changes every time anyone
+   * else is served.
    */
   private int countAhead(WalkInRegistration reg) {
     ListInterface<WalkInRegistration> order = data.getWaitingList().toServiceOrder();
@@ -287,14 +270,6 @@ public class WalkInRegistrationMaintenance {
     return 0;
   }
 
-  /**
-   * Takes back the most recent registration made in this session.
-   *
-   * Only a guest who is still waiting can be undone. Once they have been
-   * called they are no longer in the queue and the front desk may already have
-   * started work on their booking, so removing the record would leave that
-   * work pointing at nothing.
-   */
   private void undoLastRegistration() {
     ui.startAction("UNDO LAST REGISTRATION");
 
@@ -304,6 +279,7 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
+    // peek() first - the entry is only popped once the undo is confirmed.
     WalkInRegistration last = undoStack.peek();
 
     if (!last.isWaiting()) {
@@ -328,13 +304,12 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
+    // Removed from all three, in the reverse of how it was added.
     undoStack.pop();
     data.getWaitingList().removeEntry(last);
     data.getRegistrationList().removeEntry(last);
     data.saveRegistrations();
 
-    // The guest record is deliberately kept: the person still exists even if
-    // this registration was keyed in by mistake.
     ui.displaySuccess("Registration " + last.getRegId() + " removed.");
     ui.displayMessage("  The guest record has been kept.");
     ui.pause();
@@ -344,18 +319,11 @@ public class WalkInRegistrationMaintenance {
   // QUEUE
   // ==================================================================
 
-  /**
-   * Calls the next guest and hands them to the front desk.
-   *
-   * This is the handover that makes the two modules one system. The guest
-   * leaves the queue here and their booking is made at the front desk, which
-   * is where every walk-in booking is made - offering to create one here as
-   * well would have put the same job in two places, each with its own idea of
-   * what a booking needs.
-   */
   private void serveNextGuest() {
     ui.startAction("SERVE NEXT GUEST");
 
+    // peekNext() reads the front of the urgent lane, or the normal lane
+    // when urgent is empty - without removing anyone.
     WalkInRegistration next = data.getWaitingList().peekNext();
     if (next == null) {
       ui.displayError("No guests are waiting.");
@@ -371,8 +339,6 @@ public class WalkInRegistrationMaintenance {
         type == null ? next.getRequestedTypeId() : type.getTypeName());
     ui.displayMessage("");
 
-    // Calling a guest cannot be undone from this module, so it is confirmed
-    // before it happens.
     if (!ui.confirm("Call this guest to the counter?")) {
       ui.displayMessage("  Cancelled - the guest is still waiting.");
       ui.pause();
@@ -395,12 +361,6 @@ public class WalkInRegistrationMaintenance {
     ui.pause();
   }
 
-  /**
-   * Says who will be called next, and how many are left behind them.
-   *
-   * Shown after every guest leaves the queue so the officer can call the next
-   * name without going back to the queue display to find it.
-   */
   private void reportNextInQueue() {
     int waiting = data.getWaitingList().getNumberOfEntries();
     ui.displayMessage("  " + capitalise(WalkInRegistrationUI.waitingSentence(waiting)) + ".");
@@ -413,9 +373,6 @@ public class WalkInRegistrationMaintenance {
 
     Guest nextGuest = data.findGuest(upcoming.getGuestId());
 
-    // Written as a sentence rather than as a row of bracketed codes: this is
-    // read aloud to call the guest, so the priority is spelled out as the kind
-    // of booking it is, and the wait is left until last where it belongs.
     ui.displayMessage("  Next to be called: "
         + (nextGuest == null ? "-" : nextGuest.getFullName())
         + ", " + bookingKind(upcoming)
@@ -423,17 +380,10 @@ public class WalkInRegistrationMaintenance {
         + ", waited " + upcoming.getFormattedWaitingTime() + ".");
   }
 
-  /**
-   * How a registration's priority reads in a sentence.
-   *
-   * @param reg the registration
-   * @return "urgent booking" or "normal booking"
-   */
   private String bookingKind(WalkInRegistration reg) {
     return reg.isUrgent() ? "urgent booking" : "normal booking";
   }
 
-  /** A sentence that starts with a capital letter. */
   private String capitalise(String sentence) {
     if (sentence == null || sentence.isEmpty()) {
       return sentence;
@@ -441,7 +391,6 @@ public class WalkInRegistrationMaintenance {
     return Character.toUpperCase(sentence.charAt(0)) + sentence.substring(1);
   }
 
-  /** Shows who is waiting, in the order they will be called. */
   private boolean displayQueue() {
     ui.startAction("CURRENT WALK-IN QUEUE");
     return ui.displayQueue(data.getWaitingList().toServiceOrder(), data,
@@ -449,13 +398,6 @@ public class WalkInRegistrationMaintenance {
         data.getWaitingList().getNormalCount());
   }
 
-  /**
-   * Removes a guest who has given up waiting and left.
-   *
-   * The guest is picked by their position in the queue rather than by their
-   * registration ID: the position is on the screen the officer is already
-   * looking at, and it is what the guest themselves was told.
-   */
   private void cancelWaitingGuest() {
     ui.startAction("CANCEL A WAITING GUEST");
 
@@ -488,8 +430,6 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
-    // Leaving the queue is stamped here too, so a cancelled guest still has a
-    // measurable wait rather than one that runs on for ever.
     reg.leaveQueue(WalkInRegistration.STATUS_CANCELLED, LocalDateTime.now());
     reg.setServedBy(staffId);
     data.getWaitingList().removeEntry(reg);
@@ -503,18 +443,10 @@ public class WalkInRegistrationMaintenance {
     ui.pause();
   }
 
-  /**
-   * Records that a guest who was called never came forward.
-   *
-   * A no-show is only possible after a guest has been called, which is why it
-   * is picked from the list of guests currently IN_SERVICE rather than from
-   * the queue: a guest still waiting has not yet had their turn to miss. It
-   * stays in this module because the guest never reached the front desk - had
-   * they arrived there, it would be the front desk that recorded what happened.
-   */
   private void markNoShow() {
     ui.startAction("MARK A CALLED GUEST AS NO-SHOW");
 
+    // List.filter - a new list of the entries that match, original untouched.
     ListInterface<WalkInRegistration> inService = data.getRegistrationList().filter(
         reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
 
@@ -544,15 +476,12 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
-    // The wait ended when they were called, so that stamp is kept rather than
-    // being overwritten with the moment somebody got round to recording it.
     reg.setStatus(WalkInRegistration.STATUS_NO_SHOW);
     if (reg.getServedAt() == null) {
       reg.setServedAt(LocalDateTime.now());
     }
     data.saveRegistrations();
 
-    // They are not put back in the queue: they had their turn.
     ui.displaySuccess(reg.getRegId() + " recorded as a no-show.");
     ui.displayMessage("");
     reportNextInQueue();
@@ -563,19 +492,7 @@ public class WalkInRegistrationMaintenance {
   // SEARCH AND SORT
   // ==================================================================
 
-  /**
-   * Looks a registration up by its number, and keeps looking.
-   *
-   * The screen is redrawn for each number entered rather than ending with a
-   * pause, so an officer working through a handful of registrations types
-   * 3, then 5, then 7 and sees each one replace the last. Ending the action
-   * after every single lookup made that the slowest way to do the commonest
-   * job on this screen.
-   */
   private void searchByRegistrationId() {
-    // The title is drawn once and the prompt repeats under it, so several
-    // registrations can be checked in a row with the results building up.
-    // 0 is the only way out, as at every other prompt in the system.
     ui.startAction("SEARCH BY REGISTRATION NUMBER");
 
     while (true) {
@@ -586,8 +503,6 @@ public class WalkInRegistrationMaintenance {
 
       WalkInRegistration reg = data.findRegistration(regId);
       if (reg == null) {
-        // Not found is a typo, not a decision to stop, so the loop simply
-        // comes round again with the message still on screen.
         ui.displayError("No registration " + regId
             + ". Enter another number, or 0 to go back.");
         continue;
@@ -597,7 +512,6 @@ public class WalkInRegistrationMaintenance {
     }
   }
 
-  /** Shows one registration in full, with its guest and room type resolved. */
   private void showRegistrationDetail(WalkInRegistration reg) {
     Guest guest = data.findGuest(reg.getGuestId());
     RoomType type = data.findRoomType(reg.getRequestedTypeId());
@@ -605,13 +519,6 @@ public class WalkInRegistrationMaintenance {
         type == null ? reg.getRequestedTypeId() : type.getTypeName());
   }
 
-  /**
-   * Finds registrations by part of the guest's name.
-   *
-   * The matches come back newest first - the guest who joined the queue most
-   * recently at the top - because when several guests share a name it is
-   * almost always the one who has just arrived that is being asked about.
-   */
   private void searchByName() {
     ui.startAction("SEARCH BY GUEST NAME");
 
@@ -630,10 +537,8 @@ public class WalkInRegistrationMaintenance {
 
       sortNewestFirst(matches);
 
-      // A listing long enough to page clears the screen on its way out, so
-      // the title is redrawn before the next prompt or it would be lost.
       if (ui.displayRegistrationList(matches, data,
-          "No guest matched \"" + term + "\".")) {
+          "No guest matched \"" + term + "\".", "SEARCH BY GUEST NAME")) {
         ui.startAction("SEARCH BY GUEST NAME");
       }
     }
@@ -651,7 +556,8 @@ public class WalkInRegistrationMaintenance {
         data.getRegistrationList().filter(reg -> status.equals(reg.getStatus()));
 
     sortNewestFirst(matches);
-    ui.displayRegistrationList(matches, data, "No registration is " + status + ".");
+    ui.displayRegistrationList(matches, data, "No registration is " + status + ".",
+        "FILTER BY STATUS");
   }
 
   private void filterByPriority() {
@@ -667,31 +573,15 @@ public class WalkInRegistrationMaintenance {
 
     sortNewestFirst(matches);
     ui.displayRegistrationList(matches, data,
-        "No " + priority + " registration found.");
+        "No " + priority + " registration found.", "FILTER BY PRIORITY");
   }
 
-  /**
-   * Puts a listing in queue order, newest first.
-   *
-   * Every search and filter screen shows its results this way so they can be
-   * read the same: the guest who joined the queue most recently is at the top
-   * and the earliest is at the bottom.
-   *
-   * @param list the listing to reorder in place
-   */
+  /** List.sort - reorders in place, newest first, nulls pushed to the end. */
   private void sortNewestFirst(ListInterface<WalkInRegistration> list) {
     list.sort(Comparator.comparing(WalkInRegistration::getQueuedAt,
         Comparator.nullsLast(Comparator.reverseOrder())));
   }
 
-  /**
-   * Lists the registrations in a chosen order, and keeps offering the choice.
-   *
-   * Asks for the order first, shows that one listing as its own report, then
-   * returns to the same choice once the guest has pressed ENTER - so picking
-   * a different order is a trip back through the menu rather than a chooser
-   * living underneath the listing.
-   */
   private void runSortMenu() {
     while (true) {
       int choice = ui.getSortChoice();
@@ -726,10 +616,6 @@ public class WalkInRegistrationMaintenance {
           break;
 
         default:
-          // Groups the registrations by what became of them. The queue's own
-          // order is not repeated here - "Display current waiting queue" under
-          // Search & Filter is the one place that shows it, so the two cannot
-          // disagree about who is next.
           sorted.sort(Comparator
               .comparing(WalkInRegistration::getStatus)
               .thenComparing(WalkInRegistration::getArrivalTime));
@@ -737,13 +623,15 @@ public class WalkInRegistrationMaintenance {
           break;
       }
 
-      ui.displayReportHeader(title);
-      ui.displayRegistrationList(sorted, data, "There are no registrations.");
-      ui.displayReportFooter();
+      ui.displayRegistrationList(sorted, data, "There are no registrations.", title);
+
+      if (MessageUI.pageCount(sorted.getNumberOfEntries()) <= 1) {
+        ui.pause();
+      }
     }
   }
 
-  /** A copy of a list, so sorting a listing does not reorder the records. */
+  /** A copy, so List.sort on a listing cannot reorder the stored records. */
   private ListInterface<WalkInRegistration> copyOf(ListInterface<WalkInRegistration> source) {
     ListInterface<WalkInRegistration> copy = new ArrayList<>();
     for (int i = 1; i <= source.getNumberOfEntries(); i++) {
@@ -756,10 +644,6 @@ public class WalkInRegistrationMaintenance {
   // REPORTS
   // ==================================================================
 
-  /**
-   * How the queue has performed - how many were served, how long they waited,
-   * and when the busy hours were.
-   */
   private void queuePerformanceReport() {
     ui.displayPrintedReportHeader("QUEUE PERFORMANCE ANALYSIS REPORT");
 
@@ -771,6 +655,7 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
+    // List.countIf - counts matches without building an intermediate list.
     int total = all.getNumberOfEntries();
     int urgent = all.countIf(WalkInRegistration::isUrgent);
     int waiting = all.countIf(WalkInRegistration::isWaiting);
@@ -792,7 +677,7 @@ public class WalkInRegistrationMaintenance {
     ui.displayReportLine("Normal walk-ins", (total - urgent) + percentOf(total - urgent, total));
     ui.displayReportLine("Urgent exception cases", urgent + percentOf(urgent, total));
 
-    // Only guests who have been called have a finished wait to measure.
+    // Only a called guest has a finished wait to measure.
     ListInterface<WalkInRegistration> called =
         all.filter(reg -> reg.getCalledAt() != null);
 
@@ -839,13 +724,8 @@ public class WalkInRegistrationMaintenance {
     ui.displayPrintedReportFooter();
   }
 
-  /**
-   * Charts when guests arrive, so the busy hours can be staffed.
-   *
-   * Only the hours that actually saw an arrival are charted - a full
-   * twenty-four-column chart would be mostly empty and much harder to read.
-   */
   private void displayArrivalsByHour(ListInterface<WalkInRegistration> all) {
+    // getEntry is 1-based, so the walk runs 1..getNumberOfEntries().
     int[] byHour = new int[24];
     for (int i = 1; i <= all.getNumberOfEntries(); i++) {
       LocalDateTime arrival = all.getEntry(i).getArrivalTime();
@@ -892,12 +772,6 @@ public class WalkInRegistrationMaintenance {
             busiest, busiest, byHour[busiest]));
   }
 
-  /**
-   * Every use of the urgent flag, and who granted it.
-   *
-   * An urgent guest is served ahead of people who have waited longer, so this
-   * report exists to make that power reviewable rather than invisible.
-   */
   private void urgencyAuditReport() {
     ui.displayPrintedReportHeader("URGENCY EXCEPTION AUDIT REPORT");
 
@@ -950,11 +824,9 @@ public class WalkInRegistrationMaintenance {
     ui.displayPrintedReportFooter();
   }
 
-  /**
-   * Groups the reasons urgency was granted for, so a reviewer sees which
-   * reason is invoked most often rather than reading every case in isolation.
-   */
   private void displayReasonsGiven(ListInterface<WalkInRegistration> urgent) {
+    // Two Lists kept in step as a tally: getPosition finds a reason already
+    // seen, and replace() updates its count in place.
     ListInterface<String> reasons = new ArrayList<>();
     ListInterface<Integer> counts = new ArrayList<>();
 
@@ -994,12 +866,6 @@ public class WalkInRegistrationMaintenance {
     }
   }
 
-  /**
-   * How much time the urgent lane actually saved the guests who used it.
-   *
-   * Comparing the two averages is what turns "we granted five overrides" into
-   * a statement about their effect.
-   */
   private void displayWaitSaved(ListInterface<WalkInRegistration> all) {
     ListInterface<WalkInRegistration> called = all.filter(reg -> reg.getCalledAt() != null);
 
@@ -1038,7 +904,6 @@ public class WalkInRegistrationMaintenance {
   // HELPERS
   // ==================================================================
 
-  /** A count with its share in brackets, e.g. "3  (42.9%)". */
   private String percentOf(int part, int whole) {
     if (whole == 0) {
       return "";
@@ -1053,7 +918,6 @@ public class WalkInRegistrationMaintenance {
     return (text.length() <= width) ? text : text.substring(0, width - 1) + ".";
   }
 
-  /** Shortens text with a trailing "~", matching the printed report pack's style. */
   private String truncateTilde(String text, int width) {
     if (text == null) {
       return "-";

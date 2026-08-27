@@ -1181,7 +1181,7 @@ public class MessageUI {
   // ==================================================================
 
   /** How many rows of a listing are shown at a time. */
-  public static final int PAGE_SIZE = 15;
+  public static final int PAGE_SIZE = 20;
 
   /**
    * Shows one page of a listing and asks what to do next.
@@ -1198,32 +1198,73 @@ public class MessageUI {
    * @return true if the user wants the next page
    */
   public static boolean askForNextPage(Scanner scanner, int page, int totalPages) {
-    if (page >= totalPages) {
-      // Nothing left to show, but the page on screen still has to be read.
-      if (totalPages > 1) {
-        displayThinRule();
-        System.out.printf("  Page %d of %d - end of list.%n", page, totalPages);
-      }
-      return false;
+    return readPageCommand(scanner, page, totalPages) != PAGE_QUIT;
+  }
+
+  /**
+   * Asks which page to show next.
+   *
+   * The listing can be moved through in both directions, or jumped straight to
+   * a page by number, because a reader who has gone past the row they wanted
+   * should not have to leave the listing and start it again. 0 leaves, the
+   * same key that cancels every other prompt in the system.
+   *
+   * @param scanner the Scanner to read from
+   * @param page the page on screen now, counting from 1
+   * @param totalPages how many pages there are altogether
+   * @return the page to show next, or PAGE_QUIT to leave the listing
+   */
+  public static int readPageCommand(Scanner scanner, int page, int totalPages) {
+    if (totalPages <= 1) {
+      return PAGE_QUIT;
     }
 
     displayThinRule();
     while (true) {
-      System.out.printf("  Page %d of %d. [N]ext page, 0 to go back: ",
-          page, totalPages);
+      System.out.printf(
+          "  Page %d of %d.  [N]ext, [P]revious, [1-%d] jump, 0 to go back: ",
+          page, totalPages, totalPages);
       String input = readLine(scanner, "0").toLowerCase();
 
-      if (input.isEmpty() || input.equals("n") || input.equals("next")
-          || input.equals("y") || input.equals("yes")) {
-        return true;
-      }
-      // 0 leaves the listing - the same key that cancels every other prompt.
       if (input.equals("0") || input.equals("q") || input.equals("quit")) {
-        return false;
+        return PAGE_QUIT;
       }
-      displayError("Please enter N for the next page, or 0 to go back.");
+
+      // Enter on its own moves forward, which is what a reader working
+      // through a long listing wants most of the time.
+      if (input.isEmpty() || input.equals("n") || input.equals("next")) {
+        if (page >= totalPages) {
+          displayError("You are already on the last page.");
+          continue;
+        }
+        return page + 1;
+      }
+
+      if (input.equals("p") || input.equals("prev") || input.equals("previous")) {
+        if (page <= 1) {
+          displayError("You are already on the first page.");
+          continue;
+        }
+        return page - 1;
+      }
+
+      try {
+        int wanted = Integer.parseInt(input);
+        if (wanted >= 1 && wanted <= totalPages) {
+          return wanted;
+        }
+        displayError("There is no page " + wanted + ". Enter 1 to " + totalPages + ".");
+        continue;
+      } catch (NumberFormatException notANumber) {
+        // fall through to the message below
+      }
+
+      displayError("Enter N, P, a page number, or 0 to go back.");
     }
   }
+
+  /** Returned by readPageCommand when the user has finished with a listing. */
+  public static final int PAGE_QUIT = -1;
 
   /**
    * How many pages a listing of a given size will take.

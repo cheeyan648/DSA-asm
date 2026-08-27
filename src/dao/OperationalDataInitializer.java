@@ -166,7 +166,83 @@ public class OperationalDataInitializer {
     registrations.add(new WalkInRegistration("WR0018", "G0004",
         now.minusMinutes(80), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2));
 
+    // The day's earlier arrivals, all finished with. They take the listing
+    // past a single page, so the paging controls have something to work on
+    // from the first run rather than only once the queue has been used.
+    addFinished(registrations, "WR0019", "G0001", now.minusMinutes(300),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 2, "ST001", "BK0016");
+    addFinished(registrations, "WR0020", "G0002", now.minusMinutes(292),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 1, "ST001", "BK0017");
+    addFinished(registrations, "WR0021", "G0003", now.minusMinutes(285),
+        WalkInRegistration.PRIORITY_URGENT, "Medical or emergency situation",
+        "RT02", 3, "ST002", "BK0018");
+    addFinished(registrations, "WR0022", "G0005", now.minusMinutes(277),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2, "ST001", "BK0019");
+    addFinished(registrations, "WR0023", "G0006", now.minusMinutes(268),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 1, "ST002", "BK0020");
+    addFinished(registrations, "WR0024", "G0007", now.minusMinutes(260),
+        WalkInRegistration.PRIORITY_URGENT, "Travelling with infant",
+        "RT02", 2, "ST001", "BK0021");
+    addFinished(registrations, "WR0025", "G0001", now.minusMinutes(251),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 4, "ST002", "BK0022");
+    addFinished(registrations, "WR0026", "G0004", now.minusMinutes(243),
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 1, "ST001", "BK0023");
+
+    // Two guests who gave up waiting, and two who were called but never came
+    // forward - so every status appears somewhere in the listing.
+    WalkInRegistration wr27 = new WalkInRegistration("WR0027", "G0002",
+        now.minusMinutes(236), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2);
+    wr27.setStatus(WalkInRegistration.STATUS_CANCELLED);
+    wr27.setServedBy("ST002");
+    registrations.add(wr27);
+
+    WalkInRegistration wr28 = new WalkInRegistration("WR0028", "G0005",
+        now.minusMinutes(228), WalkInRegistration.PRIORITY_NORMAL, null, "RT02", 1);
+    wr28.setStatus(WalkInRegistration.STATUS_CANCELLED);
+    wr28.setServedBy("ST001");
+    registrations.add(wr28);
+
+    WalkInRegistration wr29 = new WalkInRegistration("WR0029", "G0003",
+        now.minusMinutes(219), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2);
+    wr29.setStatus(WalkInRegistration.STATUS_NO_SHOW);
+    wr29.setCalledAt(now.minusMinutes(205));
+    wr29.setServedBy("ST002");
+    registrations.add(wr29);
+
+    WalkInRegistration wr30 = new WalkInRegistration("WR0030", "G0006",
+        now.minusMinutes(210), WalkInRegistration.PRIORITY_URGENT,
+        "Complaint escalation", "RT03", 1);
+    wr30.setStatus(WalkInRegistration.STATUS_NO_SHOW);
+    wr30.setCalledAt(now.minusMinutes(208));
+    wr30.setServedBy("ST001");
+    registrations.add(wr30);
+
+    // Still waiting, so the queue itself also spans more than one screen.
+    registrations.add(new WalkInRegistration("WR0031", "G0007",
+        now.minusMinutes(62), WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 2));
+    registrations.add(new WalkInRegistration("WR0032", "G0001",
+        now.minusMinutes(54), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 1));
+
     return registrations;
+  }
+
+  /**
+   * Adds one registration that has already become a booking.
+   *
+   * The finished rows differ only in their values, so they are built through
+   * here rather than repeating the same six setter calls each time.
+   */
+  private void addFinished(ListInterface<WalkInRegistration> registrations,
+      String regId, String guestId, LocalDateTime arrived, String priority,
+      String reason, String typeId, int nights, String staffId, String bookingId) {
+    WalkInRegistration reg = new WalkInRegistration(regId, guestId, arrived,
+        priority, reason, typeId, nights);
+    reg.setStatus(WalkInRegistration.STATUS_BOOKED);
+    reg.setCalledAt(arrived.plusMinutes(6));
+    reg.setBookedAt(arrived.plusMinutes(9));
+    reg.setServedBy(staffId);
+    reg.setBookingId(bookingId);
+    registrations.add(reg);
   }
 
   /** Bookings from every source and at every stage of a stay. */
