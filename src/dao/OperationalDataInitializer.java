@@ -288,7 +288,75 @@ public class OperationalDataInitializer {
     hk7.setRemark("Awaiting compressor part");
     tasks.add(hk7);
 
+    addCompletedCleaning(tasks, "HK0008", "1005", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 9, 0), 25, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0009", "1005", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 8, 10, 0), 30, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0010", "1005", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 40, 14, 0), 45, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0011", "2003", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 11, 0), 40, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0012", "2003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 8, 15, 0), 35, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0013", "2003", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 40, 16, 0), 50, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0014", "2003", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 19, 0), 55, "ST003", 1, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0015", "1002", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 8, 9, 30), 28, "ST004", 0, HousekeepingTask.PRIORITY_URGENT);
+    addCompletedCleaning(tasks, "HK0016", "1002", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 40, 11, 0), 32, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0017", "1004", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 15, 0), 42, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0018", "1004", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 8, 16, 0), 48, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0019", "2001", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 10, 0), 38, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0020", "2001", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 8, 14, 0), 33, "ST003", 0, HousekeepingTask.PRIORITY_URGENT);
+    addCompletedCleaning(tasks, "HK0021", "1004", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 2, 14, 0), 60, "ST004", 2, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0022", "1002", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 0, 16, 0), 27, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0023", "2001", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 40, 9, 0), 47, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0025", "1005", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 0, 19, 0), 36, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0026", "2003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 0, 8, 0), 29, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+
+    HousekeepingTask hk24 = new HousekeepingTask("HK0024", "1003",
+        HousekeepingTask.TYPE_INSPECTION, null, now.minusMinutes(10));
+    hk24.setStatus(HousekeepingTask.CLEANING_IN_PROGRESS);
+    hk24.setAssignedTo("ST005");
+    hk24.setStartedAt(now.minusMinutes(8));
+    hk24.setRemark("Supervisor inspection of a room already being cleaned");
+    tasks.add(hk24);
+
     return tasks;
+  }
+
+  // Builds a clock time on a day relative to now, for realistic report hours.
+  private LocalDateTime at(LocalDateTime now, int daysAgo, int hour, int minute) {
+    return now.minusDays(daysAgo).withHour(hour).withMinute(minute).withSecond(0).withNano(0);
+  }
+
+  // Adds one finished cleaning job with a valid duration and inspection history.
+  private void addCompletedCleaning(ListInterface<HousekeepingTask> tasks,
+      String taskId, String roomNo, String taskType, LocalDateTime started,
+      int durationMinutes, String staffId, int failCount, String priority) {
+    HousekeepingTask task = new HousekeepingTask(taskId, roomNo, taskType, null,
+        started.minusMinutes(5));
+    task.setStatus(HousekeepingTask.READY_FOR_CHECK_IN);
+    task.setPriority(priority);
+    task.setAssignedTo(staffId);
+    task.setStartedAt(started);
+    task.setCompletedAt(started.plusMinutes(durationMinutes));
+    task.setInspectionFailCount(failCount);
+    if (failCount > 0) {
+      task.setRemark("Re-cleaned after failed inspection");
+    }
+    tasks.add(task);
   }
 
   /** The status history behind those tasks. */
@@ -330,6 +398,74 @@ public class OperationalDataInitializer {
         HousekeepingTask.DIRTY, now.minusHours(3), "ST001", false,
         "Raised on check-out"));
 
+    appendCompletedHistory(logs, "HK0008", "1005", at(now, 1, 9, 0), 25, "ST003", 0);
+    appendCompletedHistory(logs, "HK0009", "1005", at(now, 8, 10, 0), 30, "ST004", 0);
+    appendCompletedHistory(logs, "HK0010", "1005", at(now, 40, 14, 0), 45, "ST003", 0);
+    appendCompletedHistory(logs, "HK0011", "2003", at(now, 1, 11, 0), 40, "ST004", 0);
+    appendCompletedHistory(logs, "HK0012", "2003", at(now, 8, 15, 0), 35, "ST003", 0);
+    appendCompletedHistory(logs, "HK0013", "2003", at(now, 40, 16, 0), 50, "ST004", 0);
+    appendCompletedHistory(logs, "HK0014", "2003", at(now, 1, 19, 0), 55, "ST003", 1);
+    appendCompletedHistory(logs, "HK0015", "1002", at(now, 8, 9, 30), 28, "ST004", 0);
+    appendCompletedHistory(logs, "HK0016", "1002", at(now, 40, 11, 0), 32, "ST003", 0);
+    appendCompletedHistory(logs, "HK0017", "1004", at(now, 1, 15, 0), 42, "ST004", 0);
+    appendCompletedHistory(logs, "HK0018", "1004", at(now, 8, 16, 0), 48, "ST003", 0);
+    appendCompletedHistory(logs, "HK0019", "2001", at(now, 1, 10, 0), 38, "ST004", 0);
+    appendCompletedHistory(logs, "HK0020", "2001", at(now, 8, 14, 0), 33, "ST003", 0);
+    appendCompletedHistory(logs, "HK0021", "1004", at(now, 2, 14, 0), 60, "ST004", 2);
+    appendCompletedHistory(logs, "HK0022", "1002", at(now, 0, 16, 0), 27, "ST003", 0);
+    appendCompletedHistory(logs, "HK0023", "2001", at(now, 40, 9, 0), 47, "ST004", 0);
+    appendCompletedHistory(logs, "HK0025", "1005", at(now, 0, 19, 0), 36, "ST003", 0);
+    appendCompletedHistory(logs, "HK0026", "2003", at(now, 0, 8, 0), 29, "ST004", 0);
+
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0024", "1003", null,
+        HousekeepingTask.CLEANING_IN_PROGRESS, now.minusMinutes(10), "ST005", false,
+        "Inspection raised while cleaning"));
+
     return logs;
   }
+
+  // Writes the valid cleaning workflow rows for one completed task.
+  private void appendCompletedHistory(ListInterface<RoomStatusLog> logs,
+      String taskId, String roomNo, LocalDateTime started, int durationMinutes,
+      String staffId, int failCount) {
+    LocalDateTime raised = started.minusMinutes(5);
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo, null,
+        HousekeepingTask.DIRTY, raised, "ST005", false, "Raised"));
+
+    LocalDateTime cleaning = started;
+    if (failCount > 0) {
+      LocalDateTime firstInspect = started.plusMinutes(Math.max(10, durationMinutes / 3));
+      logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+          HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS,
+          cleaning, staffId, false, ""));
+      logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+          HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.INSPECTED,
+          firstInspect, staffId, false, ""));
+      logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+          HousekeepingTask.INSPECTED, HousekeepingTask.DIRTY,
+          firstInspect.plusMinutes(5), "ST005", false, "Inspection failed"));
+      cleaning = firstInspect.plusMinutes(10);
+    }
+
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+        HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS,
+        cleaning, staffId, false, failCount > 0 ? "Re-clean" : ""));
+    LocalDateTime inspected = started.plusMinutes(durationMinutes - 8);
+    if (!inspected.isAfter(cleaning)) {
+      inspected = cleaning.plusMinutes(8);
+    }
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+        HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.INSPECTED,
+        inspected, staffId, false, ""));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), taskId, roomNo,
+        HousekeepingTask.INSPECTED, HousekeepingTask.READY_FOR_CHECK_IN,
+        started.plusMinutes(durationMinutes), "ST005", false, "Supervisor sign-off"));
+  }
+
+  // Issues the next housekeeping status-log ID for this seed run.
+  private String nextHousekeepingLogId() {
+    return "HL" + String.format("%04d", nextHousekeepingLogNumber++);
+  }
+
+  private int nextHousekeepingLogNumber = 12;
 }

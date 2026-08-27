@@ -32,6 +32,7 @@ public class HousekeepingTaskLogMaintenance {
   private final ResortService service;
   private final String staffId;
 
+  // Creates the Housekeeping module using the shared resort data and the staff on duty.
   public HousekeepingTaskLogMaintenance(ResortService service, String staffId) {
     this.service = service;
     this.data = service.getData();
@@ -39,171 +40,10 @@ public class HousekeepingTaskLogMaintenance {
   }
 
   // ==================================================================
-  // ROOM MANAGEMENT
-  //
-  // Housekeeping owns the rooms themselves, not just the cleaning of them.
-  // It is the module that knows whether a room is fit to be sold, so adding
-  // one, retiring one and taking one out of service belong here rather than
-  // at the desk that is trying to sell it.
-  // ==================================================================
-
-  private void runRoomMenu() {
-    int choice;
-    do {
-      choice = ui.getRoomMenuChoice();
-      switch (choice) {
-        case 1:
-          displayRoomList();
-          break;
-        case 2:
-          addRoom();
-          break;
-        case 3:
-          removeRoom();
-          break;
-        case 4:
-          changeServiceState(true);
-          break;
-        case 5:
-          changeServiceState(false);
-          break;
-        default:
-          break;
-      }
-    } while (choice != 0);
-  }
-
-  /** Shows every room, and whether each may currently be sold. */
-  private void displayRoomList() {
-    ui.startAction("ALL ROOMS");
-    ui.displayRoomList(data.getRoomList(), data);
-    ui.pause();
-  }
-
-  /**
-   * Adds a room to the resort.
-   *
-   * The new room is not sellable straight away - it goes onto the cleaning
-   * queue to be prepared first, which is the same route every dirty room
-   * takes. That is what stops a room being sold the minute it is keyed in.
-   */
-  private void addRoom() {
-    ui.startAction("ADD A ROOM");
-
-    String roomNo = ui.inputNewRoomNo();
-    if (roomNo == null) {
-      return;
-    }
-
-    if (data.findRoom(roomNo) != null) {
-      ui.displayError("Room " + roomNo + " already exists.");
-      ui.pause();
-      return;
-    }
-
-    String typeId = ui.inputRoomType(data.getRoomTypeList());
-    if (typeId == null) {
-      return;
-    }
-
-    int floor = ui.inputFloorNumber();
-    if (floor < 0) {
-      return;
-    }
-
-    ServiceResult<Room> added = service.addRoom(roomNo, typeId, floor, staffId);
-    if (added.isFailure()) {
-      ui.displayError(added.getMessage());
-      ui.pause();
-      return;
-    }
-
-    ui.displaySuccess(added.getMessage());
-    ui.displayMessage("  It cannot be sold until it has been cleaned and inspected.");
-    ui.pause();
-  }
-
-  /**
-   * Retires a room.
-   *
-   * Refused while a guest is in it or a live booking is holding it, because
-   * removing the room would leave that booking pointing at a room number that
-   * no longer exists.
-   */
-  private void removeRoom() {
-    ui.startAction("REMOVE A ROOM");
-
-    if (!ui.displayRoomList(data.getRoomList(), data)) {
-      ui.pause();
-      return;
-    }
-
-    ui.displayMessage("");
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
-
-    Room room = data.findRoom(roomNo);
-    if (room == null) {
-      ui.displayError("There is no room " + roomNo + ".");
-      ui.pause();
-      return;
-    }
-
-    ui.displayRoom(room, data);
-    ui.displayMessage("");
-
-    if (!ui.confirm("Remove room " + roomNo + " from the resort?")) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
-
-    ServiceResult<Room> removed = service.removeRoom(roomNo);
-    if (removed.isFailure()) {
-      ui.displayError(removed.getMessage());
-    } else {
-      ui.displaySuccess(removed.getMessage());
-    }
-    ui.pause();
-  }
-
-  /**
-   * Takes a room out of service, or puts it back.
-   *
-   * @param block true to take it out of service, false to return it
-   */
-  private void changeServiceState(boolean block) {
-    ui.startAction(block ? "TAKE A ROOM OUT OF SERVICE" : "RETURN A ROOM TO SERVICE");
-
-    if (!ui.displayRoomList(data.getRoomList(), data)) {
-      ui.pause();
-      return;
-    }
-
-    ui.displayMessage("");
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
-
-    ServiceResult<Room> changed = service.setRoomOutOfService(roomNo, block, staffId);
-    if (changed.isFailure()) {
-      ui.displayError(changed.getMessage());
-    } else {
-      ui.displaySuccess(changed.getMessage());
-      if (!block) {
-        ui.displayMessage("  It cannot be sold until it has been cleaned again.");
-      }
-    }
-    ui.pause();
-  }
-
-  // ==================================================================
   // MENU
   // ==================================================================
 
+  // Runs the Housekeeping main menu until the user goes back.
   public void run() {
     int choice;
     do {
@@ -219,12 +59,9 @@ public class HousekeepingTaskLogMaintenance {
           rollbackLastUpdate();
           break;
         case 4:
-          runRoomMenu();
-          break;
-        case 5:
           runSearchMenu();
           break;
-        case 6:
+        case 5:
           runReportMenu();
           break;
         default:
@@ -235,6 +72,7 @@ public class HousekeepingTaskLogMaintenance {
     data.saveHousekeeping();
   }
 
+  // Shows the cleaning-queue menu: take the next room, display the queue, or raise a task.
   private void runQueueMenu() {
     int choice;
     do {
@@ -256,6 +94,7 @@ public class HousekeepingTaskLogMaintenance {
     } while (choice != 0);
   }
 
+  // Shows the search-and-monitor menu for tasks, room history and the status board.
   private void runSearchMenu() {
     int choice;
     do {
@@ -282,6 +121,7 @@ public class HousekeepingTaskLogMaintenance {
     } while (choice != 0);
   }
 
+  // Shows the report menu for cleaning performance and room workload analysis.
   private void runReportMenu() {
     int choice;
     do {
@@ -367,61 +207,115 @@ public class HousekeepingTaskLogMaintenance {
   private void raiseNewTask() {
     ui.startAction("RAISE A NEW TASK");
 
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
+    while (true) {
+      String roomNo = null;
+      Room room = null;
+      while (room == null) {
+        roomNo = ui.inputRoomNo();
+        if (roomNo == null) {
+          return;
+        }
 
-    // The room table is checked first, so a mistyped number is reported
-    // rather than creating a task against a room that does not exist.
-    Room room = data.findRoom(roomNo);
-    if (room == null) {
-      ui.displayError("Room " + roomNo + " does not exist.");
+        // The room table is checked first, so a mistyped number is reported
+        // rather than creating a task against a room that does not exist.
+        room = data.findRoom(roomNo);
+        if (room == null) {
+          ui.displayError("Room not found.");
+          if (!ui.confirmEnterAgain()) {
+            return;
+          }
+        }
+      }
+
+      String taskType = ui.inputTaskType();
+      if (taskType == null) {
+        ui.displayMessage("  Cancelled.");
+        ui.pause();
+        return;
+      }
+
+      if (HousekeepingTask.TYPE_INSPECTION.equals(taskType)) {
+        String housekeepingStatus = room.getHousekeepingStatus();
+        if (HousekeepingTask.DIRTY.equals(housekeepingStatus)) {
+          ui.displayError("This room has not been cleaned yet.");
+          if (!ui.confirmEnterAgain()) {
+            return;
+          }
+          continue;
+        }
+        if (HousekeepingTask.READY_FOR_CHECK_IN.equals(housekeepingStatus)) {
+          ui.displayError("This room is already ready for check-in.");
+          if (!ui.confirmEnterAgain()) {
+            return;
+          }
+          continue;
+        }
+        if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(housekeepingStatus)) {
+          ui.displayError("This room is not ready for inspection.");
+          if (!ui.confirmEnterAgain()) {
+            return;
+          }
+          continue;
+        }
+      } else {
+        HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
+        if (open != null) {
+          ui.displayError("Room " + roomNo + " already has an open task ("
+              + open.getTaskId() + ", " + open.getStatus() + ").");
+          ui.pause();
+          return;
+        }
+      }
+
+      String remark = ui.inputRemark(false);
+      if (remark == null) {
+        ui.displayMessage("  Cancelled.");
+        ui.pause();
+        return;
+      }
+
+      HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
+          taskType, null, LocalDateTime.now());
+      task.setRemark(remark);
+
+      String toStatus = HousekeepingTask.DIRTY;
+      if (HousekeepingTask.TYPE_INSPECTION.equals(taskType)) {
+        // Creating the job is not the inspection. The room is still being
+        // cleaned; INSPECTED is set later through the existing workflow.
+        toStatus = HousekeepingTask.CLEANING_IN_PROGRESS;
+        task.setStatus(toStatus);
+      } else if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
+        // Records BLOCKED and matches the existing Room out-of-service flag.
+        // Front Desk still returns the room to service.
+        if (Room.OCCUPIED.equals(room.getOccupancyStatus())) {
+          ui.displayError("Room " + roomNo + " has a guest in it and cannot be blocked.");
+          ui.pause();
+          return;
+        }
+        toStatus = HousekeepingTask.BLOCKED;
+        task.setStatus(toStatus);
+        room.setHousekeepingStatus(Room.BLOCKED);
+        room.setOutOfService(true);
+      } else {
+        room.setHousekeepingStatus(Room.DIRTY);
+      }
+
+      data.getTaskList().add(task);
+      service.refreshTaskPriority(task);
+      service.enqueueIfNeedsCleaning(task);
+
+      data.getStatusLogList().add(new RoomStatusLog(data.nextStatusLogId(),
+          task.getTaskId(), roomNo, null, toStatus,
+          LocalDateTime.now(), staffId, false, "Raised by hand"));
+
+      data.saveHousekeeping();
+      data.saveMasters();
+
+      ui.displaySuccess("Task " + task.getTaskId() + " raised for room " + roomNo + ".");
+      ui.displayTask(task, data);
       ui.pause();
       return;
     }
-
-    HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
-    if (open != null) {
-      ui.displayError("Room " + roomNo + " already has an open task ("
-          + open.getTaskId() + ", " + open.getStatus() + ").");
-      ui.pause();
-      return;
-    }
-
-    String taskType = ui.inputTaskType();
-    if (taskType == null) {
-      ui.displayMessage("  Cancelled.");
-      ui.pause();
-      return;
-    }
-
-    String remark = ui.inputRemark(false);
-    if (remark == null) {
-      ui.displayMessage("  Cancelled.");
-      ui.pause();
-      return;
-    }
-
-    HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
-        taskType, null, LocalDateTime.now());
-    task.setRemark(remark);
-
-    data.getTaskList().add(task);
-    service.refreshTaskPriority(task);
-    data.getCleaningQueue().enqueue(task, task.getPriority());
-
-    data.getStatusLogList().add(new RoomStatusLog(data.nextStatusLogId(),
-        task.getTaskId(), roomNo, null, HousekeepingTask.DIRTY,
-        LocalDateTime.now(), staffId, false, "Raised by hand"));
-
-    room.setHousekeepingStatus(Room.DIRTY);
-    data.saveHousekeeping();
-    data.saveMasters();
-
-    ui.displaySuccess("Task " + task.getTaskId() + " raised for room " + roomNo + ".");
-    ui.displayTask(task, data);
-    ui.pause();
   }
 
   // ==================================================================
@@ -446,16 +340,21 @@ public class HousekeepingTaskLogMaintenance {
       return;
     }
 
-    String taskId = ui.inputTaskId();
-    if (taskId == null) {
-      return;
-    }
+    HousekeepingTask task = null;
+    String taskId = null;
+    while (task == null) {
+      taskId = ui.inputTaskId();
+      if (taskId == null) {
+        return;
+      }
 
-    HousekeepingTask task = data.findTask(taskId);
-    if (task == null) {
-      ui.displayError("No task with ID " + taskId + ".");
-      ui.pause();
-      return;
+      task = data.findTask(taskId);
+      if (task == null) {
+        ui.displayError("Task ID not found.");
+        if (!ui.confirmEnterAgain()) {
+          return;
+        }
+      }
     }
 
     ui.displayTask(task, data);
@@ -515,22 +414,13 @@ public class HousekeepingTaskLogMaintenance {
   private void rollbackLastUpdate() {
     ui.startAction("ROLL BACK THE LAST STATUS UPDATE");
 
-    ListInterface<RoomStatusLog> logs = data.getStatusLogList();
-    RoomStatusLog latest = null;
-
-    for (int i = logs.getNumberOfEntries(); i >= 1; i--) {
-      RoomStatusLog log = logs.getEntry(i);
-      if (!log.isRollback() && log.getFromStatus() != null) {
-        latest = log;
-        break;
-      }
-    }
-
-    if (latest == null) {
+    if (data.getStatusRollbackStack().isEmpty()) {
       ui.displayError("There is no status update to roll back.");
       ui.pause();
       return;
     }
+
+    RoomStatusLog latest = data.getStatusRollbackStack().peek();
 
     // Shown before it happens, the same way every other irreversible action is.
     ui.displayMessage("  This status update will be undone:");
@@ -568,19 +458,26 @@ public class HousekeepingTaskLogMaintenance {
   // SEARCH AND MONITOR
   // ==================================================================
 
+  // Searches the task list using the List ADT and displays the matching task.
   private void searchByTaskId() {
     ui.startAction("SEARCH BY TASK ID");
 
-    String taskId = ui.inputTaskId();
-    if (taskId == null) {
-      return;
-    }
+    HousekeepingTask task = null;
+    String taskId = null;
+    while (task == null) {
+      taskId = ui.inputTaskId();
+      if (taskId == null) {
+        return;
+      }
 
-    HousekeepingTask task = data.findTask(taskId);
-    if (task == null) {
-      ui.displayError("No task with ID " + taskId + ".");
-      ui.pause();
-      return;
+      final String idToFind = taskId;
+      task = data.getTaskList().search(entry -> idToFind.equals(entry.getTaskId()));
+      if (task == null) {
+        ui.displayError("Task ID not found.");
+        if (!ui.confirmSearchAgain()) {
+          return;
+        }
+      }
     }
 
     ui.displayTask(task, data);
@@ -604,16 +501,21 @@ public class HousekeepingTaskLogMaintenance {
   private void displayRoomHistory() {
     ui.startAction("A ROOM'S CLEANING HISTORY");
 
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
+    String roomNo = null;
+    Room room = null;
+    while (room == null) {
+      roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return;
+      }
 
-    Room room = data.findRoom(roomNo);
-    if (room == null) {
-      ui.displayError("Room " + roomNo + " does not exist.");
-      ui.pause();
-      return;
+      room = data.findRoom(roomNo);
+      if (room == null) {
+        ui.displayError("Room not found.");
+        if (!ui.confirmEnterAgain()) {
+          return;
+        }
+      }
     }
 
     final String number = roomNo;
@@ -630,6 +532,7 @@ public class HousekeepingTaskLogMaintenance {
     ui.pause();
   }
 
+  // Filters the task list by housekeeping status using the List ADT.
   private void filterByStatus() {
     ui.startAction("FILTER TASKS BY STATUS");
 
@@ -658,6 +561,7 @@ public class HousekeepingTaskLogMaintenance {
     ui.pause();
   }
 
+  // Displays every housekeeping task in the log.
   private void displayWholeLog() {
     ui.startAction("THE WHOLE TASK LOG");
 
@@ -670,86 +574,83 @@ public class HousekeepingTaskLogMaintenance {
   // REPORTS
   // ==================================================================
 
-  /** How quickly rooms are being turned around. */
+  // Shows how efficiently housekeeping is completing cleaning tasks.
   private void cleaningPerformanceReport() {
     ui.displayReportHeader("CLEANING PERFORMANCE REPORT");
 
-    ListInterface<HousekeepingTask> tasks = data.getTaskList();
+    ListInterface<HousekeepingTask> tasks = data.getTaskList().filter(
+        HousekeepingTask::isCleaningType);
     if (tasks.isEmpty()) {
       ui.displayMessage("");
       ui.displayMessage("  There are no tasks to analyse.");
-      ui.pause();
+      ui.displayReportFooter();
       return;
     }
 
     ListInterface<HousekeepingTask> completed = tasks.filter(
         task -> task.getCleaningDurationMinutes() >= 0);
 
-    ui.displaySectionHeading("Tasks");
-    ui.displayReportLine("Total tasks raised", String.valueOf(tasks.getNumberOfEntries()));
-    ui.displayReportLine("Completed", String.valueOf(completed.getNumberOfEntries()));
-    ui.displayReportLine("Still open",
-        String.valueOf(tasks.getNumberOfEntries() - completed.getNumberOfEntries()));
-    ui.displayReportLine("Urgent lane",
-        String.valueOf(tasks.countIf(HousekeepingTask::isUrgent)));
+    ui.displaySectionHeading("Overview");
+    ui.displayReportLine("Total cleaning tasks",
+        tasks.getNumberOfEntries() + " tasks");
+    ui.displayReportLine("Completed cleaning tasks",
+        completed.getNumberOfEntries() + " tasks");
+    ui.displayReportLine("Open cleaning tasks",
+        (tasks.getNumberOfEntries() - completed.getNumberOfEntries()) + " tasks");
+    ui.displayReportLine("Average cleaning time",
+        completed.isEmpty() ? "N/A" : averageMinutes(completed) + " min");
 
-    ui.displaySectionHeading("Cleaning times");
-    if (completed.isEmpty()) {
-      ui.displayMessage("  No task has been completed yet.");
-    } else {
-      long total = 0;
-      long fastest = Long.MAX_VALUE;
-      long slowest = 0;
-      HousekeepingTask fastestTask = null;
-      HousekeepingTask slowestTask = null;
-
-      for (int i = 1; i <= completed.getNumberOfEntries(); i++) {
-        HousekeepingTask task = completed.getEntry(i);
-        long minutes = task.getCleaningDurationMinutes();
-        total += minutes;
-
-        if (minutes < fastest) {
-          fastest = minutes;
-          fastestTask = task;
-        }
-        if (minutes > slowest) {
-          slowest = minutes;
-          slowestTask = task;
-        }
-      }
-
-      int count = completed.getNumberOfEntries();
-      ui.displayReportLine("Average cleaning time", (total / count) + " min");
-      ui.displayReportLine("Fastest", fastest + " min"
-          + (fastestTask == null ? "" : "  (" + fastestTask.getTaskId()
-              + ", room " + fastestTask.getRoomNo() + ")"));
-      ui.displayReportLine("Slowest", slowest + " min"
-          + (slowestTask == null ? "" : "  (" + slowestTask.getTaskId()
-              + ", room " + slowestTask.getRoomNo() + ")"));
-
-      displayTimeByType(completed);
-    }
-
-    displayCompletionsByHour(completed);
+    displayCleaningTimeSummary(completed);
+    displayTimeByType(completed);
+    displayAverageTimeByHour(completed);
+    displayCleaningConclusions(completed);
 
     ui.displayReportFooter();
   }
 
-  /**
-   * Average cleaning time per room type.
-   *
-   * Compared against the standard time each type is supposed to take, so a
-   * type consistently over its allowance shows up.
-   */
+  // Shows fastest and slowest completed cleaning times.
+  private void displayCleaningTimeSummary(ListInterface<HousekeepingTask> completed) {
+    ui.displaySectionHeading("Fastest and slowest cleaning time");
+    if (completed.isEmpty()) {
+      ui.displayMessage("  Fastest cleaning time: N/A");
+      ui.displayMessage("  Slowest cleaning time: N/A");
+      ui.displayMessage("  No completed tasks yet.");
+      return;
+    }
+
+    HousekeepingTask fastestTask = completed.getEntry(1);
+    HousekeepingTask slowestTask = completed.getEntry(1);
+    for (int i = 2; i <= completed.getNumberOfEntries(); i++) {
+      HousekeepingTask task = completed.getEntry(i);
+      long minutes = task.getCleaningDurationMinutes();
+      if (minutes < fastestTask.getCleaningDurationMinutes()) {
+        fastestTask = task;
+      }
+      if (minutes > slowestTask.getCleaningDurationMinutes()) {
+        slowestTask = task;
+      }
+    }
+
+    ui.displayReportLine("Fastest cleaning time",
+        fastestTask.getCleaningDurationMinutes() + " min  ("
+            + fastestTask.getTaskId() + ", Room " + fastestTask.getRoomNo() + ")");
+    ui.displayReportLine("Slowest cleaning time",
+        slowestTask.getCleaningDurationMinutes() + " min  ("
+            + slowestTask.getTaskId() + ", Room " + slowestTask.getRoomNo() + ")");
+  }
+
+  // Average cleaning time per room type, shown as a table.
   private void displayTimeByType(ListInterface<HousekeepingTask> completed) {
     ListInterface<RoomType> types = data.getRoomTypeList();
-    String[] labels = new String[types.getNumberOfEntries()];
-    double[] values = new double[types.getNumberOfEntries()];
+    ui.displaySectionHeading("Cleaning performance by room type");
+    if (completed.isEmpty() || types.isEmpty()) {
+      ui.displayMessage("  No completed cleaning data yet.");
+      return;
+    }
 
+    ui.displayTableHeading(String.format("  %-12s %s", "Room Type", "Average Time"));
     for (int i = 1; i <= types.getNumberOfEntries(); i++) {
       RoomType type = types.getEntry(i);
-      labels[i - 1] = type.getTypeId();
-
       long total = 0;
       int count = 0;
       for (int j = 1; j <= completed.getNumberOfEntries(); j++) {
@@ -760,45 +661,38 @@ public class HousekeepingTaskLogMaintenance {
           count++;
         }
       }
-      values[i - 1] = (count == 0) ? 0 : (double) total / count;
+      String shown = (count == 0) ? "N/A" : String.format("%.2f min", (double) total / count);
+      System.out.printf("  %-12s %s%n", type.getTypeId(), shown);
     }
-
-    ui.displayBarChart("Average cleaning time by room type", "Minutes", labels, values);
-
-    ui.displaySectionHeading("Against the standard time");
-    for (int i = 1; i <= types.getNumberOfEntries(); i++) {
-      RoomType type = types.getEntry(i);
-      double actual = values[i - 1];
-
-      if (actual == 0) {
-        ui.displayReportLine(type.getTypeName(), "no completed cleans");
-      } else {
-        ui.displayReportLine(type.getTypeName(), String.format(
-            "%.0f min actual vs %d min standard  (%s)",
-            actual, type.getStandardCleanMinutes(),
-            actual <= type.getStandardCleanMinutes() ? "on target" : "over"));
-      }
-    }
+    ui.displayThinRule();
   }
 
-  /** When cleaning actually gets finished, to show the busy hours. */
-  private void displayCompletionsByHour(ListInterface<HousekeepingTask> completed) {
+  // Average cleaning duration by the hour work started.
+  private void displayAverageTimeByHour(ListInterface<HousekeepingTask> completed) {
+    ui.displaySectionHeading("Cleaning performance by time/hour");
     if (completed.isEmpty()) {
+      ui.displayMessage("  No completed cleaning data yet.");
       return;
     }
 
-    int[] byHour = new int[24];
+    long[] totalMinutes = new long[24];
+    int[] count = new int[24];
+
     for (int i = 1; i <= completed.getNumberOfEntries(); i++) {
-      LocalDateTime finished = completed.getEntry(i).getCompletedAt();
-      if (finished != null) {
-        byHour[finished.getHour()]++;
+      HousekeepingTask task = completed.getEntry(i);
+      LocalDateTime started = task.getStartedAt();
+      if (started == null) {
+        continue;
       }
+      int hour = started.getHour();
+      totalMinutes[hour] += task.getCleaningDurationMinutes();
+      count[hour]++;
     }
 
     int first = -1;
     int last = -1;
     for (int hour = 0; hour < 24; hour++) {
-      if (byHour[hour] > 0) {
+      if (count[hour] > 0) {
         if (first < 0) {
           first = hour;
         }
@@ -806,95 +700,128 @@ public class HousekeepingTaskLogMaintenance {
       }
     }
     if (first < 0) {
+      ui.displayMessage("  No start-time data yet.");
       return;
     }
 
-    int span = last - first + 1;
-    String[] labels = new String[span];
-    double[] values = new double[span];
-    int busiest = first;
-    int quietest = first;
-
-    for (int i = 0; i < span; i++) {
-      int hour = first + i;
-      labels[i] = String.format("%02d", hour);
-      values[i] = byHour[hour];
-      if (byHour[hour] > byHour[busiest]) {
-        busiest = hour;
-      }
-      if (byHour[hour] < byHour[quietest]) {
-        quietest = hour;
-      }
+    ui.displayTableHeading(String.format("  %-12s %s", "Hour", "Average Minutes"));
+    for (int hour = first; hour <= last; hour++) {
+      String shown = (count[hour] == 0)
+          ? "N/A"
+          : String.format("%.0f", (double) totalMinutes[hour] / count[hour]);
+      System.out.printf("  %-12s %s%n", String.format("%02d:00", hour), shown);
     }
+    ui.displayThinRule();
+  }
 
-    ui.displayBarChart("Cleans completed by hour", "Tasks", labels, values);
-    ui.displayReportLine("Busiest hour",
-        String.format("%02d:00  (%d completed)", busiest, byHour[busiest]));
-    ui.displayReportLine("Quietest hour",
-        String.format("%02d:00  (%d completed)", quietest, byHour[quietest]));
+  // Displays a short conclusion from the calculated cleaning performance data.
+  private void displayCleaningConclusions(ListInterface<HousekeepingTask> completed) {
+    ui.displaySectionHeading("What this means");
+    if (completed.isEmpty()) {
+      ui.displayMessage("  There is not enough completed cleaning data to judge efficiency.");
+      return;
+    }
+    ui.displayMessage("  Housekeeping is completing cleaning in "
+        + averageMinutes(completed) + " minutes on average.");
+  }
+
+  // Calculates the average cleaning time in minutes for the given completed tasks.
+  private long averageMinutes(ListInterface<HousekeepingTask> tasks) {
+    if (tasks.isEmpty()) {
+      return 0;
+    }
+    long total = 0;
+    for (int i = 1; i <= tasks.getNumberOfEntries(); i++) {
+      total += tasks.getEntry(i).getCleaningDurationMinutes();
+    }
+    return total / tasks.getNumberOfEntries();
   }
 
   /** Which rooms take the most work, and how often cleaning has to be redone. */
   private void workloadAnalysisReport() {
     ui.displayReportHeader("ROOM & WORKLOAD ANALYSIS REPORT");
 
+    ui.displaySectionHeading("Room status overview");
+    ui.displayReportLine("Requiring cleaning", roomCount(countRoomsAt(Room.DIRTY)));
+    ui.displayReportLine("Cleaning in progress",
+        roomCount(countRoomsAt(Room.CLEANING_IN_PROGRESS)));
+    ui.displayReportLine("Awaiting inspection",
+        roomCount(countRoomsAt(Room.INSPECTED)));
+    ui.displayReportLine("Ready for check-in",
+        roomCount(countRoomsAt(Room.READY_FOR_CHECK_IN)));
+    ui.displayReportLine("Blocked", roomCount(countRoomsAt(Room.BLOCKED)));
+    ui.displayReportLine("Out of service",
+        roomCount(data.getRoomList().countIf(Room::isOutOfService)));
+
     ListInterface<HousekeepingTask> tasks = data.getTaskList();
     if (tasks.isEmpty()) {
       ui.displayMessage("");
       ui.displayMessage("  There are no tasks to analyse.");
-      ui.pause();
+      ui.displayReportFooter();
       return;
     }
 
-    ui.displaySectionHeading("Rooms right now");
-    ui.displayReportLine("Requiring cleaning",
-        String.valueOf(countRoomsAt(Room.DIRTY)));
-    ui.displayReportLine("Being cleaned",
-        String.valueOf(countRoomsAt(Room.CLEANING_IN_PROGRESS)));
-    ui.displayReportLine("Awaiting inspection",
-        String.valueOf(countRoomsAt(Room.INSPECTED)));
-    ui.displayReportLine("Ready for check-in",
-        String.valueOf(countRoomsAt(Room.READY_FOR_CHECK_IN)));
-    ui.displayReportLine("Blocked", String.valueOf(countRoomsAt(Room.BLOCKED)));
-    ui.displayReportLine("Out of service",
-        String.valueOf(data.getRoomList().countIf(Room::isOutOfService)));
-
+    displayOutstandingWorkload();
     displayTasksPerRoom(tasks);
     displayInspectionQuality(tasks);
-    displayOutstandingWorkload();
+    displayWorkloadConclusions(tasks);
 
     ui.displayReportFooter();
   }
 
+  // Counts how many rooms currently have the given housekeeping status.
   private int countRoomsAt(String status) {
     return data.getRoomList().countIf(room -> status.equals(room.getHousekeepingStatus()));
   }
 
-  /** Which rooms are cleaned most often. */
-  private void displayTasksPerRoom(ListInterface<HousekeepingTask> tasks) {
-    ListInterface<Room> rooms = data.getRoomList();
-    String[] labels = new String[rooms.getNumberOfEntries()];
-    double[] values = new double[rooms.getNumberOfEntries()];
+  // Formats a room count with the word "room" or "rooms".
+  private String roomCount(int count) {
+    return count + (count == 1 ? " room" : " rooms");
+  }
 
-    String busiestRoom = "-";
-    int highest = 0;
+  // Shows how often each room has been cleaned, plus re-clean counts.
+  private void displayTasksPerRoom(ListInterface<HousekeepingTask> tasks) {
+    ui.displaySectionHeading("Cleaning frequency by room");
+
+    ListInterface<Room> rooms = data.getRoomList();
+    String mostRecleaned = null;
+    int mostFails = 0;
+    ListInterface<Room> roomsWithCleans = data.getRoomList().filter(room ->
+        tasks.countIf(task -> room.getRoomNo().equals(task.getRoomNo())
+            && task.isCleaningType()
+            && task.getCleaningDurationMinutes() >= 0) > 0);
+
+    if (roomsWithCleans.isEmpty()) {
+      ui.displayMessage("  No completed cleaning history yet.");
+    } else {
+      ui.displayTableHeading(String.format("  %-12s %s", "Room", "Completed cleans"));
+      for (int i = 1; i <= roomsWithCleans.getNumberOfEntries(); i++) {
+        final String roomNo = roomsWithCleans.getEntry(i).getRoomNo();
+        int completedHere = tasks.countIf(task -> roomNo.equals(task.getRoomNo())
+            && task.isCleaningType()
+            && task.getCleaningDurationMinutes() >= 0);
+        System.out.printf("  %-12s %d%n", roomNo, completedHere);
+      }
+      ui.displayThinRule();
+    }
 
     for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
       final String roomNo = rooms.getEntry(i).getRoomNo();
-      int count = tasks.countIf(task -> roomNo.equals(task.getRoomNo()));
-
-      labels[i - 1] = roomNo;
-      values[i - 1] = count;
-
-      if (count > highest) {
-        highest = count;
-        busiestRoom = roomNo;
+      int fails = 0;
+      for (int j = 1; j <= tasks.getNumberOfEntries(); j++) {
+        HousekeepingTask task = tasks.getEntry(j);
+        if (roomNo.equals(task.getRoomNo()) && task.isCleaningType()) {
+          fails += task.getInspectionFailCount();
+        }
+      }
+      if (fails > mostFails) {
+        mostFails = fails;
+        mostRecleaned = roomNo;
       }
     }
-
-    ui.displayBarChart("Tasks raised per room", "Tasks", labels, values);
-    ui.displayReportLine("Most frequently cleaned room",
-        busiestRoom + "  (" + highest + " task(s))");
+    ui.displayReportLine("Most re-cleaned",
+        mostFails == 0 ? "N/A"
+            : mostRecleaned + "  (" + mostFails + " re-clean events)");
   }
 
   /**
@@ -908,7 +835,11 @@ public class HousekeepingTaskLogMaintenance {
     int recleaned = 0;
 
     for (int i = 1; i <= tasks.getNumberOfEntries(); i++) {
-      int fails = tasks.getEntry(i).getInspectionFailCount();
+      HousekeepingTask task = tasks.getEntry(i);
+      if (!task.isCleaningType()) {
+        continue;
+      }
+      int fails = task.getInspectionFailCount();
       failures += fails;
       if (fails > 0) {
         recleaned++;
@@ -916,15 +847,24 @@ public class HousekeepingTaskLogMaintenance {
     }
 
     int passes = tasks.countIf(
-        task -> HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus()));
+        task -> task.isCleaningType()
+            && HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus()));
     int inspections = passes + failures;
 
-    ui.displaySectionHeading("Inspection quality");
-    ui.displayReportLine("Inspections passed", String.valueOf(passes));
-    ui.displayReportLine("Inspections failed", String.valueOf(failures));
-    ui.displayReportLine("Success rate", inspections == 0 ? "-"
+    ui.displaySectionHeading("Inspection pass / fail");
+    ui.displayReportLine("Inspections passed", passes + " inspections");
+    ui.displayReportLine("Inspections failed", failures + " inspections");
+    ui.displayReportLine("Pass rate", inspections == 0 ? "N/A"
         : String.format("%.1f%%", (passes * 100.0) / inspections));
-    ui.displayReportLine("Rooms needing a re-clean", String.valueOf(recleaned));
+    ui.displayReportLine("Re-cleaning",
+        tasks.getNumberOfEntries() == 0 ? "N/A"
+            : recleaned + " tasks needed at least one re-clean");
+
+    if (inspections > 0) {
+      ui.displayBarChart("Inspection Results  (PASS vs FAIL)", "Inspections",
+          new String[] { "PASS", "FAIL" },
+          new double[] { passes, failures });
+    }
   }
 
   /**
@@ -934,24 +874,81 @@ public class HousekeepingTaskLogMaintenance {
    * turns a count of open tasks into something a supervisor can staff against.
    */
   private void displayOutstandingWorkload() {
-    ListInterface<HousekeepingTask> open = data.getTaskList().filter(
-        task -> !HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus())
-            && !HousekeepingTask.BLOCKED.equals(task.getStatus()));
+    ListInterface<HousekeepingTask> outstanding = data.getTaskList().filter(
+        HousekeepingTask::isOutstandingCleaning);
 
     int minutes = 0;
-    for (int i = 1; i <= open.getNumberOfEntries(); i++) {
-      Room room = data.findRoom(open.getEntry(i).getRoomNo());
-      RoomType type = (room == null) ? null : data.findRoomType(room.getTypeId());
-      minutes += (type == null) ? 30 : type.getStandardCleanMinutes();
+    int urgentMinutes = 0;
+    int normalMinutes = 0;
+    int urgentOpen = outstanding.countIf(HousekeepingTask::isUrgent);
+    int normalOpen = outstanding.getNumberOfEntries() - urgentOpen;
+    for (int i = 1; i <= outstanding.getNumberOfEntries(); i++) {
+      HousekeepingTask task = outstanding.getEntry(i);
+      int estimate = estimatedMinutesFor(task);
+      minutes += estimate;
+      if (task.isUrgent()) {
+        urgentMinutes += estimate;
+      } else {
+        normalMinutes += estimate;
+      }
     }
 
-    ui.displaySectionHeading("Outstanding workload");
-    ui.displayReportLine("Open tasks", String.valueOf(open.getNumberOfEntries()));
-    ui.displayReportLine("  In the urgent lane",
-        String.valueOf(data.getCleaningQueue().getUrgentCount()));
-    ui.displayReportLine("  In the normal lane",
-        String.valueOf(data.getCleaningQueue().getNormalCount()));
-    ui.displayReportLine("Estimated work remaining",
-        String.format("%d min  (about %.1f hours)", minutes, minutes / 60.0));
+    ui.displaySectionHeading("Outstanding cleaning workload");
+    ui.displayReportLine("Outstanding cleaning tasks",
+        outstanding.getNumberOfEntries() + " tasks");
+    ui.displayReportLine("Estimated remaining cleaning time",
+        minutes + " minutes");
+
+    ui.displaySectionHeading("URGENT vs NORMAL workload");
+    ui.displayReportLine("URGENT tasks", urgentOpen + " tasks");
+    ui.displayReportLine("URGENT estimated time", urgentMinutes + " minutes");
+    ui.displayReportLine("NORMAL tasks", normalOpen + " tasks");
+    ui.displayReportLine("NORMAL estimated time", normalMinutes + " minutes");
+  }
+
+  // Estimates remaining cleaning minutes from the room type's standard cleaning time.
+  private int estimatedMinutesFor(HousekeepingTask task) {
+    Room room = data.findRoom(task.getRoomNo());
+    RoomType type = (room == null) ? null : data.findRoomType(room.getTypeId());
+    return (type == null) ? 30 : type.getStandardCleanMinutes();
+  }
+
+  // Displays a short conclusion from the current outstanding workload data.
+  private void displayWorkloadConclusions(ListInterface<HousekeepingTask> tasks) {
+    ui.displaySectionHeading("What this means");
+
+    ListInterface<HousekeepingTask> outstanding = tasks.filter(
+        HousekeepingTask::isOutstandingCleaning);
+    int urgentOpen = outstanding.countIf(HousekeepingTask::isUrgent);
+
+    int failures = 0;
+    for (int i = 1; i <= tasks.getNumberOfEntries(); i++) {
+      HousekeepingTask task = tasks.getEntry(i);
+      if (task.isCleaningType()) {
+        failures += task.getInspectionFailCount();
+      }
+    }
+    int passes = tasks.countIf(
+        task -> task.isCleaningType()
+            && HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus()));
+    int inspections = passes + failures;
+
+    if (outstanding.isEmpty() && inspections == 0) {
+      ui.displayMessage("  There is no outstanding cleaning workload to report.");
+      return;
+    }
+
+    String meaning = "  There "
+        + (outstanding.getNumberOfEntries() == 1 ? "is " : "are ")
+        + outstanding.getNumberOfEntries()
+        + (outstanding.getNumberOfEntries() == 1
+            ? " outstanding cleaning task"
+            : " outstanding cleaning tasks")
+        + " (" + urgentOpen + " urgent).";
+    if (inspections > 0) {
+      meaning += " Inspection pass rate is "
+          + String.format("%.1f%%", (passes * 100.0) / inspections) + ".";
+    }
+    ui.displayMessage(meaning);
   }
 }

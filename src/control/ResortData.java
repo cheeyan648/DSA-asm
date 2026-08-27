@@ -1,12 +1,14 @@
 package control;
 
 import adt.ArrayList;
+import adt.ArrayStack;
 import adt.BinarySearchTree;
 import adt.DualLaneQueue;
 import adt.DualLaneQueueInterface;
 import adt.HashMap;
 import adt.ListInterface;
 import adt.MapInterface;
+import adt.StackInterface;
 import adt.TreeInterface;
 import dao.GenericDAO;
 import dao.LoyaltyDataInitializer;
@@ -101,6 +103,15 @@ public class ResortData {
   private DualLaneQueueInterface<HousekeepingTask> cleaningQueue;
 
   /**
+   * Latest reversible housekeeping status updates, newest on top.
+   *
+   * In-memory only, like the cleaning queue: the append-only status log is
+   * what is saved, and this stack is rebuilt from it on load so a rollback
+   * after restart still undoes the same update a live session would.
+   */
+  private StackInterface<RoomStatusLog> statusRollbackStack;
+
+  /**
    * Redemptions awaiting a decision.
    *
    * Deliberately a single lane, not two: loyalty has no urgency concept, and
@@ -174,6 +185,7 @@ public class ResortData {
 
     rebuildIndexes();
     rebuildQueues();
+    rebuildStatusRollbackStack();
   }
 
   /**
@@ -286,6 +298,46 @@ public class ResortData {
     for (int i = 1; i <= awaiting.getNumberOfEntries(); i++) {
       pendingRedemptions.add(awaiting.getEntry(i));
     }
+  }
+
+  /**
+   * Starts the housekeeping rollback stack empty for this session.
+   *
+   * Historical status logs stay on file for reports. Only updates made after
+   * the application has started are pushed for rollback.
+   */
+  public final void rebuildStatusRollbackStack() {
+    statusRollbackStack = new ArrayStack<>();
+  }
+
+  /**
+   * Whether a compensating row undoes the update currently on top of the
+   * rollback stack.
+   *
+   * Uses the existing remark convention ("Rollback of {logId}") and, when
+   * that is absent, the existing from/to statuses on the same task. No extra
+   * fields are required.
+   */
+  private boolean rollbackUndoesTop(RoomStatusLog rollback, RoomStatusLog top) {
+    if (rollback == null || top == null) {
+      return false;
+    }
+
+    String remark = rollback.getRemark();
+    if (remark != null && !remark.isBlank()) {
+      String expected = "Rollback of " + top.getLogId();
+      if (expected.equals(remark)) {
+        return true;
+      }
+      if (remark.startsWith("Rollback of ")) {
+        return false;
+      }
+    }
+
+    return top.getTaskId() != null && top.getTaskId().equals(rollback.getTaskId())
+        && top.getToStatus() != null && top.getToStatus().equals(rollback.getFromStatus())
+        && top.getFromStatus() != null
+        && top.getFromStatus().equals(rollback.getToStatus());
   }
 
   // ==================================================================
@@ -426,6 +478,10 @@ public class ResortData {
 
   public DualLaneQueueInterface<HousekeepingTask> getCleaningQueue() {
     return cleaningQueue;
+  }
+
+  public StackInterface<RoomStatusLog> getStatusRollbackStack() {
+    return statusRollbackStack;
   }
 
   public ListInterface<Redemption> getPendingRedemptions() {

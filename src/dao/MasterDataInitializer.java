@@ -87,7 +87,7 @@ public class MasterDataInitializer {
     // occupied AND ready - the two statuses describe different things.
     rooms.add(new Room("2001", "RT03", 20, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
         false, now.withHour(7).withMinute(15), ""));
-    rooms.add(new Room("2002", "RT03", 20, Room.VACANT, Room.DIRTY,
+    rooms.add(new Room("2002", "RT03", 20, Room.VACANT, Room.CLEANING_IN_PROGRESS,
         false, now.minusDays(2).withHour(14).withMinute(0), ""));
     rooms.add(new Room("2003", "RT04", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(10).withMinute(10), ""));
