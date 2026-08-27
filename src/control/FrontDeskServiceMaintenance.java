@@ -125,10 +125,159 @@ public class FrontDeskServiceMaintenance {
         case 5:
           displayRoomBoard();
           break;
+        case 6:
+          runRoomManagementMenu();
+          break;
         default:
           break;
       }
     } while (choice != 0);
+  }
+
+  private void runRoomManagementMenu() {
+    int choice;
+    do {
+      choice = ui.getRoomManagementMenuChoice();
+      switch (choice) {
+        case 1:
+          displayRoomList();
+          break;
+        case 2:
+          addRoom();
+          break;
+        case 3:
+          removeRoom();
+          break;
+        case 4:
+          changeServiceState(true);
+          break;
+        case 5:
+          changeServiceState(false);
+          break;
+        default:
+          break;
+      }
+    } while (choice != 0);
+  }
+
+  private void displayRoomList() {
+    ui.startAction("ALL ROOMS");
+    ui.displayRoomList(data.getRoomList(), data);
+    ui.pause();
+  }
+
+  private void addRoom() {
+    ui.startAction("ADD A ROOM");
+
+    // Keep room lookup indexes in sync with the room list before checking
+    // whether the new room number already exists.
+    data.rebuildIndexes();
+
+    String roomNo = ui.inputNewRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    if (data.findRoom(roomNo) != null) {
+      ui.displayError("Room " + roomNo + " already exists.");
+      ui.pause();
+      return;
+    }
+
+    String typeId = ui.inputRoomType(data.getRoomTypeList());
+    if (typeId == null) {
+      return;
+    }
+
+    int floor = ui.inputFloorNumber();
+    if (floor < 0) {
+      return;
+    }
+
+    ServiceResult<Room> added = service.addRoom(roomNo, typeId, floor, staffId);
+    if (added.isFailure()) {
+      ui.displayError(added.getMessage());
+      ui.pause();
+      return;
+    }
+
+    // addRoom() updates the shared list; rebuild the indexes so findRoom()
+    // and the other fast room lookups can see the new room immediately.
+    data.rebuildIndexes();
+
+    ui.displaySuccess(added.getMessage());
+    ui.displayMessage("  It cannot be sold until it has been cleaned and inspected.");
+    ui.pause();
+  }
+
+  private void removeRoom() {
+    ui.startAction("REMOVE A ROOM");
+
+    // Make sure the room lookup reflects the current room list.
+    data.rebuildIndexes();
+
+    if (!ui.displayRoomList(data.getRoomList(), data)) {
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    String roomNo = ui.inputRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    Room room = data.findRoom(roomNo);
+    if (room == null) {
+      ui.displayError("There is no room " + roomNo + ".");
+      ui.pause();
+      return;
+    }
+
+    ui.displayRoom(room, data);
+    ui.displayMessage("");
+
+    if (!ui.confirm("Remove room " + roomNo + " from the resort?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Room> removed = service.removeRoom(roomNo);
+    if (removed.isFailure()) {
+      ui.displayError(removed.getMessage());
+    } else {
+      // Keep indexes consistent after the room is removed from the list.
+      data.rebuildIndexes();
+      ui.displaySuccess(removed.getMessage());
+    }
+    ui.pause();
+  }
+
+  private void changeServiceState(boolean block) {
+    ui.startAction(block ? "TAKE A ROOM OUT OF SERVICE" : "RETURN A ROOM TO SERVICE");
+
+    if (!ui.displayRoomList(data.getRoomList(), data)) {
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    String roomNo = ui.inputRoomNo();
+    if (roomNo == null) {
+      return;
+    }
+
+    ServiceResult<Room> changed = service.setRoomOutOfService(roomNo, block, staffId);
+    if (changed.isFailure()) {
+      ui.displayError(changed.getMessage());
+    } else {
+      ui.displaySuccess(changed.getMessage());
+      if (!block) {
+        ui.displayMessage("  It cannot be sold until it has been cleaned again.");
+      }
+    }
+    ui.pause();
   }
 
   private void runStayMenu() {
