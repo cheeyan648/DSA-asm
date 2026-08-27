@@ -481,49 +481,42 @@ public class WalkInRegistrationBookingMaintenance {
   /**
    * Lists every guest with the chosen status.
    */
-  public void filterByStatus() {
+  public boolean filterByStatus() {
     walkInRegistrationBookingUI.startAction("FILTER BY STATUS");
 
-    while (true) {
-      String status = walkInRegistrationBookingUI.inputStatusFilter();
+    String status = walkInRegistrationBookingUI.inputStatusFilter();
 
-      if (status == null) {
-        return;
-      }
-
-      ListInterface<WalkInGuest> matches = walkInRecords.filter(hasStatus(status));
-
-      if (walkInRegistrationBookingUI.displayGuestList(matches,
-          "GUESTS WITH STATUS: " + status,
-          "No guests currently have the status " + status + ".")) {
-        walkInRegistrationBookingUI.startAction("FILTER BY STATUS");
-      }
+    if (status == null) {
+      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
+      return false;
     }
+
+    ListInterface<WalkInGuest> matches = walkInRecords.filter(hasStatus(status));
+
+    return walkInRegistrationBookingUI.displayGuestList(matches,
+        "GUESTS WITH STATUS: " + status,
+        "No guests currently have the status " + status + ".");
   }
 
   /**
    * Lists every guest of the chosen type (urgent or normal).
    */
-  public void filterByType() {
+  public boolean filterByType() {
     walkInRegistrationBookingUI.startAction("FILTER BY GUEST TYPE");
 
-    while (true) {
-      int choice = walkInRegistrationBookingUI.inputTypeFilter();
+    int choice = walkInRegistrationBookingUI.inputTypeFilter();
 
-      if (choice == 0) {
-        return;
-      }
-
-      boolean urgent = (choice == 1);
-      ListInterface<WalkInGuest> matches = walkInRecords.filter(isUrgent(urgent));
-
-      if (walkInRegistrationBookingUI.displayGuestList(matches,
-          urgent ? "URGENT EXCEPTION CASES" : "NORMAL WALK-IN GUESTS",
-          urgent ? "No urgent exception cases recorded."
-                 : "No normal walk-in guests recorded.")) {
-        walkInRegistrationBookingUI.startAction("FILTER BY GUEST TYPE");
-      }
+    if (choice == 0) {
+      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
+      return false;
     }
+
+    boolean urgent = (choice == 1);
+    ListInterface<WalkInGuest> matches = walkInRecords.filter(isUrgent(urgent));
+
+    return walkInRegistrationBookingUI.displayGuestList(matches,
+        urgent ? "URGENT EXCEPTION CASES" : "NORMAL WALK-IN GUESTS",
+        urgent ? "No urgent exception cases recorded." : "No normal walk-in guests recorded.");
   }
 
   // ==================================================================
@@ -884,7 +877,7 @@ public class WalkInRegistrationBookingMaintenance {
   /**
    * Holds the screen after an action unless the user has already dismissed it.
    *
-   * A paged listing ends with the user pressing [Q], which is itself a
+   * A paged listing ends with the user pressing 0, which is itself a
    * deliberate "I have finished looking" keystroke, and the listing is cleared
    * on the way out. Pausing again there would make leaving a listing take two
    * keystrokes and would leave the finished table on screen. Every other action
@@ -951,8 +944,9 @@ public class WalkInRegistrationBookingMaintenance {
       switch (choice) {
         case 0:
           break;
-        // Each of these keeps prompting until the user enters 0, so there is
-        // no pause here - leaving the action is already a deliberate 0.
+        // The two searches keep prompting until the user enters 0, so they
+        // need no pause - leaving is already a deliberate 0. The filters run
+        // once and pause, unless the listing was already dismissed.
         case 1:
           searchByGuestId();
           break;
@@ -960,10 +954,10 @@ public class WalkInRegistrationBookingMaintenance {
           searchByName();
           break;
         case 3:
-          filterByStatus();
+          pauseUnlessQuit(filterByStatus());
           break;
         case 4:
-          filterByType();
+          pauseUnlessQuit(filterByType());
           break;
       }
     } while (choice != 0);

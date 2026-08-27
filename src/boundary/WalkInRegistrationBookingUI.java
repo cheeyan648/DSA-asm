@@ -590,7 +590,7 @@ public class WalkInRegistrationBookingUI {
    * Reads the List ADT three ways: getNumberOfEntries() to size the pages,
    * getEntry() to fetch each row, and countIf() to count those still waiting.
    *
-   * @return true if the user quit with [Q], so the caller can skip its pause
+   * @return true if the user left with 0, so the caller can skip its pause
    */
   public boolean displayGuestList(ListInterface<WalkInGuest> list, String heading,
       String emptyMessage) {
@@ -666,7 +666,7 @@ public class WalkInRegistrationBookingUI {
     while (true) {
       System.out.println();
       System.out.print("[N]ext page, [P]revious page, [1-" + totalPages
-          + "] jump to page, [Q] quit listing: ");
+          + "] jump to page, 0 to go back: ");
 
       if (!scanner.hasNextLine()) {
         return PAGE_QUIT;
@@ -674,11 +674,12 @@ public class WalkInRegistrationBookingUI {
       String input = MessageUI.readLine(scanner).toUpperCase();
 
       if (input.isEmpty()) {
-        displayMessage("Please enter N, P, a page number, or Q.");
+        displayMessage("Please enter N, P, a page number, or 0 to go back.");
         continue;
       }
 
-      if (input.equals("Q")) {
+      // 0 leaves the listing, the same key that cancels every other prompt.
+      if (input.equals("0")) {
         return PAGE_QUIT;
       }
 
@@ -710,7 +711,7 @@ public class WalkInRegistrationBookingUI {
         // fall through
       }
 
-      displayMessage("Invalid input! Enter N, P, a page number, or Q.");
+      displayMessage("Invalid input! Enter N, P, a page number, or 0 to go back.");
     }
   }
 
