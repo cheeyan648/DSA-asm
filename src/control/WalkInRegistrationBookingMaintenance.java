@@ -421,28 +421,32 @@ public class WalkInRegistrationBookingMaintenance {
   public void searchByGuestId() {
     walkInRegistrationBookingUI.startAction("SEARCH BY GUEST ID");
 
-    String guestId = walkInRegistrationBookingUI.inputGuestIdToSearch();
+    // Keeps asking so several guests can be looked up without going back out
+    // to the menu each time. The header stays on screen and the results build
+    // up under it, which is what makes comparing two guests possible.
+    while (true) {
+      final String guestId = walkInRegistrationBookingUI.inputGuestIdToSearch();
 
-    if (guestId == null) {
-      walkInRegistrationBookingUI.displayMessage("Search cancelled.");
-      return;
-    }
+      if (guestId == null) {
+        return;
+      }
 
-    WalkInGuest found = walkInRecords.search(guest -> guestId.equals(guest.getGuestId()));
+      WalkInGuest found = walkInRecords.search(guest -> guestId.equals(guest.getGuestId()));
 
-    if (found == null) {
-      walkInRegistrationBookingUI.displayMessage(
-          "No guest found with ID " + guestId + ".");
-      return;
-    }
+      if (found == null) {
+        walkInRegistrationBookingUI.displayMessage(
+            "No guest found with ID " + guestId + ".");
+        continue;
+      }
 
-    walkInRegistrationBookingUI.displayMessage("Guest found:");
-    walkInRegistrationBookingUI.displayGuest(found);
+      walkInRegistrationBookingUI.displayMessage("Guest found:");
+      walkInRegistrationBookingUI.displayGuest(found);
 
-    if (WalkInGuest.STATUS_WAITING.equals(found.getStatus())) {
-      ListInterface<WalkInGuest> waiting = walkInRecords.filter(isWaiting());
-      walkInRegistrationBookingUI.displayMessage(
-          "Currently at position " + waiting.getPosition(found) + " in the queue.");
+      if (WalkInGuest.STATUS_WAITING.equals(found.getStatus())) {
+        ListInterface<WalkInGuest> waiting = walkInRecords.filter(isWaiting());
+        walkInRegistrationBookingUI.displayMessage(
+            "Currently at position " + waiting.getPosition(found) + " in the queue.");
+      }
     }
   }
 
@@ -450,64 +454,76 @@ public class WalkInRegistrationBookingMaintenance {
    * Finds every guest whose name contains the text entered, so a partial or
    * misremembered name still finds them.
    */
-  public boolean searchByName() {
+  public void searchByName() {
     walkInRegistrationBookingUI.startAction("SEARCH BY NAME");
 
-    String text = walkInRegistrationBookingUI.inputNameToSearch();
+    while (true) {
+      String text = walkInRegistrationBookingUI.inputNameToSearch();
 
-    if (text == null) {
-      walkInRegistrationBookingUI.displayMessage("Search cancelled.");
-      return false;
+      if (text == null) {
+        return;
+      }
+
+      String lowerCaseText = text.toLowerCase();
+      ListInterface<WalkInGuest> matches = walkInRecords.filter(
+          guest -> guest.getName().toLowerCase().contains(lowerCaseText));
+
+      // A paged listing clears the screen on its way out, so the action title
+      // has to be redrawn before the next prompt or it would be lost.
+      if (walkInRegistrationBookingUI.displayGuestList(matches,
+          "SEARCH RESULTS FOR \"" + text + "\"",
+          "No guest found with a name containing \"" + text + "\".")) {
+        walkInRegistrationBookingUI.startAction("SEARCH BY NAME");
+      }
     }
-
-    String lowerCaseText = text.toLowerCase();
-    ListInterface<WalkInGuest> matches = walkInRecords.filter(
-        guest -> guest.getName().toLowerCase().contains(lowerCaseText));
-
-    return walkInRegistrationBookingUI.displayGuestList(matches,
-        "SEARCH RESULTS FOR \"" + text + "\"",
-        "No guest found with a name containing \"" + text + "\".");
   }
 
   /**
    * Lists every guest with the chosen status.
    */
-  public boolean filterByStatus() {
+  public void filterByStatus() {
     walkInRegistrationBookingUI.startAction("FILTER BY STATUS");
 
-    String status = walkInRegistrationBookingUI.inputStatusFilter();
+    while (true) {
+      String status = walkInRegistrationBookingUI.inputStatusFilter();
 
-    if (status == null) {
-      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
-      return false;
+      if (status == null) {
+        return;
+      }
+
+      ListInterface<WalkInGuest> matches = walkInRecords.filter(hasStatus(status));
+
+      if (walkInRegistrationBookingUI.displayGuestList(matches,
+          "GUESTS WITH STATUS: " + status,
+          "No guests currently have the status " + status + ".")) {
+        walkInRegistrationBookingUI.startAction("FILTER BY STATUS");
+      }
     }
-
-    ListInterface<WalkInGuest> matches = walkInRecords.filter(hasStatus(status));
-
-    return walkInRegistrationBookingUI.displayGuestList(matches,
-        "GUESTS WITH STATUS: " + status,
-        "No guests currently have the status " + status + ".");
   }
 
   /**
    * Lists every guest of the chosen type (urgent or normal).
    */
-  public boolean filterByType() {
+  public void filterByType() {
     walkInRegistrationBookingUI.startAction("FILTER BY GUEST TYPE");
 
-    int choice = walkInRegistrationBookingUI.inputTypeFilter();
+    while (true) {
+      int choice = walkInRegistrationBookingUI.inputTypeFilter();
 
-    if (choice == 0) {
-      walkInRegistrationBookingUI.displayMessage("Filter cancelled.");
-      return false;
+      if (choice == 0) {
+        return;
+      }
+
+      boolean urgent = (choice == 1);
+      ListInterface<WalkInGuest> matches = walkInRecords.filter(isUrgent(urgent));
+
+      if (walkInRegistrationBookingUI.displayGuestList(matches,
+          urgent ? "URGENT EXCEPTION CASES" : "NORMAL WALK-IN GUESTS",
+          urgent ? "No urgent exception cases recorded."
+                 : "No normal walk-in guests recorded.")) {
+        walkInRegistrationBookingUI.startAction("FILTER BY GUEST TYPE");
+      }
     }
-
-    boolean urgent = (choice == 1);
-    ListInterface<WalkInGuest> matches = walkInRecords.filter(isUrgent(urgent));
-
-    return walkInRegistrationBookingUI.displayGuestList(matches,
-        urgent ? "URGENT EXCEPTION CASES" : "NORMAL WALK-IN GUESTS",
-        urgent ? "No urgent exception cases recorded." : "No normal walk-in guests recorded.");
   }
 
   // ==================================================================
@@ -935,18 +951,19 @@ public class WalkInRegistrationBookingMaintenance {
       switch (choice) {
         case 0:
           break;
+        // Each of these keeps prompting until the user enters 0, so there is
+        // no pause here - leaving the action is already a deliberate 0.
         case 1:
           searchByGuestId();
-          walkInRegistrationBookingUI.pause();
           break;
         case 2:
-          pauseUnlessQuit(searchByName());
+          searchByName();
           break;
         case 3:
-          pauseUnlessQuit(filterByStatus());
+          filterByStatus();
           break;
         case 4:
-          pauseUnlessQuit(filterByType());
+          filterByType();
           break;
       }
     } while (choice != 0);
