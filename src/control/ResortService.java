@@ -380,28 +380,88 @@ public class ResortService {
       return ServiceResult.fail("No room of that type can be made ready for those dates.");
     }
 
-    Room target = cleanable.getEntry(1);
+    // Prefer a room that can actually enter the cleaning queue. INSPECTED is
+    // still listed by findCleanableRooms (closest to ready), but it is not a
+    // new cleaning job and must not be treated as one.
+    Room target = firstRoomAt(cleanable, Room.DIRTY);
+    if (target == null) {
+      target = firstRoomAt(cleanable, Room.CLEANING_IN_PROGRESS);
+    }
+    if (target == null) {
+      target = firstRoomAt(cleanable, Room.INSPECTED);
+    }
+    if (target == null || target.isOutOfService()
+        || Room.BLOCKED.equals(target.getHousekeepingStatus())) {
+      return ServiceResult.fail("No room of that type can be cleaned for those dates.");
+    }
+    if (Room.READY_FOR_CHECK_IN.equals(target.getHousekeepingStatus())) {
+      return ServiceResult.fail("Room " + target.getRoomNo()
+          + " is already ready and does not need cleaning.");
+    }
 
-    // Escalate the room's existing task if it has one; raise one if not.
     HousekeepingTask task = data.findOpenTaskForRoom(target.getRoomNo());
+
+    if (Room.INSPECTED.equals(target.getHousekeepingStatus())) {
+      if (task == null) {
+        return ServiceResult.fail("Room " + target.getRoomNo()
+            + " is already inspected and has no open job to queue.");
+      }
+      task.setReservedForBookingId(bookingId);
+      task.setRemark("Reserved - " + bookingId
+          + " is waiting on inspection sign-off");
+      data.saveHousekeeping();
+      return ServiceResult.ok("Room " + target.getRoomNo()
+          + " is already inspected. Complete the existing sign-off to "
+          + "READY_FOR_CHECK_IN for " + bookingId
+          + ". It was not added to the cleaning queue.", task);
+    }
+
+    if (Room.CLEANING_IN_PROGRESS.equals(target.getHousekeepingStatus())) {
+      if (task == null) {
+        return ServiceResult.fail("Room " + target.getRoomNo()
+            + " is already being cleaned and has no open task to reserve.");
+      }
+      task.setReservedForBookingId(bookingId);
+      task.setRemark("Expedited - " + bookingId + " is waiting on this room");
+      refreshTaskPriority(task);
+      enqueueIfNeedsCleaning(task);
+      data.saveHousekeeping();
+      return ServiceResult.ok("Room " + target.getRoomNo()
+          + " is already being cleaned for " + bookingId + " (task "
+          + task.getTaskId() + "). A second cleaning job was not raised.", task);
+    }
+
+    // DIRTY: raise a cleaning task only when the room has none, then put it
+    // in the urgent lane once, from the booking waiting on it.
     if (task == null) {
       task = new HousekeepingTask(data.nextTaskId(), target.getRoomNo(),
           HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, LocalDateTime.now());
       data.getTaskList().add(task);
       logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
           "Raised for waiting booking " + bookingId);
-      data.getCleaningQueue().enqueue(task, task.getPriority());
     }
 
     task.setReservedForBookingId(bookingId);
     task.setRemark("Expedited - " + bookingId + " is waiting on this room");
     refreshTaskPriority(task);
+    enqueueIfNeedsCleaning(task);
 
     data.saveHousekeeping();
 
     return ServiceResult.ok("Room " + target.getRoomNo() + " is being cleaned for "
         + bookingId + " (task " + task.getTaskId() + ", "
         + task.getPriority() + " lane).", task);
+  }
+
+  // Returns the first room in the list that currently has the given housekeeping status.
+  private Room firstRoomAt(ListInterface<Room> rooms, String housekeepingStatus) {
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      if (housekeepingStatus.equals(room.getHousekeepingStatus())) {
+        return room;
+      }
+    }
+    return null;
   }
 
   /**
@@ -429,7 +489,7 @@ public class ResortService {
       // The lane is part of the queue, not the task, so a task already waiting
       // has to be taken out and put back to move lanes.
       if (task.isPendingCleaning() && data.getCleaningQueue().removeEntry(task)) {
-        data.getCleaningQueue().enqueue(task, updated);
+        enqueueIfNeedsCleaning(task);
       }
     }
   }
@@ -480,7 +540,7 @@ public class ResortService {
         HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
     task.setRemark("New room - prepare before first sale");
     data.getTaskList().add(task);
-    data.getCleaningQueue().enqueue(task, task.getPriority());
+    enqueueIfNeedsCleaning(task);
     logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
         "Room added");
 
@@ -565,7 +625,27 @@ public class ResortService {
 
       room.setOutOfService(true);
       room.setHousekeepingStatus(Room.BLOCKED);
+
+      HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
+      if (open != null) {
+        String fromStatus = open.getStatus();
+        data.getCleaningQueue().removeEntry(open);
+        open.setStatus(HousekeepingTask.BLOCKED);
+        open.setRemark("Taken out of service");
+        logStatusChange(open, fromStatus, HousekeepingTask.BLOCKED, staffId, false,
+            "Taken out of service");
+      } else {
+        HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
+            HousekeepingTask.TYPE_MAINTENANCE, null, LocalDateTime.now());
+        task.setStatus(HousekeepingTask.BLOCKED);
+        task.setRemark("Taken out of service");
+        data.getTaskList().add(task);
+        logStatusChange(task, null, HousekeepingTask.BLOCKED, staffId, false,
+            "Taken out of service");
+      }
+
       data.saveMasters();
+      data.saveHousekeeping();
       return ServiceResult.ok("Room " + roomNo
           + " is out of service and cannot be sold.", room);
     }
@@ -579,19 +659,35 @@ public class ResortService {
     room.setOutOfService(false);
     room.setHousekeepingStatus(Room.DIRTY);
 
-    HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
-        HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
-    task.setRemark("Returned to service - prepare before sale");
-    data.getTaskList().add(task);
-    data.getCleaningQueue().enqueue(task, task.getPriority());
-    logStatusChange(task, Room.BLOCKED, HousekeepingTask.DIRTY, staffId, false,
-        "Returned to service");
+    HousekeepingTask prepared;
+    HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
+    if (open != null) {
+      String fromStatus = open.getStatus();
+      open.setStatus(HousekeepingTask.DIRTY);
+      if (!open.isCleaningType()) {
+        open.setTaskType(HousekeepingTask.TYPE_DEEP_CLEAN);
+      }
+      open.setRemark("Returned to service - prepare before sale");
+      enqueueIfNeedsCleaning(open);
+      logStatusChange(open, fromStatus, HousekeepingTask.DIRTY, staffId, false,
+          "Returned to service");
+      prepared = open;
+    } else {
+      HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
+          HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
+      task.setRemark("Returned to service - prepare before sale");
+      data.getTaskList().add(task);
+      enqueueIfNeedsCleaning(task);
+      logStatusChange(task, Room.BLOCKED, HousekeepingTask.DIRTY, staffId, false,
+          "Returned to service");
+      prepared = task;
+    }
 
     data.saveMasters();
     data.saveHousekeeping();
 
     return ServiceResult.ok("Room " + roomNo + " is back in service and queued"
-        + " for cleaning (task " + task.getTaskId() + ").", room);
+        + " for cleaning (task " + prepared.getTaskId() + ").", room);
   }
 
   /**
@@ -756,7 +852,7 @@ public class ResortService {
 
     data.getTaskList().add(task);
     refreshTaskPriority(task);
-    data.getCleaningQueue().enqueue(task, task.getPriority());
+    enqueueIfNeedsCleaning(task);
     logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
         "Raised on check-out");
 
@@ -850,6 +946,16 @@ public class ResortService {
     }
 
     String fromStatus = task.getStatus();
+    if (HousekeepingTask.TYPE_MAINTENANCE.equals(task.getTaskType())
+        && (HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)
+            || HousekeepingTask.INSPECTED.equals(toStatus)
+            || HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus))) {
+      return ServiceResult.fail("MAINTENANCE is not a cleaning task.");
+    }
+    if (HousekeepingTask.TYPE_INSPECTION.equals(task.getTaskType())
+        && HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)) {
+      return ServiceResult.fail("Inspection is not started from the cleaning queue.");
+    }
     if (!HousekeepingTask.isValidTransition(fromStatus, toStatus)) {
       return ServiceResult.fail(
           HousekeepingTask.explainInvalidTransition(fromStatus, toStatus));
@@ -862,6 +968,9 @@ public class ResortService {
     if (room == null) {
       return ServiceResult.fail("Room " + task.getRoomNo() + " no longer exists.");
     }
+
+    boolean otherOpenWork = HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus)
+        && roomHasOtherOpenTask(task.getRoomNo(), task.getTaskId());
 
     task.setStatus(toStatus);
     if (remark != null && !remark.isBlank()) {
@@ -881,44 +990,88 @@ public class ResortService {
         if (HousekeepingTask.INSPECTED.equals(fromStatus)) {
           task.incrementInspectionFailCount();
           task.setStartedAt(null);
+          if (!task.isCleaningType()) {
+            task.setTaskType(HousekeepingTask.TYPE_CHECKOUT_CLEAN);
+          }
         }
-        data.getCleaningQueue().enqueue(task, task.getPriority());
+        enqueueIfNeedsCleaning(task);
         break;
 
       case HousekeepingTask.READY_FOR_CHECK_IN:
         task.setCompletedAt(LocalDateTime.now());
-        room.setLastCleanedAt(LocalDateTime.now());
+        if (!otherOpenWork) {
+          room.setLastCleanedAt(LocalDateTime.now());
+        }
         break;
 
       case HousekeepingTask.BLOCKED:
         data.getCleaningQueue().removeEntry(task);
+        room.setOutOfService(true);
         break;
 
       default:
         break;
     }
 
-    room.setHousekeepingStatus(toStatus);
+    if (!otherOpenWork) {
+      room.setHousekeepingStatus(toStatus);
+    }
     logStatusChange(task, fromStatus, toStatus, staffId, false, remark);
     data.saveHousekeeping();
     data.saveMasters();
 
     String message = "Room " + task.getRoomNo() + ": " + fromStatus + " -> " + toStatus + ".";
     if (HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus)) {
-      message += " The room is now available to the front desk.";
-      if (task.getReservedForBookingId() != null) {
-        message += " Booking " + task.getReservedForBookingId() + " is waiting on it.";
+      if (otherOpenWork) {
+        message += " The task is finished, but the room is not ready while another"
+            + " housekeeping job on this room is still open.";
+      } else {
+        message += " The room is now available to the front desk.";
+        if (task.getReservedForBookingId() != null) {
+          message += " Booking " + task.getReservedForBookingId() + " is waiting on it.";
+        }
       }
     }
     return ServiceResult.ok(message, task);
   }
 
+  // Whether another unfinished housekeeping task exists for the same room.
+  private boolean roomHasOtherOpenTask(String roomNo, String exceptTaskId) {
+    return data.getTaskList().search(other -> roomNo.equals(other.getRoomNo())
+        && !exceptTaskId.equals(other.getTaskId())
+        && !HousekeepingTask.READY_FOR_CHECK_IN.equals(other.getStatus())) != null;
+  }
+
+  /**
+   * Puts a dirty cleaning task on the cleaning queue, once.
+   *
+   * Inspection and maintenance stay off this queue. A task already waiting is
+   * not added a second time.
+   */
+  public void enqueueIfNeedsCleaning(HousekeepingTask task) {
+    if (task == null || !task.isPendingCleaning()) {
+      return;
+    }
+    if (data.getCleaningQueue().toServiceOrder().contains(task)) {
+      return;
+    }
+    data.getCleaningQueue().enqueue(task, task.getPriority());
+  }
+
   /** Writes one row of a room's status history. */
   private void logStatusChange(HousekeepingTask task, String fromStatus, String toStatus,
       String staffId, boolean isRollback, String remark) {
-    data.getStatusLogList().add(new RoomStatusLog(data.nextStatusLogId(), task.getTaskId(),
+    RoomStatusLog log = new RoomStatusLog(data.nextStatusLogId(), task.getTaskId(),
         task.getRoomNo(), fromStatus, toStatus, LocalDateTime.now(), staffId,
-        isRollback, remark));
+        isRollback, remark);
+    data.getStatusLogList().add(log);
+
+    // Only a real workflow step is rollbackable. Opening DIRTY rows have no
+    // previous status, and compensating rows are the undo rather than a new
+    // undoable update.
+    if (!isRollback && fromStatus != null) {
+      data.getStatusRollbackStack().push(log);
+    }
   }
 
   /**
@@ -934,20 +1087,11 @@ public class ResortService {
    * @return the task at its restored status
    */
   public ServiceResult<HousekeepingTask> rollbackLastStatusChange(String staffId) {
-    ListInterface<RoomStatusLog> logs = data.getStatusLogList();
-
-    RoomStatusLog latest = null;
-    for (int i = logs.getNumberOfEntries(); i >= 1; i--) {
-      RoomStatusLog log = logs.getEntry(i);
-      if (!log.isRollback() && log.getFromStatus() != null) {
-        latest = log;
-        break;
-      }
-    }
-
-    if (latest == null) {
+    if (data.getStatusRollbackStack().isEmpty()) {
       return ServiceResult.fail("There is no status update to roll back.");
     }
+
+    RoomStatusLog latest = data.getStatusRollbackStack().peek();
 
     HousekeepingTask task = data.findTask(latest.getTaskId());
     if (task == null) {
@@ -971,12 +1115,22 @@ public class ResortService {
     task.setStatus(restoreTo);
     room.setHousekeepingStatus(restoreTo);
 
-    // The queue holds whoever is waiting to be cleaned, so it has to follow.
-    data.getCleaningQueue().removeEntry(task);
-    if (HousekeepingTask.DIRTY.equals(restoreTo)) {
-      data.getCleaningQueue().enqueue(task, task.getPriority());
+    if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(undoing)
+        && HousekeepingTask.DIRTY.equals(restoreTo)) {
+      task.setStartedAt(null);
+      task.setAssignedTo(null);
+    }
+    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(undoing)) {
+      task.setCompletedAt(null);
     }
 
+    // The queue holds whoever is waiting to be cleaned, so it has to follow.
+    // Always drop first so a restore cannot create a second copy of the same
+    // task; put it back only when the restored status still needs cleaning.
+    data.getCleaningQueue().removeEntry(task);
+    enqueueIfNeedsCleaning(task);
+
+    data.getStatusRollbackStack().pop();
     logStatusChange(task, undoing, restoreTo, staffId, true,
         "Rollback of " + latest.getLogId());
     data.saveHousekeeping();

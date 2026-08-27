@@ -22,6 +22,7 @@ public class HousekeepingTaskLogUI {
   // MENUS
   // ==================================================================
 
+  // Shows the Housekeeping main menu and returns the chosen option.
   public int getMenuChoice() {
     MessageUI.displayMenuScreen("HOUSEKEEPING", null,
         "Main Menu  >  Housekeeping Task Log",
@@ -29,167 +30,14 @@ public class HousekeepingTaskLogUI {
           "Cleaning queue (take the next room)",
           "Update a task's status",
           "Roll back the last status update",
-          "Manage rooms (add, remove, in or out of service)",
           "Search & monitor",
           "Reports"
         },
         "Back to main menu");
-    return MessageUI.readMenuChoice(scanner, 6, "go back to the main menu");
+    return MessageUI.readMenuChoice(scanner, 5, "go back to the main menu");
   }
 
-  public int getRoomMenuChoice() {
-    MessageUI.displayMenuScreen("MANAGE ROOMS", null,
-        "Main Menu  >  Housekeeping  >  Manage Rooms",
-        new String[] {
-          "List every room",
-          "Add a room",
-          "Remove a room",
-          "Take a room out of service",
-          "Return a room to service"
-        },
-        "Back");
-    return MessageUI.readMenuChoice(scanner, 5, "go back");
-  }
-
-  /**
-   * Asks for the number of a room being created.
-   *
-   * @return the room number, or null if cancelled
-   */
-  public String inputNewRoomNo() {
-    String roomNo = MessageUI.readIdNumber(scanner, "New room number", "", 4);
-    return MessageUI.isCancelled(roomNo) ? null : roomNo;
-  }
-
-  /**
-   * Asks which floor a room is on.
-   *
-   * @return the floor, or -1 if cancelled
-   */
-  public int inputFloorNumber() {
-    int floor = MessageUI.readInt(scanner, "Floor number", 1, 20);
-    return (floor == MessageUI.CANCELLED_INT) ? -1 : floor;
-  }
-
-  /**
-   * Asks which room type a new room belongs to.
-   *
-   * The number in the first column is what the user types, so the table and
-   * the prompt under it are asking for the same thing.
-   *
-   * @param types the room types on offer
-   * @return the chosen type's ID, or null if cancelled
-   */
-  public String inputRoomType(ListInterface<RoomType> types) {
-    MessageUI.displaySectionHeading("Room types");
-    MessageUI.displayTableHeading(String.format("  %-5s %-6s %-18s %5s %12s",
-        "NO", "TYPE", "NAME", "MAX", "RATE/NIGHT"));
-
-    for (int i = 1; i <= types.getNumberOfEntries(); i++) {
-      RoomType type = types.getEntry(i);
-      System.out.printf("  [%d]   %-6s %-18s %5d %12.2f%n",
-          i, type.getTypeId(), type.getTypeName(), type.getMaxOccupancy(),
-          type.getBaseRatePerNight());
-    }
-    MessageUI.displayThinRule();
-
-    int picked = MessageUI.readInt(scanner, "Room type number", 1,
-        types.getNumberOfEntries());
-    if (picked == MessageUI.CANCELLED_INT) {
-      return null;
-    }
-    return types.getEntry(picked).getTypeId();
-  }
-
-  /**
-   * Lists every room and whether it may currently be sold.
-   *
-   * The last column is the one that matters to the front desk: it says in
-   * words why a room cannot be given out, rather than leaving the reader to
-   * work it out from the two status columns beside it.
-   *
-   * @param rooms the rooms to show
-   * @param data used to name the room type
-   * @return true if anything was shown
-   */
-  public boolean displayRoomList(ListInterface<Room> rooms, ResortData data) {
-    if (rooms.isEmpty()) {
-      MessageUI.displayBlankLine();
-      MessageUI.displayMessage("  There are no rooms on record.");
-      return false;
-    }
-
-    int total = rooms.getNumberOfEntries();
-    int totalPages = MessageUI.pageCount(total);
-
-    for (int page = 1; page <= totalPages; page++) {
-      MessageUI.displayBlankLine();
-      MessageUI.displayTableHeading(String.format(
-          "  %-4s %-6s %-6s %-5s %-10s %-22s %s",
-          "NO", "ROOM", "TYPE", "FLOOR", "OCCUPANCY", "HOUSEKEEPING", "SELLABLE?"));
-
-      int from = MessageUI.firstRowOnPage(page);
-      int upTo = MessageUI.lastRowOnPage(page, total);
-
-      for (int i = from; i <= upTo; i++) {
-        Room room = rooms.getEntry(i);
-        System.out.printf("  %-4d %-6s %-6s %-5d %-10s %-22s %s%n",
-            i, room.getRoomNo(), room.getTypeId(), room.getFloorNo(),
-            room.getOccupancyStatus(), room.getHousekeepingStatus(),
-            sellableReason(room));
-      }
-
-      MessageUI.displayThinRule();
-      System.out.printf("  %d room(s).%n", total);
-
-      if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
-        break;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * Why a room may or may not be given to a guest right now.
-   *
-   * @param room the room
-   * @return "Yes", or the reason it cannot be sold
-   */
-  private String sellableReason(Room room) {
-    if (room.isOutOfService()) {
-      return "No - out of service";
-    }
-    if (Room.OCCUPIED.equals(room.getOccupancyStatus())) {
-      return "No - guest in it";
-    }
-    if (Room.RESERVED.equals(room.getOccupancyStatus())) {
-      return "No - held for a booking";
-    }
-    if (room.isAssignable()) {
-      return "Yes";
-    }
-    return "No - needs cleaning";
-  }
-
-  /**
-   * Shows one room in full.
-   *
-   * @param room the room
-   * @param data used to name the room type
-   */
-  public void displayRoom(Room room, ResortData data) {
-    RoomType type = data.findRoomType(room.getTypeId());
-
-    MessageUI.displayBlankLine();
-    MessageUI.displayField("Room number", room.getRoomNo());
-    MessageUI.displayField("Type", room.getTypeId()
-        + (type == null ? "" : " - " + type.getTypeName()));
-    MessageUI.displayField("Floor", String.valueOf(room.getFloorNo()));
-    MessageUI.displayField("Occupancy", room.getOccupancyStatus());
-    MessageUI.displayField("Housekeeping", room.getHousekeepingStatus());
-    MessageUI.displayField("Can be sold now", sellableReason(room));
-  }
-
+  // Shows the cleaning-queue menu and returns the chosen option.
   public int getQueueMenuChoice() {
     MessageUI.displayMenuScreen("CLEANING QUEUE", null,
         "Main Menu  >  Housekeeping  >  Cleaning Queue",
@@ -202,6 +50,7 @@ public class HousekeepingTaskLogUI {
     return MessageUI.readMenuChoice(scanner, 3, "go back");
   }
 
+  // Shows the search-and-monitor menu and returns the chosen option.
   public int getSearchMenuChoice() {
     MessageUI.displayMenuScreen("SEARCH & MONITOR", null,
         "Main Menu  >  Housekeeping  >  Search & Monitor",
@@ -216,6 +65,7 @@ public class HousekeepingTaskLogUI {
     return MessageUI.readMenuChoice(scanner, 5, "go back");
   }
 
+  // Shows the Housekeeping reports menu and returns the chosen option.
   public int getReportMenuChoice() {
     MessageUI.displayMenuScreen("REPORTS", null,
         "Main Menu  >  Housekeeping  >  Reports",
@@ -231,14 +81,78 @@ public class HousekeepingTaskLogUI {
   // INPUT
   // ==================================================================
 
+  /**
+   * Asks for a task number.
+   *
+   * The stored ID is still HK plus four digits. The user types the number
+   * only; 0 cancels. An invalid number is not retried silently - the caller
+   * is given Enter Again or Exit.
+   *
+   * @return the full task ID, or null if cancelled
+   */
   public String inputTaskId() {
-    String id = MessageUI.readIdNumber(scanner, "Task number", "HK", 4);
-    return MessageUI.isCancelled(id) ? null : id;
+    while (true) {
+      System.out.print("  Task number (0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
+
+      if (MessageUI.isCancelKey(input)) {
+        return null;
+      }
+
+      String value = input.toUpperCase();
+      if (value.startsWith("HK")) {
+        value = value.substring(2);
+      }
+
+      if (!input.isEmpty() && MessageUI.isAllDigits(value)) {
+        try {
+          int number = Integer.parseInt(value);
+          if (number > 0) {
+            return "HK" + String.format("%04d", number);
+          }
+        } catch (NumberFormatException tooLong) {
+          // same as MessageUI.readIdNumber: a number that will not fit
+        }
+      }
+
+      displayError("Invalid Task ID.");
+      if (!confirmEnterAgain()) {
+        return null;
+      }
+    }
   }
 
+  // Asks for a room number, or returns null if the user cancels.
   public String inputRoomNo() {
-    String roomNo = MessageUI.readIdNumber(scanner, "Room number", "", 4);
-    return MessageUI.isCancelled(roomNo) ? null : roomNo;
+    while (true) {
+      System.out.print("  Room number (0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
+
+      if (MessageUI.isCancelKey(input)) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      String value = input.toUpperCase();
+      if (!MessageUI.isAllDigits(value)) {
+        displayError("Please enter just the number, e.g. 3 or 0003.");
+        continue;
+      }
+
+      try {
+        int number = Integer.parseInt(value);
+        if (number <= 0) {
+          displayError("The number must be 1 or more.");
+          continue;
+        }
+        return String.format("%04d", number);
+      } catch (NumberFormatException tooLong) {
+        displayError("That number is too large.");
+      }
+    }
   }
 
   /**
@@ -315,6 +229,7 @@ public class HousekeepingTaskLogUI {
     }
   }
 
+  // Asks which housekeeping status to filter the task list by.
   public String inputStatusFilter() {
     String status = MessageUI.readChoice(scanner, "Status", new String[] {
       HousekeepingTask.DIRTY,
@@ -326,6 +241,7 @@ public class HousekeepingTaskLogUI {
     return MessageUI.isCancelled(status) ? null : status;
   }
 
+  // Asks which task type to raise: cleaning, inspection or maintenance.
   public String inputTaskType() {
     String type = MessageUI.readChoice(scanner, "Task type", new String[] {
       HousekeepingTask.TYPE_CHECKOUT_CLEAN,
@@ -337,6 +253,7 @@ public class HousekeepingTaskLogUI {
     return MessageUI.isCancelled(type) ? null : type;
   }
 
+  // Asks for a remark, required when blocking a room or failing an inspection.
   public String inputRemark(boolean required) {
     String remark = required
         ? MessageUI.readRequiredText(scanner, "Reason")
@@ -344,8 +261,37 @@ public class HousekeepingTaskLogUI {
     return MessageUI.isCancelled(remark) ? null : remark;
   }
 
+  // Asks a yes/no confirmation question.
   public boolean confirm(String question) {
     return MessageUI.confirm(scanner, question);
+  }
+
+  /**
+   * Asks whether to try the last prompt again, or leave this action.
+   *
+   * @return true to enter again, false to exit the current operation
+   */
+  public boolean confirmEnterAgain() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  What would you like to do?");
+    MessageUI.displayMessage("  [1] Enter Again");
+    MessageUI.displayMessage("  [0] Exit");
+    MessageUI.displayBlankLine();
+    return MessageUI.readMenuChoice(scanner, 1, "exit") == 1;
+  }
+
+  /**
+   * Asks whether to search again after a Task ID was not found.
+   *
+   * @return true to search again, false to exit the current operation
+   */
+  public boolean confirmSearchAgain() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  What would you like to do?");
+    MessageUI.displayMessage("  [1] Search Again");
+    MessageUI.displayMessage("  [0] Exit");
+    MessageUI.displayBlankLine();
+    return MessageUI.readMenuChoice(scanner, 1, "exit") == 1;
   }
 
   /**
@@ -372,6 +318,7 @@ public class HousekeepingTaskLogUI {
     MessageUI.pause(scanner, prompt);
   }
 
+  // Waits for the user to press Enter before leaving the current screen.
   public void pause() {
     MessageUI.pause(scanner);
   }
@@ -380,22 +327,27 @@ public class HousekeepingTaskLogUI {
   // DISPLAY
   // ==================================================================
 
+  // Starts a Housekeeping action screen with the given title.
   public void startAction(String title) {
     MessageUI.startAction(title);
   }
 
+  // Displays a plain message on the Housekeeping screen.
   public void displayMessage(String message) {
     MessageUI.displayMessage(message);
   }
 
+  // Displays an error message on the Housekeeping screen.
   public void displayError(String message) {
     MessageUI.displayError(message);
   }
 
+  // Displays a success message on the Housekeeping screen.
   public void displaySuccess(String message) {
     MessageUI.displaySuccess(message);
   }
 
+  // Displays a section heading on the Housekeeping screen.
   public void displaySectionHeading(String title) {
     MessageUI.displaySectionHeading(title);
   }
@@ -600,6 +552,7 @@ public class HousekeepingTaskLogUI {
   // REPORTS
   // ==================================================================
 
+  // Displays the boxed header at the top of a Housekeeping report.
   public void displayReportHeader(String title) {
     MessageUI.beginLongOutput();
     MessageUI.displayBlankLine();
@@ -614,23 +567,28 @@ public class HousekeepingTaskLogUI {
     MessageUI.displayBoxBottom();
   }
 
+  // Displays one labelled value on a Housekeeping report.
   public void displayReportLine(String label, String value) {
     MessageUI.displayReportLine(label, value);
   }
 
+  // Draws a text bar chart for a Housekeeping report.
   public void displayBarChart(String title, String yAxisLabel, String[] labels,
       double[] values) {
     MessageUI.displayBarChart(title, yAxisLabel, labels, values);
   }
 
+  // Displays a table heading line on a Housekeeping report.
   public void displayTableHeading(String heading) {
     MessageUI.displayTableHeading(heading);
   }
 
+  // Draws a thin divider line on a Housekeeping report.
   public void displayThinRule() {
     MessageUI.displayThinRule();
   }
 
+  // Displays the end of a Housekeeping report and waits for the user to leave.
   public void displayReportFooter() {
     MessageUI.displayBlankLine();
     MessageUI.displayRule();

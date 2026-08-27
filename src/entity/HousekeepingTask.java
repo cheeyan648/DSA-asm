@@ -50,9 +50,11 @@ public class HousekeepingTask implements Serializable {
   private LocalDateTime completedAt;
   private String remark;
 
+  // Creates an empty housekeeping task.
   public HousekeepingTask() {
   }
 
+  // Creates a new housekeeping task that starts DIRTY and in the normal lane.
   public HousekeepingTask(String taskId, String roomNo, String taskType,
       String bookingId, LocalDateTime createdAt) {
     this.taskId = taskId;
@@ -137,6 +139,7 @@ public class HousekeepingTask implements Serializable {
     this.inspectionFailCount = inspectionFailCount;
   }
 
+  // Adds one failed inspection to this task's count.
   public void incrementInspectionFailCount() {
     inspectionFailCount++;
   }
@@ -187,13 +190,35 @@ public class HousekeepingTask implements Serializable {
     this.remark = remark;
   }
 
+  // Whether this task is in the urgent lane.
   public boolean isUrgent() {
     return PRIORITY_URGENT.equals(priority);
   }
 
+  /**
+   * Whether this task is actual room cleaning, not inspection or maintenance.
+   */
+  public boolean isCleaningType() {
+    return TYPE_CHECKOUT_CLEAN.equals(taskType)
+        || TYPE_STAYOVER_CLEAN.equals(taskType)
+        || TYPE_DEEP_CLEAN.equals(taskType);
+  }
+
   /** Whether this task still needs to be picked up by a housekeeper. */
   public boolean isPendingCleaning() {
-    return DIRTY.equals(status);
+    return isCleaningType() && DIRTY.equals(status);
+  }
+
+  /**
+   * Whether this is current outstanding cleaning work, not finished history.
+   *
+   * DIRTY is waiting to be picked up; CLEANING_IN_PROGRESS is already being
+   * done. Inspected, ready, blocked and inspection/maintenance jobs are not
+   * outstanding cleaning.
+   */
+  public boolean isOutstandingCleaning() {
+    return isCleaningType()
+        && (DIRTY.equals(status) || CLEANING_IN_PROGRESS.equals(status));
   }
 
   /**
@@ -215,7 +240,8 @@ public class HousekeepingTask implements Serializable {
    * inspection sends the room back to dirty to be done again. Anything else is
    * refused: a room cannot be inspected without being cleaned, cannot skip
    * inspection to reach ready, and cannot move backwards. A room can be
-   * blocked from any state and returns to where it was when unblocked.
+   * blocked from any state and returns to DIRTY or CLEANING_IN_PROGRESS, not
+   * to INSPECTED or READY.
    *
    * @param from the status the room is at now
    * @param to the status being requested
@@ -229,7 +255,7 @@ public class HousekeepingTask implements Serializable {
       return true;
     }
     if (BLOCKED.equals(from)) {
-      return DIRTY.equals(to) || CLEANING_IN_PROGRESS.equals(to) || INSPECTED.equals(to);
+      return DIRTY.equals(to) || CLEANING_IN_PROGRESS.equals(to);
     }
     switch (from) {
       case DIRTY:
@@ -260,6 +286,9 @@ public class HousekeepingTask implements Serializable {
     }
     if (CLEANING_IN_PROGRESS.equals(from) && READY_FOR_CHECK_IN.equals(to)) {
       return "Inspection is required before a room is ready.";
+    }
+    if (BLOCKED.equals(from) && (INSPECTED.equals(to) || READY_FOR_CHECK_IN.equals(to))) {
+      return "A blocked room must be cleaned again before inspection or check-in.";
     }
     if (READY_FOR_CHECK_IN.equals(from) && INSPECTED.equals(to)) {
       return "Cannot move a ready room backwards.";

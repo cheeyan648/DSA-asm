@@ -29,9 +29,11 @@ public class RoomStatusLog implements Serializable {
   private boolean rollback;
   private String remark;
 
+  // Creates an empty room-status history row.
   public RoomStatusLog() {
   }
 
+  // Creates one recorded housekeeping status change for a room.
   public RoomStatusLog(String logId, String taskId, String roomNo, String fromStatus,
       String toStatus, LocalDateTime changedAt, String changedBy, boolean rollback,
       String remark) {

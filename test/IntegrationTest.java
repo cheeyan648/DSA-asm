@@ -14,6 +14,8 @@ import entity.PointTransaction;
 import entity.Redemption;
 import entity.Room;
 import entity.RoomAssignment;
+import entity.RoomStatusLog;
+import entity.RoomType;
 import entity.WalkInRegistration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -61,6 +63,11 @@ public class IntegrationTest {
     testCleaningReleasesRoomBackToFrontDesk();
     testFailedInspectionKeepsRoomUnsellable();
     testRollbackRestoresRoomAndKeepsHistory();
+    testHousekeepingRollbackStack();
+    testOtherOpenTaskKeepsRoomUnready();
+    testUrgentCleaningInspectedRoom();
+    testCurrentWorkloadIgnoresHistoricalCleans();
+    testUrgentCleaningOtherStatuses();
     testRedemptionDiscountsALiveBill();
     testPointsAreNotAwardedTwice();
     testCancelledBookingReleasesItsRoom();
@@ -574,6 +581,404 @@ public class IntegrationTest {
       runner.checkEquals("rolling it back takes the failure off the count",
           failures - 1, other.getInspectionFailCount());
     }
+  }
+
+  /**
+   * The rollback stack must match a live session, including after restart.
+   *
+   * Rebuild is not "push every reversible row and pop every compensating
+   * row": a compensating row only undoes the update that was on top when it
+   * was written.
+   */
+  private void testHousekeepingRollbackStack() {
+    runner.suite("Housekeeping rollback stack matches a live session");
+
+    // Seeded history is kept on file but is not treated as a new rollback.
+    ResortData seeded = freshData();
+    runner.checkEquals("a fresh start has nothing new to roll back",
+        0, seeded.getStatusRollbackStack().getNumberOfEntries());
+
+    ResortData seededAgain = new ResortData();
+    runner.checkEquals("restart still does not load historical updates as rollbacks",
+        0, seededAgain.getStatusRollbackStack().getNumberOfEntries());
+
+    // Case 1: several updates, then one rollback.
+    ResortData data = freshData();
+    ResortService service = new ResortService(data);
+    HousekeepingTask task = data.findOpenTaskForRoom("1001");
+    Room room = data.findRoom("1001");
+
+    service.updateTaskStatus(task.getTaskId(),
+        HousekeepingTask.CLEANING_IN_PROGRESS, "ST003", null);
+    RoomStatusLog afterStart = data.getStatusRollbackStack().peek();
+    service.updateTaskStatus(task.getTaskId(),
+        HousekeepingTask.INSPECTED, "ST003", null);
+    RoomStatusLog afterInspect = data.getStatusRollbackStack().peek();
+    runner.check("two updates both sit on the stack",
+        afterStart != null && afterInspect != null
+            && !afterStart.getLogId().equals(afterInspect.getLogId()));
+
+    ServiceResult<HousekeepingTask> firstRollback =
+        service.rollbackLastStatusChange("ST005");
+    runner.check("one rollback succeeds", firstRollback.isSuccess());
+    runner.checkEquals("it undoes the latest update, not an earlier one",
+        afterStart.getLogId(), data.getStatusRollbackStack().peek().getLogId());
+    runner.checkEquals("the room returns to cleaning in progress",
+        HousekeepingTask.CLEANING_IN_PROGRESS, task.getStatus());
+    runner.checkEquals("and the room record follows",
+        Room.CLEANING_IN_PROGRESS, room.getHousekeepingStatus());
+
+    // Case 2: several updates, then several rollbacks.
+    service.updateTaskStatus(task.getTaskId(),
+        HousekeepingTask.INSPECTED, "ST003", null);
+    service.updateTaskStatus(task.getTaskId(),
+        HousekeepingTask.READY_FOR_CHECK_IN, "ST005", null);
+    service.rollbackLastStatusChange("ST005");
+    service.rollbackLastStatusChange("ST005");
+    runner.checkEquals("two rollbacks restore cleaning in progress",
+        HousekeepingTask.CLEANING_IN_PROGRESS, task.getStatus());
+    runner.checkEquals("the stack top is again the start-cleaning update",
+        afterStart.getLogId(), data.getStatusRollbackStack().peek().getLogId());
+
+    // Restart does not restore session rollbacks from historical logs.
+    data.saveHousekeeping();
+    data.saveMasters();
+    ResortData reloaded = new ResortData();
+    runner.checkEquals("restart does not treat saved history as new rollbacks",
+        0, reloaded.getStatusRollbackStack().getNumberOfEntries());
+
+    // Case 7 then case 1's queue side: rolling start-cleaning back dirties
+    // the room and returns it to the queue once.
+    runner.checkEquals("a room being cleaned is not waiting in the queue",
+        0, queueCopies(data, task));
+    ServiceResult<HousekeepingTask> undoStart =
+        service.rollbackLastStatusChange("ST005");
+    runner.check("rolling back start-cleaning succeeds", undoStart.isSuccess());
+    runner.checkEquals("the room is dirty again", HousekeepingTask.DIRTY, task.getStatus());
+    runner.checkEquals("and is queued once, not twice", 1, queueCopies(data, task));
+
+    // Case 3: inspection failure, queue, then rollback.
+    HousekeepingTask failed = data.findOpenTaskForRoom("2002");
+    service.updateTaskStatus(failed.getTaskId(),
+        HousekeepingTask.INSPECTED, "ST003", null);
+    ServiceResult<HousekeepingTask> sentBack = service.updateTaskStatus(
+        failed.getTaskId(), HousekeepingTask.DIRTY, "ST005", "Missed the bathroom");
+    runner.check("a failed inspection is accepted", sentBack.isSuccess());
+    runner.checkEquals("the room is queued once for re-cleaning",
+        1, queueCopies(data, failed));
+
+    ServiceResult<HousekeepingTask> undoFail = service.rollbackLastStatusChange("ST005");
+    runner.check("rolling back the failed inspection succeeds", undoFail.isSuccess());
+    runner.checkEquals("the room returns to inspected",
+        HousekeepingTask.INSPECTED, failed.getStatus());
+    runner.checkEquals("and leaves the cleaning queue",
+        0, queueCopies(data, failed));
+    runner.checkEquals("the room record is inspected again",
+        HousekeepingTask.INSPECTED, data.findRoom("2002").getHousekeepingStatus());
+
+    // Case 6: empty stack.
+    ResortData emptyData = freshData();
+    ResortService emptyService = new ResortService(emptyData);
+    ServiceResult<HousekeepingTask> nothingLeft =
+        emptyService.rollbackLastStatusChange("ST005");
+    runner.check("an empty stack cannot be rolled back", nothingLeft.isFailure());
+  }
+
+  /**
+   * Signing off one job must not mark the room ready while another job on
+   * that room is still open.
+   */
+  private void testOtherOpenTaskKeepsRoomUnready() {
+    runner.suite("A second open task does not make the room READY");
+
+    ResortData data = freshData();
+    ResortService service = new ResortService(data);
+
+    HousekeepingTask cleaning = data.findTask("HK0003");
+    HousekeepingTask inspection = data.findTask("HK0024");
+    Room room = data.findRoom("1003");
+    runner.check("seed has a cleaning job and an inspection on 1003",
+        cleaning != null && inspection != null);
+    runner.checkEquals("the room starts as cleaning in progress",
+        Room.CLEANING_IN_PROGRESS, room.getHousekeepingStatus());
+
+    ServiceResult<HousekeepingTask> inspected = service.updateTaskStatus(
+        inspection.getTaskId(), HousekeepingTask.INSPECTED, "ST005", null);
+    runner.check("the inspection can still be signed as inspected", inspected.isSuccess());
+
+    ServiceResult<HousekeepingTask> ready = service.updateTaskStatus(
+        inspection.getTaskId(), HousekeepingTask.READY_FOR_CHECK_IN, "ST005", null);
+    runner.check("the inspection task can finish", ready.isSuccess());
+    runner.checkEquals("that task is ready", HousekeepingTask.READY_FOR_CHECK_IN,
+        inspection.getStatus());
+    runner.checkEquals("the cleaning job is still in progress",
+        HousekeepingTask.CLEANING_IN_PROGRESS, cleaning.getStatus());
+    runner.check("the room is not ready while that cleaning job is open",
+        !Room.READY_FOR_CHECK_IN.equals(room.getHousekeepingStatus()));
+
+    runner.check("BLOCKED cannot jump to INSPECTED",
+        !HousekeepingTask.isValidTransition(
+            HousekeepingTask.BLOCKED, HousekeepingTask.INSPECTED));
+    runner.check("BLOCKED cannot jump to READY",
+        !HousekeepingTask.isValidTransition(
+            HousekeepingTask.BLOCKED, HousekeepingTask.READY_FOR_CHECK_IN));
+  }
+
+  /**
+   * Urgent cleaning must not pick an INSPECTED room, mark it urgent, and then
+   * leave it with no queue action. Sign-off is the existing next step.
+   */
+  private void testUrgentCleaningInspectedRoom() {
+    runner.suite("Urgent cleaning does not strand an INSPECTED room");
+
+    ResortData data = freshData();
+    ResortService service = new ResortService(data);
+
+    // Both RT04 rooms: one dirty (can be queued), one inspected (cannot).
+    Room dirty = data.findRoom("2003");
+    dirty.setOccupancyStatus(Room.VACANT);
+    dirty.setHousekeepingStatus(Room.DIRTY);
+    Room inspected = data.findRoom("2004");
+    inspected.setOccupancyStatus(Room.VACANT);
+    inspected.setHousekeepingStatus(Room.INSPECTED);
+    HousekeepingTask inspectedTask = data.findOpenTaskForRoom("2004");
+    runner.check("room 2004 already has an inspected task", inspectedTask != null);
+
+    Booking booking = makeUrgentPendingBooking(service, data, "G0007", "RT04");
+
+    ServiceResult<HousekeepingTask> chosen =
+        service.requestUrgentCleaning(booking.getBookingId(), STAFF);
+    runner.check("a dirty room of that type can be expedited", chosen.isSuccess());
+    runner.checkEquals("the DIRTY room is chosen over the INSPECTED one",
+        "2003", chosen.getValue().getRoomNo());
+    runner.checkEquals("it is in the urgent lane",
+        HousekeepingTask.PRIORITY_URGENT, chosen.getValue().getPriority());
+    runner.checkEquals("queued once, not twice", 1, queueCopies(data, chosen.getValue()));
+    runner.checkEquals("the inspected room still has the same open task",
+        inspectedTask.getTaskId(), data.findOpenTaskForRoom("2004").getTaskId());
+    runner.check("the inspected task did not enter the cleaning queue",
+        !data.getCleaningQueue().toServiceOrder().contains(inspectedTask));
+    runner.checkEquals("and room 2004 stays inspected", Room.INSPECTED,
+        inspected.getHousekeepingStatus());
+
+    // Only INSPECTED remains cleanable: do not invent a DIRTY queue job.
+    data.getCleaningQueue().removeEntry(chosen.getValue());
+    dirty.setOccupancyStatus(Room.OCCUPIED);
+    dirty.setHousekeepingStatus(Room.READY_FOR_CHECK_IN);
+
+    Booking waitingOnInspect = makeUrgentPendingBooking(service, data, "G0005", "RT04");
+    int tasksBeforeInspect = data.getTaskList().getNumberOfEntries();
+    ServiceResult<HousekeepingTask> reserved =
+        service.requestUrgentCleaning(waitingOnInspect.getBookingId(), STAFF);
+    runner.check("an inspected room can still be reserved", reserved.isSuccess());
+    runner.checkEquals("the existing inspected task is reused",
+        inspectedTask.getTaskId(), reserved.getValue().getTaskId());
+    runner.checkEquals("no new cleaning task was created",
+        tasksBeforeInspect, data.getTaskList().getNumberOfEntries());
+    runner.checkEquals("the room stays INSPECTED", Room.INSPECTED,
+        inspected.getHousekeepingStatus());
+    runner.checkEquals("the task is not marked as urgent cleaning",
+        HousekeepingTask.PRIORITY_NORMAL, inspectedTask.getPriority());
+    runner.checkEquals("and it is not in the cleaning queue",
+        0, queueCopies(data, inspectedTask));
+    runner.checkEquals("the booking is reserved on the existing job",
+        waitingOnInspect.getBookingId(), inspectedTask.getReservedForBookingId());
+
+    ServiceResult<HousekeepingTask> signedOff = service.updateTaskStatus(
+        inspectedTask.getTaskId(), HousekeepingTask.READY_FOR_CHECK_IN, "ST005", null);
+    runner.check("inspection sign-off still reaches READY_FOR_CHECK_IN",
+        signedOff.isSuccess());
+    runner.checkEquals("the room is ready", Room.READY_FOR_CHECK_IN,
+        inspected.getHousekeepingStatus());
+    runner.checkEquals("still not in the cleaning queue",
+        0, queueCopies(data, inspectedTask));
+  }
+
+  /**
+   * Completed history must not be treated as current outstanding workload.
+   */
+  private void testCurrentWorkloadIgnoresHistoricalCleans() {
+    runner.suite("Current workload ignores completed historical cleaning");
+
+    ResortData data = freshData();
+    LocalDateTime now = LocalDateTime.now();
+
+    for (int n = 1; n <= 4; n++) {
+      HousekeepingTask past = new HousekeepingTask(data.nextTaskId(), "2003",
+          HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusDays(n));
+      past.setStatus(HousekeepingTask.READY_FOR_CHECK_IN);
+      past.setStartedAt(now.minusDays(n).plusHours(1));
+      past.setCompletedAt(now.minusDays(n).plusHours(2));
+      data.getTaskList().add(past);
+    }
+
+    runner.checkEquals("room 2003 has no current outstanding cleaning",
+        0, outstandingMinutesForRoom(data, "2003"));
+    runner.check("room 1001 still has outstanding DIRTY work",
+        outstandingMinutesForRoom(data, "1001") > 0);
+    runner.check("the historically busy room is not the current highest",
+        !"2003".equals(highestOutstandingRoom(data)));
+
+    runner.checkEquals("RT04 has no current outstanding type workload",
+        0, outstandingMinutesForType(data, "RT04"));
+    runner.check("RT01 still has current outstanding type workload",
+        outstandingMinutesForType(data, "RT01") > 0);
+    runner.check("the historically busy type is not the current highest",
+        !"RT04".equals(highestOutstandingType(data)));
+  }
+
+  /**
+   * DIRTY, CIP, READY, BLOCKED and failed inspection keep their existing rules.
+   */
+  private void testUrgentCleaningOtherStatuses() {
+    runner.suite("Urgent cleaning respects DIRTY, CIP, READY and BLOCKED");
+
+    ResortData data = freshData();
+    ResortService service = new ResortService(data);
+
+    HousekeepingTask dirty = data.findOpenTaskForRoom("1001");
+    runner.check("a DIRTY cleaning task is waiting in the queue",
+        data.getCleaningQueue().toServiceOrder().contains(dirty));
+    runner.checkEquals("seeded dirty work starts in the normal lane",
+        HousekeepingTask.PRIORITY_NORMAL, dirty.getPriority());
+
+    Booking urgentRt01 = makeUrgentPendingBooking(service, data, "G0007", "RT01");
+    ServiceResult<HousekeepingTask> dirtyUrgent =
+        service.requestUrgentCleaning(urgentRt01.getBookingId(), STAFF);
+    runner.check("DIRTY work can be made urgent", dirtyUrgent.isSuccess());
+    runner.checkEquals("it uses the existing dirty task",
+        dirty.getTaskId(), dirtyUrgent.getValue().getTaskId());
+    runner.checkEquals("and moves to the urgent lane",
+        HousekeepingTask.PRIORITY_URGENT, dirty.getPriority());
+    runner.checkEquals("still queued once", 1, queueCopies(data, dirty));
+
+    HousekeepingTask cip = data.findOpenTaskForRoom("1003");
+    int tasksBeforeCip = data.getTaskList().getNumberOfEntries();
+    Booking urgentRt02 = makeUrgentPendingBooking(service, data, "G0005", "RT02");
+    ServiceResult<HousekeepingTask> cipResult =
+        service.requestUrgentCleaning(urgentRt02.getBookingId(), STAFF);
+    runner.check("CLEANING_IN_PROGRESS can be reserved", cipResult.isSuccess());
+    runner.checkEquals("no second cleaning task is raised",
+        tasksBeforeCip, data.getTaskList().getNumberOfEntries());
+    runner.checkEquals("the existing CIP task is reused",
+        cip.getTaskId(), cipResult.getValue().getTaskId());
+    runner.checkEquals("CIP work is not sitting in the queue",
+        0, queueCopies(data, cip));
+
+    Booking readyType = makeUrgentPendingBooking(service, data, "G0004", "RT03");
+    // 1005 and 2001 may be ready; 2002 is dirty so RT03 still has a dirty room.
+    data.findRoom("2002").setOccupancyStatus(Room.OCCUPIED);
+    data.findRoom("2002").setHousekeepingStatus(Room.READY_FOR_CHECK_IN);
+    ServiceResult<HousekeepingTask> readyOnly =
+        service.requestUrgentCleaning(readyType.getBookingId(), STAFF);
+    runner.check("READY_FOR_CHECK_IN rooms are not treated as needing cleaning",
+        readyOnly.isFailure());
+
+    Booking blockedType = makeUrgentPendingBooking(service, data, "G0001", "RT05");
+    ServiceResult<HousekeepingTask> blocked =
+        service.requestUrgentCleaning(blockedType.getBookingId(), STAFF);
+    runner.check("a BLOCKED / out-of-service type cannot be queued for cleaning",
+        blocked.isFailure());
+
+    HousekeepingTask failTask = data.findOpenTaskForRoom("1001");
+    service.updateTaskStatus(failTask.getTaskId(),
+        HousekeepingTask.CLEANING_IN_PROGRESS, "ST003", null);
+    service.updateTaskStatus(failTask.getTaskId(),
+        HousekeepingTask.INSPECTED, "ST003", null);
+    service.updateTaskStatus(failTask.getTaskId(),
+        HousekeepingTask.DIRTY, "ST005", "Failed inspection");
+    runner.checkEquals("failed inspection returns DIRTY",
+        HousekeepingTask.DIRTY, failTask.getStatus());
+    runner.checkEquals("and the room is queued once for re-cleaning",
+        1, queueCopies(data, failTask));
+  }
+
+  private Booking makeUrgentPendingBooking(ResortService service, ResortData data,
+      String guestId, String typeId) {
+    WalkInRegistration urgent = new WalkInRegistration(data.nextRegistrationId(),
+        guestId, LocalDateTime.now(), WalkInRegistration.PRIORITY_URGENT,
+        "Needs a room now", typeId, 2);
+    data.getRegistrationList().add(urgent);
+    data.getWaitingList().enqueue(urgent, urgent.getPriority());
+    service.serveNextGuest(STAFF);
+    LocalDate from = LocalDate.now();
+    return service.convertRegistrationToBooking(
+        urgent.getRegId(), from, from.plusDays(2), 2, STAFF).getValue();
+  }
+
+  private int outstandingMinutesForRoom(ResortData data, String roomNo) {
+    int minutes = 0;
+    ListInterface<HousekeepingTask> tasks = data.getTaskList();
+    for (int i = 1; i <= tasks.getNumberOfEntries(); i++) {
+      HousekeepingTask task = tasks.getEntry(i);
+      if (roomNo.equals(task.getRoomNo()) && task.isOutstandingCleaning()) {
+        minutes += standardMinutes(data, roomNo);
+      }
+    }
+    return minutes;
+  }
+
+  private int outstandingMinutesForType(ResortData data, String typeId) {
+    int minutes = 0;
+    ListInterface<HousekeepingTask> tasks = data.getTaskList();
+    for (int i = 1; i <= tasks.getNumberOfEntries(); i++) {
+      HousekeepingTask task = tasks.getEntry(i);
+      if (!task.isOutstandingCleaning()) {
+        continue;
+      }
+      Room room = data.findRoom(task.getRoomNo());
+      if (room != null && typeId.equals(room.getTypeId())) {
+        minutes += standardMinutes(data, room.getRoomNo());
+      }
+    }
+    return minutes;
+  }
+
+  private String highestOutstandingRoom(ResortData data) {
+    String best = null;
+    int bestMinutes = 0;
+    ListInterface<Room> rooms = data.getRoomList();
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      String roomNo = rooms.getEntry(i).getRoomNo();
+      int minutes = outstandingMinutesForRoom(data, roomNo);
+      if (minutes > bestMinutes) {
+        bestMinutes = minutes;
+        best = roomNo;
+      }
+    }
+    return best;
+  }
+
+  private String highestOutstandingType(ResortData data) {
+    String best = null;
+    int bestMinutes = 0;
+    ListInterface<RoomType> types = data.getRoomTypeList();
+    for (int i = 1; i <= types.getNumberOfEntries(); i++) {
+      String typeId = types.getEntry(i).getTypeId();
+      int minutes = outstandingMinutesForType(data, typeId);
+      if (minutes > bestMinutes) {
+        bestMinutes = minutes;
+        best = typeId;
+      }
+    }
+    return best;
+  }
+
+  private int standardMinutes(ResortData data, String roomNo) {
+    Room room = data.findRoom(roomNo);
+    RoomType type = (room == null) ? null : data.findRoomType(room.getTypeId());
+    return (type == null) ? 30 : type.getStandardCleanMinutes();
+  }
+
+  private int queueCopies(ResortData data, HousekeepingTask task) {
+    int copies = 0;
+    ListInterface<HousekeepingTask> order = data.getCleaningQueue().toServiceOrder();
+    for (int i = 1; i <= order.getNumberOfEntries(); i++) {
+      if (task.equals(order.getEntry(i))) {
+        copies++;
+      }
+    }
+    return copies;
   }
 
   // ==================================================================

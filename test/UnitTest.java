@@ -658,6 +658,12 @@ public class UnitTest {
     runner.check("a blocked room can go back to being cleaned",
         HousekeepingTask.isValidTransition(
             HousekeepingTask.BLOCKED, HousekeepingTask.CLEANING_IN_PROGRESS));
+    runner.check("a blocked room cannot skip to inspected",
+        !HousekeepingTask.isValidTransition(
+            HousekeepingTask.BLOCKED, HousekeepingTask.INSPECTED));
+    runner.check("a blocked room cannot skip to ready",
+        !HousekeepingTask.isValidTransition(
+            HousekeepingTask.BLOCKED, HousekeepingTask.READY_FOR_CHECK_IN));
 
     HousekeepingTask task = new HousekeepingTask("HK0001", "1001",
         HousekeepingTask.TYPE_CHECKOUT_CLEAN, "BK0001", LocalDateTime.now());
@@ -667,6 +673,21 @@ public class UnitTest {
     runner.checkEquals("and in the normal lane", HousekeepingTask.PRIORITY_NORMAL,
         task.getPriority());
     runner.check("a dirty task is waiting to be picked up", task.isPendingCleaning());
+    runner.check("and it is outstanding cleaning", task.isOutstandingCleaning());
+    task.setStatus(HousekeepingTask.CLEANING_IN_PROGRESS);
+    runner.check("work in progress is still outstanding", task.isOutstandingCleaning());
+    runner.check("but it is no longer waiting in the queue", !task.isPendingCleaning());
+    task.setStatus(HousekeepingTask.INSPECTED);
+    runner.check("inspected is not outstanding cleaning", !task.isOutstandingCleaning());
+    task.setStatus(HousekeepingTask.READY_FOR_CHECK_IN);
+    runner.check("a finished clean is not outstanding", !task.isOutstandingCleaning());
+    task.setStatus(HousekeepingTask.DIRTY);
+    task.setTaskType(HousekeepingTask.TYPE_INSPECTION);
+    runner.check("an inspection job is not outstanding cleaning",
+        !task.isOutstandingCleaning());
+    task.setTaskType(HousekeepingTask.TYPE_MAINTENANCE);
+    runner.check("maintenance is not outstanding cleaning", !task.isOutstandingCleaning());
+    task.setTaskType(HousekeepingTask.TYPE_CHECKOUT_CLEAN);
     runner.checkEquals("an unfinished task has no duration", -1L,
         task.getCleaningDurationMinutes());
 
