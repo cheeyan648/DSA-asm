@@ -204,9 +204,48 @@ public class HousekeepingTask implements Serializable {
         || TYPE_DEEP_CLEAN.equals(taskType);
   }
 
+  /** Whether this task is a maintenance job rather than cleaning. */
+  public boolean isMaintenanceType() {
+    return TYPE_MAINTENANCE.equals(taskType);
+  }
+
+  /** Whether this task is a supervisor inspection job. */
+  public boolean isInspectionType() {
+    return TYPE_INSPECTION.equals(taskType);
+  }
+
+  /**
+   * Whether this task was replaced by a later cleaning job.
+   *
+   * Used when maintenance is resolved or an inspection fails: the original
+   * row stays in the list as history, and a new cleaning task is what enters
+   * the queue.
+   */
+  public boolean isSuperseded() {
+    return remark != null && remark.startsWith("Superseded by ");
+  }
+
+  /** Whether this task was raised as the next clean after another job. */
+  public boolean isFollowOnCleaning() {
+    return isCleaningType() && remark != null && remark.startsWith("Follow-on of ");
+  }
+
+  /**
+   * Whether this task is still live work, not finished history.
+   *
+   * Ready jobs are done. A superseded job has already handed off to a new
+   * cleaning task, so it must not occupy the room's open-task slot or the
+   * cleaning queue.
+   */
+  public boolean isActiveWork() {
+    return !READY_FOR_CHECK_IN.equals(status) && !isSuperseded()
+        && completedAt == null;
+  }
+
   /** Whether this task still needs to be picked up by a housekeeper. */
   public boolean isPendingCleaning() {
-    return isCleaningType() && DIRTY.equals(status);
+    return isCleaningType() && DIRTY.equals(status) && completedAt == null
+        && !isSuperseded();
   }
 
   /**
@@ -217,8 +256,9 @@ public class HousekeepingTask implements Serializable {
    * outstanding cleaning.
    */
   public boolean isOutstandingCleaning() {
-    return isCleaningType()
-        && (DIRTY.equals(status) || CLEANING_IN_PROGRESS.equals(status));
+    return isPendingCleaning()
+        || (isCleaningType() && CLEANING_IN_PROGRESS.equals(status)
+            && completedAt == null && !isSuperseded());
   }
 
   /**
@@ -248,7 +288,36 @@ public class HousekeepingTask implements Serializable {
    * @return true if the workflow permits that move
    */
   public static boolean isValidTransition(String from, String to) {
+    return isValidTransition(null, from, to);
+  }
+
+  /**
+   * Whether a status change is allowed for this kind of task.
+   *
+   * Cleaning follows the usual pipeline. Maintenance never starts cleaning:
+   * it can only be blocked or resolved back to DIRTY, after which a separate
+   * cleaning task is raised. Inspection is sign-off work, not queue work.
+   *
+   * @param taskType cleaning, inspection or maintenance, or null for cleaning
+   * @param from the status the task is at now
+   * @param to the status being requested
+   * @return true if that move is allowed
+   */
+  public static boolean isValidTransition(String taskType, String from, String to) {
     if (from == null || to == null || from.equals(to)) {
+      return false;
+    }
+    if (TYPE_MAINTENANCE.equals(taskType)) {
+      if (CLEANING_IN_PROGRESS.equals(to) || INSPECTED.equals(to)
+          || READY_FOR_CHECK_IN.equals(to)) {
+        return false;
+      }
+      if (BLOCKED.equals(to)) {
+        return true;
+      }
+      return BLOCKED.equals(from) && DIRTY.equals(to);
+    }
+    if (TYPE_INSPECTION.equals(taskType) && CLEANING_IN_PROGRESS.equals(to)) {
       return false;
     }
     if (BLOCKED.equals(to)) {
@@ -273,10 +342,34 @@ public class HousekeepingTask implements Serializable {
     }
   }
 
+  /** The statuses the UI may offer from this task's type and current status. */
+  public static String[] allowedNextStatuses(String taskType, String currentStatus) {
+    String[] every = {
+      DIRTY, CLEANING_IN_PROGRESS, INSPECTED, READY_FOR_CHECK_IN, BLOCKED
+    };
+    int count = 0;
+    for (String candidate : every) {
+      if (isValidTransition(taskType, currentStatus, candidate)) {
+        count++;
+      }
+    }
+    String[] allowed = new String[count];
+    int next = 0;
+    for (String candidate : every) {
+      if (isValidTransition(taskType, currentStatus, candidate)) {
+        allowed[next++] = candidate;
+      }
+    }
+    return allowed;
+  }
+
   /** Why a transition was refused, for showing to the user. */
   public static String explainInvalidTransition(String from, String to) {
     if (from != null && from.equals(to)) {
       return "The room is already at " + to + ".";
+    }
+    if (DIRTY.equals(from) && CLEANING_IN_PROGRESS.equals(to)) {
+      return "MAINTENANCE is not a cleaning task.";
     }
     if (DIRTY.equals(from) && INSPECTED.equals(to)) {
       return "Cannot inspect a room that has not been cleaned.";

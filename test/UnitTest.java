@@ -687,6 +687,41 @@ public class UnitTest {
         !task.isOutstandingCleaning());
     task.setTaskType(HousekeepingTask.TYPE_MAINTENANCE);
     runner.check("maintenance is not outstanding cleaning", !task.isOutstandingCleaning());
+    runner.check("and a maintenance job is never waiting in the cleaning queue",
+        !task.isPendingCleaning());
+    runner.check("maintenance cannot start cleaning from DIRTY",
+        !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_MAINTENANCE,
+            HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS));
+    runner.check("maintenance can be marked BLOCKED",
+        HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_MAINTENANCE,
+            HousekeepingTask.DIRTY, HousekeepingTask.BLOCKED));
+    runner.check("resolved maintenance returns the room to DIRTY",
+        HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_MAINTENANCE,
+            HousekeepingTask.BLOCKED, HousekeepingTask.DIRTY));
+    runner.check("maintenance cannot resume as CLEANING_IN_PROGRESS",
+        !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_MAINTENANCE,
+            HousekeepingTask.BLOCKED, HousekeepingTask.CLEANING_IN_PROGRESS));
+
+    String[] maintenanceChoices = HousekeepingTask.allowedNextStatuses(
+        HousekeepingTask.TYPE_MAINTENANCE, HousekeepingTask.DIRTY);
+    boolean offeredCleaning = false;
+    boolean offeredBlocked = false;
+    for (int i = 0; i < maintenanceChoices.length; i++) {
+      if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(maintenanceChoices[i])) {
+        offeredCleaning = true;
+      }
+      if (HousekeepingTask.BLOCKED.equals(maintenanceChoices[i])) {
+        offeredBlocked = true;
+      }
+    }
+    runner.check("the UI does not offer CLEANING_IN_PROGRESS for MAINTENANCE",
+        !offeredCleaning);
+    runner.check("the UI does offer BLOCKED for MAINTENANCE", offeredBlocked);
+
+    runner.check("an inspection job is not started from the cleaning queue",
+        !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_INSPECTION,
+            HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS));
+
     task.setTaskType(HousekeepingTask.TYPE_CHECKOUT_CLEAN);
     runner.checkEquals("an unfinished task has no duration", -1L,
         task.getCleaningDurationMinutes());

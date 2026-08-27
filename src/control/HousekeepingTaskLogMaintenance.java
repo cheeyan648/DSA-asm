@@ -333,7 +333,7 @@ public class HousekeepingTaskLogMaintenance {
     ui.startAction("UPDATE A TASK'S STATUS");
 
     ListInterface<HousekeepingTask> open = data.getTaskList().filter(
-        task -> !HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus()));
+        HousekeepingTask::isActiveWork);
 
     if (!ui.displayTaskList(open, "There is no open task to update.")) {
       ui.pause();
@@ -359,7 +359,7 @@ public class HousekeepingTaskLogMaintenance {
 
     ui.displayTask(task, data);
 
-    String nextStatus = ui.inputNextStatus(task.getStatus());
+    String nextStatus = ui.inputNextStatus(task);
     if (nextStatus == null) {
       ui.displayMessage("  Update cancelled.");
       ui.pause();
@@ -396,10 +396,13 @@ public class HousekeepingTaskLogMaintenance {
 
     ui.displaySuccess(result.getMessage());
 
-    if (HousekeepingTask.DIRTY.equals(nextStatus) && task.getInspectionFailCount() > 0) {
-      ui.displayMessage("  The room goes back into the cleaning queue.");
-      ui.displayMessage("  Failed inspections for this task: "
-          + task.getInspectionFailCount());
+    if (HousekeepingTask.DIRTY.equals(nextStatus)
+        && HousekeepingTask.INSPECTED.equals(task.getStatus())) {
+      ui.displayMessage("  The room stays DIRTY. A new cleaning task is queued.");
+      if (task.getInspectionFailCount() > 0) {
+        ui.displayMessage("  Failed inspections for this task: "
+            + task.getInspectionFailCount());
+      }
     }
     ui.pause();
   }
@@ -764,6 +767,7 @@ public class HousekeepingTaskLogMaintenance {
     displayOutstandingWorkload();
     displayTasksPerRoom(tasks);
     displayInspectionQuality(tasks);
+    displayMaintenanceAndReclean(tasks);
     displayWorkloadConclusions(tasks);
 
     ui.displayReportFooter();
@@ -865,6 +869,26 @@ public class HousekeepingTaskLogMaintenance {
           new String[] { "PASS", "FAIL" },
           new double[] { passes, failures });
     }
+  }
+
+  /**
+   * Maintenance jobs and re-cleans raised after a failed inspection.
+   *
+   * Both counts come from the List ADT so the extra work is visible in the
+   * same report as the rest of the room workload.
+   */
+  private void displayMaintenanceAndReclean(ListInterface<HousekeepingTask> tasks) {
+    int maintenance = tasks.countIf(HousekeepingTask::isMaintenanceType);
+    int recleans = tasks.countIf(HousekeepingTask::isFollowOnCleaning);
+    int roomsNeedingReclean = data.getRoomList().countIf(room ->
+        tasks.countIf(task -> room.getRoomNo().equals(task.getRoomNo())
+            && task.isFollowOnCleaning()) > 0);
+
+    ui.displaySectionHeading("Maintenance and re-cleaning");
+    ui.displayReportLine("Maintenance tasks", maintenance + " tasks");
+    ui.displayReportLine("Re-clean tasks", recleans + " tasks");
+    ui.displayReportLine("Rooms requiring re-cleaning",
+        roomsNeedingReclean + (roomsNeedingReclean == 1 ? " room" : " rooms"));
   }
 
   /**

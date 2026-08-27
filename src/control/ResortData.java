@@ -631,7 +631,7 @@ public class ResortData {
       return null;
     }
     return taskList.search(task -> roomNo.equals(task.getRoomNo())
-        && !HousekeepingTask.READY_FOR_CHECK_IN.equals(task.getStatus()));
+        && task.isActiveWork());
   }
 
   // ==================================================================

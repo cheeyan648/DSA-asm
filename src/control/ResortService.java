@@ -661,26 +661,26 @@ public class ResortService {
 
     HousekeepingTask prepared;
     HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
-    if (open != null) {
+    if (open != null && open.isCleaningType()) {
       String fromStatus = open.getStatus();
       open.setStatus(HousekeepingTask.DIRTY);
-      if (!open.isCleaningType()) {
-        open.setTaskType(HousekeepingTask.TYPE_DEEP_CLEAN);
-      }
       open.setRemark("Returned to service - prepare before sale");
       enqueueIfNeedsCleaning(open);
       logStatusChange(open, fromStatus, HousekeepingTask.DIRTY, staffId, false,
           "Returned to service");
       prepared = open;
     } else {
-      HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
-          HousekeepingTask.TYPE_DEEP_CLEAN, null, LocalDateTime.now());
-      task.setRemark("Returned to service - prepare before sale");
-      data.getTaskList().add(task);
-      enqueueIfNeedsCleaning(task);
-      logStatusChange(task, Room.BLOCKED, HousekeepingTask.DIRTY, staffId, false,
-          "Returned to service");
-      prepared = task;
+      HousekeepingTask predecessor =
+          (open != null && open.isMaintenanceType()) ? open : null;
+      if (predecessor != null) {
+        String fromStatus = predecessor.getStatus();
+        predecessor.setStatus(HousekeepingTask.DIRTY);
+        logStatusChange(predecessor, fromStatus, HousekeepingTask.DIRTY, staffId, false,
+            "Returned to service");
+      }
+      prepared = createFollowOnCleaningTask(predecessor, roomNo,
+          HousekeepingTask.TYPE_DEEP_CLEAN, staffId,
+          "Returned to service - prepare before sale");
     }
 
     data.saveMasters();
@@ -946,17 +946,17 @@ public class ResortService {
     }
 
     String fromStatus = task.getStatus();
-    if (HousekeepingTask.TYPE_MAINTENANCE.equals(task.getTaskType())
-        && (HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)
-            || HousekeepingTask.INSPECTED.equals(toStatus)
-            || HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus))) {
-      return ServiceResult.fail("MAINTENANCE is not a cleaning task.");
-    }
-    if (HousekeepingTask.TYPE_INSPECTION.equals(task.getTaskType())
-        && HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)) {
-      return ServiceResult.fail("Inspection is not started from the cleaning queue.");
-    }
-    if (!HousekeepingTask.isValidTransition(fromStatus, toStatus)) {
+    if (!HousekeepingTask.isValidTransition(task.getTaskType(), fromStatus, toStatus)) {
+      if (task.isMaintenanceType()
+          && (HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)
+              || HousekeepingTask.INSPECTED.equals(toStatus)
+              || HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus))) {
+        return ServiceResult.fail("MAINTENANCE is not a cleaning task.");
+      }
+      if (task.isInspectionType()
+          && HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)) {
+        return ServiceResult.fail("Inspection is not started from the cleaning queue.");
+      }
       return ServiceResult.fail(
           HousekeepingTask.explainInvalidTransition(fromStatus, toStatus));
     }
@@ -977,6 +977,7 @@ public class ResortService {
       task.setRemark(remark);
     }
 
+    HousekeepingTask followOn = null;
     switch (toStatus) {
       case HousekeepingTask.CLEANING_IN_PROGRESS:
         task.setStartedAt(LocalDateTime.now());
@@ -986,15 +987,24 @@ public class ResortService {
         break;
 
       case HousekeepingTask.DIRTY:
-        // Coming back from a failed inspection - it must be cleaned again.
-        if (HousekeepingTask.INSPECTED.equals(fromStatus)) {
+        if (task.isMaintenanceType()
+            && HousekeepingTask.BLOCKED.equals(fromStatus)) {
+          // Maintenance is finished. The room stays dirty and a separate
+          // cleaning job is raised - the maintenance row is not converted.
+          room.setOutOfService(false);
+          followOn = createFollowOnCleaningTask(task, task.getRoomNo(),
+              HousekeepingTask.TYPE_DEEP_CLEAN, staffId,
+              "Maintenance completed. Room remains DIRTY and requires cleaning.");
+        } else if (HousekeepingTask.INSPECTED.equals(fromStatus)) {
           task.incrementInspectionFailCount();
           task.setStartedAt(null);
-          if (!task.isCleaningType()) {
-            task.setTaskType(HousekeepingTask.TYPE_CHECKOUT_CLEAN);
-          }
+          followOn = createFollowOnCleaningTask(task, task.getRoomNo(),
+              task.isCleaningType() ? task.getTaskType()
+                  : HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+              staffId, "Inspection failed - clean it again");
+        } else {
+          enqueueIfNeedsCleaning(task);
         }
-        enqueueIfNeedsCleaning(task);
         break;
 
       case HousekeepingTask.READY_FOR_CHECK_IN:
@@ -1021,7 +1031,15 @@ public class ResortService {
     data.saveMasters();
 
     String message = "Room " + task.getRoomNo() + ": " + fromStatus + " -> " + toStatus + ".";
-    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus)) {
+    if (task.isMaintenanceType() && HousekeepingTask.DIRTY.equals(toStatus)
+        && followOn != null) {
+      message = "Maintenance completed. Room remains DIRTY and requires cleaning."
+          + " Cleaning task " + followOn.getTaskId() + " queued.";
+    } else if (HousekeepingTask.INSPECTED.equals(fromStatus)
+        && HousekeepingTask.DIRTY.equals(toStatus) && followOn != null) {
+      message += " Inspection failed. Re-clean task " + followOn.getTaskId()
+          + " queued.";
+    } else if (HousekeepingTask.READY_FOR_CHECK_IN.equals(toStatus)) {
       if (otherOpenWork) {
         message += " The task is finished, but the room is not ready while another"
             + " housekeeping job on this room is still open.";
@@ -1039,7 +1057,66 @@ public class ResortService {
   private boolean roomHasOtherOpenTask(String roomNo, String exceptTaskId) {
     return data.getTaskList().search(other -> roomNo.equals(other.getRoomNo())
         && !exceptTaskId.equals(other.getTaskId())
-        && !HousekeepingTask.READY_FOR_CHECK_IN.equals(other.getStatus())) != null;
+        && other.isActiveWork()) != null;
+  }
+
+  /**
+   * Raises a new DIRTY cleaning task for a room and puts it on the queue.
+   *
+   * The predecessor is kept in the list as history and marked superseded so
+   * it cannot occupy the queue. Booking urgency, if any, is copied across so
+   * a waiting guest is not dropped to the normal lane.
+   */
+  private HousekeepingTask createFollowOnCleaningTask(HousekeepingTask predecessor,
+      String roomNo, String cleaningType, String staffId, String reason) {
+    String type = cleaningType;
+    if (type == null || !isCleaningTaskType(type)) {
+      type = predecessor != null && predecessor.isCleaningType()
+          ? predecessor.getTaskType()
+          : HousekeepingTask.TYPE_CHECKOUT_CLEAN;
+    }
+
+    HousekeepingTask followOn = new HousekeepingTask(data.nextTaskId(), roomNo, type,
+        predecessor == null ? null : predecessor.getBookingId(), LocalDateTime.now());
+    if (predecessor != null) {
+      followOn.setReservedForBookingId(predecessor.getReservedForBookingId());
+      followOn.setRemark("Follow-on of " + predecessor.getTaskId() + ": " + reason);
+      predecessor.setRemark("Superseded by " + followOn.getTaskId() + ": " + reason);
+    } else {
+      followOn.setRemark(reason);
+    }
+
+    data.getTaskList().add(followOn);
+    refreshTaskPriority(followOn);
+    enqueueIfNeedsCleaning(followOn);
+    logStatusChange(followOn, null, HousekeepingTask.DIRTY, staffId, false, reason);
+    return followOn;
+  }
+
+  private boolean isCleaningTaskType(String taskType) {
+    return HousekeepingTask.TYPE_CHECKOUT_CLEAN.equals(taskType)
+        || HousekeepingTask.TYPE_STAYOVER_CLEAN.equals(taskType)
+        || HousekeepingTask.TYPE_DEEP_CLEAN.equals(taskType);
+  }
+
+  /**
+   * Drops a follow-on cleaning job raised for a predecessor that is being
+   * rolled back, without deleting the history row.
+   */
+  private void cancelFollowOnCleaningTasks(String predecessorId) {
+    if (predecessorId == null) {
+      return;
+    }
+    String prefix = "Follow-on of " + predecessorId + ":";
+    ListInterface<HousekeepingTask> followOns = data.getTaskList().filter(
+        task -> task.getRemark() != null && task.getRemark().startsWith(prefix)
+            && task.isPendingCleaning());
+    for (int i = 1; i <= followOns.getNumberOfEntries(); i++) {
+      HousekeepingTask followOn = followOns.getEntry(i);
+      data.getCleaningQueue().removeEntry(followOn);
+      followOn.setCompletedAt(LocalDateTime.now());
+      followOn.setRemark(followOn.getRemark() + " (cancelled by rollback)");
+    }
   }
 
   /**
@@ -1110,6 +1187,14 @@ public class ResortService {
     if (HousekeepingTask.DIRTY.equals(undoing)
         && HousekeepingTask.INSPECTED.equals(restoreTo)) {
       task.decrementInspectionFailCount();
+      cancelFollowOnCleaningTasks(task.getTaskId());
+      task.setRemark(null);
+    }
+    if (task.isMaintenanceType() && HousekeepingTask.DIRTY.equals(undoing)
+        && HousekeepingTask.BLOCKED.equals(restoreTo)) {
+      cancelFollowOnCleaningTasks(task.getTaskId());
+      task.setRemark(null);
+      room.setOutOfService(true);
     }
 
     task.setStatus(restoreTo);

@@ -83,6 +83,12 @@ public class MasterDataInitializer {
         false, now.withHour(8).withMinute(30), "Held for walk-in booking"));
     rooms.add(new Room("1005", "RT03", 10, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(9).withMinute(50), ""));
+    rooms.add(new Room("1006", "RT01", 10, Room.VACANT, Room.DIRTY,
+        false, now.minusDays(1).withHour(8).withMinute(40), "Waiting for checkout clean"));
+    rooms.add(new Room("1007", "RT01", 10, Room.VACANT, Room.DIRTY,
+        false, now.minusDays(1).withHour(9).withMinute(10), "Urgent booking waiting"));
+    rooms.add(new Room("1008", "RT01", 10, Room.VACANT, Room.DIRTY,
+        false, now.minusDays(1).withHour(9).withMinute(50), "Urgent booking waiting"));
     // A room with a guest in it was cleaned before they arrived, so it is
     // occupied AND ready - the two statuses describe different things.
     rooms.add(new Room("2001", "RT03", 20, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
@@ -93,6 +99,10 @@ public class MasterDataInitializer {
         false, now.withHour(10).withMinute(10), ""));
     rooms.add(new Room("2004", "RT04", 20, Room.VACANT, Room.INSPECTED,
         false, now.withHour(10).withMinute(45), "Awaiting supervisor sign-off"));
+    rooms.add(new Room("2005", "RT04", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+        false, now.withHour(11).withMinute(20), ""));
+    rooms.add(new Room("2006", "RT03", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+        false, now.withHour(12).withMinute(5), ""));
     rooms.add(new Room("3001", "RT05", 30, Room.VACANT, Room.BLOCKED,
         true, now.minusDays(6).withHour(16).withMinute(0), "Aircon compressor replacement"));
 

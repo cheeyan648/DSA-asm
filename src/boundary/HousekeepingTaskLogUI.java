@@ -158,59 +158,54 @@ public class HousekeepingTaskLogUI {
   /**
    * Asks which status a task should move to.
    *
-   * Only the steps the workflow actually permits from where the task is now
-   * are offered, so an impossible move cannot be chosen in the first place.
+   * Only the steps this task type may take from where it is now are offered,
+   * so an impossible move cannot be chosen in the first place.
    *
-   * @param currentStatus where the task is now
+   * @param task the task being updated
    * @return the chosen status, or null if cancelled or nothing is possible
    */
-  public String inputNextStatus(String currentStatus) {
-    ListInterface<String> allowed = new adt.ArrayList<>();
+  public String inputNextStatus(HousekeepingTask task) {
+    String currentStatus = task.getStatus();
+    String[] allowed = HousekeepingTask.allowedNextStatuses(
+        task.getTaskType(), currentStatus);
 
-    String[] every = {
-      HousekeepingTask.DIRTY,
-      HousekeepingTask.CLEANING_IN_PROGRESS,
-      HousekeepingTask.INSPECTED,
-      HousekeepingTask.READY_FOR_CHECK_IN,
-      HousekeepingTask.BLOCKED
-    };
-
-    for (String candidate : every) {
-      if (HousekeepingTask.isValidTransition(currentStatus, candidate)) {
-        allowed.add(candidate);
-      }
-    }
-
-    if (allowed.isEmpty()) {
+    if (allowed.length == 0) {
       MessageUI.displayError("There is no valid next step from " + currentStatus + ".");
       return null;
     }
 
-    String[] choices = new String[allowed.getNumberOfEntries()];
-    for (int i = 1; i <= allowed.getNumberOfEntries(); i++) {
-      choices[i - 1] = describeStatus(allowed.getEntry(i), currentStatus);
+    String[] choices = new String[allowed.length];
+    for (int i = 0; i < allowed.length; i++) {
+      choices[i] = describeStatus(allowed[i], currentStatus, task.getTaskType());
     }
 
     MessageUI.displayMessage("");
-    MessageUI.displayMessage("  The room is currently " + currentStatus + ".");
+    MessageUI.displayField("Current task type", task.getTaskType());
+    MessageUI.displayField("Current status", currentStatus);
 
     String picked = MessageUI.readChoice(scanner, "Next status", choices);
     if (MessageUI.isCancelled(picked)) {
       return null;
     }
 
-    // The label carries an explanation, so the status is taken from the
-    // matching entry rather than parsed back out of the text.
-    for (int i = 1; i <= allowed.getNumberOfEntries(); i++) {
-      if (choices[i - 1].equals(picked)) {
-        return allowed.getEntry(i);
+    for (int i = 0; i < allowed.length; i++) {
+      if (choices[i].equals(picked)) {
+        return allowed[i];
       }
     }
     return null;
   }
 
   /** Explains what a status change means, so the choice is not just a name. */
-  private String describeStatus(String status, String from) {
+  private String describeStatus(String status, String from, String taskType) {
+    if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
+      if (HousekeepingTask.BLOCKED.equals(status)) {
+        return status + "  (BLOCKED / Maintenance in Progress)";
+      }
+      if (HousekeepingTask.DIRTY.equals(status)) {
+        return status + "  (maintenance completed - room remains DIRTY)";
+      }
+    }
     switch (status) {
       case HousekeepingTask.CLEANING_IN_PROGRESS:
         return status + "  (start cleaning)";
@@ -220,7 +215,7 @@ public class HousekeepingTaskLogUI {
         return status + "  (inspection PASSED - room becomes sellable)";
       case HousekeepingTask.DIRTY:
         return HousekeepingTask.INSPECTED.equals(from)
-            ? status + "  (inspection FAILED - clean it again)"
+            ? status + "  (inspection FAILED - raise a re-clean through the queue)"
             : status + "  (needs cleaning)";
       case HousekeepingTask.BLOCKED:
         return status + "  (cannot proceed - a reason is required)";
