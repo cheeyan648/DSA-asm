@@ -687,14 +687,18 @@ public class WalkInRegistrationMaintenance {
   /**
    * Lists the registrations in a chosen order, and keeps offering the choice.
    *
-   * The order is picked from a menu that stays on screen underneath the
-   * listing, so trying arrival order and then waiting time is two keystrokes
-   * rather than two trips out to the menu and back.
+   * Asks for the order first, shows that one listing as its own report, then
+   * returns to the same choice once the guest has pressed ENTER - so picking
+   * a different order is a trip back through the menu rather than a chooser
+   * living underneath the listing.
    */
   private void runSortMenu() {
-    int choice = 1;
-
     while (true) {
+      int choice = ui.getSortChoice();
+      if (choice == 0) {
+        return;
+      }
+
       ListInterface<WalkInRegistration> sorted = copyOf(data.getRegistrationList());
       String title;
 
@@ -733,16 +737,9 @@ public class WalkInRegistrationMaintenance {
           break;
       }
 
-      ui.startAction(title);
+      ui.displayReportHeader(title);
       ui.displayRegistrationList(sorted, data, "There are no registrations.");
-
-      // The chooser sits under the listing that is already on screen, so the
-      // next order replaces this one rather than following it.
-      int next = ui.getSortChoiceInline();
-      if (next == 0) {
-        return;
-      }
-      choice = next;
+      ui.displayReportFooter();
     }
   }
 
@@ -764,13 +761,13 @@ public class WalkInRegistrationMaintenance {
    * and when the busy hours were.
    */
   private void queuePerformanceReport() {
-    ui.displayReportHeader("QUEUE PERFORMANCE ANALYSIS REPORT");
+    ui.displayPrintedReportHeader("QUEUE PERFORMANCE ANALYSIS REPORT");
 
     ListInterface<WalkInRegistration> all = data.getRegistrationList();
     if (all.isEmpty()) {
       ui.displayMessage("");
       ui.displayMessage("  There are no registrations to analyse.");
-      ui.pause();
+      ui.displayPrintedReportFooter();
       return;
     }
 
@@ -784,73 +781,62 @@ public class WalkInRegistrationMaintenance {
     int noShow = all.countIf(
         reg -> WalkInRegistration.STATUS_NO_SHOW.equals(reg.getStatus()));
 
-    ui.displaySectionHeading("Registrations");
-    ui.displayReportLine("Total registrations", String.valueOf(total));
-    ui.displayReportLine("  Urgent", urgent + percentOf(urgent, total));
-    ui.displayReportLine("  Normal", (total - urgent) + percentOf(total - urgent, total));
-    ui.displayReportLine("Still waiting", String.valueOf(waiting));
-    ui.displayReportLine("Became a booking", String.valueOf(booked));
-    ui.displayReportLine("Cancelled", String.valueOf(cancelled));
-    ui.displayReportLine("No-show", String.valueOf(noShow));
+    ui.displaySectionHeading("1. ARRIVAL AND SERVICE SUMMARY");
+    ui.displayReportLine("Total walk-in guests today", String.valueOf(total));
+    ui.displayReportLine("Served", booked + percentOf(booked, total));
+    ui.displayReportLine("Still waiting", waiting + percentOf(waiting, total));
+    ui.displayReportLine("Cancelled / left", (cancelled + noShow)
+        + percentOf(cancelled + noShow, total));
+
+    ui.displaySectionHeading("2. GUEST TYPE BREAKDOWN");
+    ui.displayReportLine("Normal walk-ins", (total - urgent) + percentOf(total - urgent, total));
+    ui.displayReportLine("Urgent exception cases", urgent + percentOf(urgent, total));
 
     // Only guests who have been called have a finished wait to measure.
     ListInterface<WalkInRegistration> called =
         all.filter(reg -> reg.getCalledAt() != null);
 
-    ui.displaySectionHeading("Waiting times");
+    ui.displaySectionHeading("3. WAITING TIME ANALYSIS (SERVED GUESTS)");
     if (called.isEmpty()) {
       ui.displayMessage("  No guest has been called yet.");
     } else {
       long totalWait = 0;
-      long longest = 0;
       long shortest = Long.MAX_VALUE;
-      WalkInRegistration longestWaiter = null;
-
-      long urgentWait = 0;
-      int urgentCalled = 0;
-      long normalWait = 0;
-      int normalCalled = 0;
 
       for (int i = 1; i <= called.getNumberOfEntries(); i++) {
-        WalkInRegistration reg = called.getEntry(i);
-        long wait = reg.getWaitingMinutes();
+        long wait = called.getEntry(i).getWaitingMinutes();
         totalWait += wait;
-
-        if (wait > longest) {
-          longest = wait;
-          longestWaiter = reg;
-        }
         if (wait < shortest) {
           shortest = wait;
         }
-        if (reg.isUrgent()) {
-          urgentWait += wait;
-          urgentCalled++;
-        } else {
-          normalWait += wait;
-          normalCalled++;
-        }
       }
 
-      int count = called.getNumberOfEntries();
-      ui.displayReportLine("Guests called", String.valueOf(count));
-      ui.displayReportLine("Average wait", (totalWait / count) + " min");
-      ui.displayReportLine("  Urgent lane average",
-          urgentCalled == 0 ? "-" : (urgentWait / urgentCalled) + " min");
-      ui.displayReportLine("  Normal lane average",
-          normalCalled == 0 ? "-" : (normalWait / normalCalled) + " min");
-      ui.displayReportLine("Longest wait", longest + " min"
-          + (longestWaiter == null ? "" : "  (" + longestWaiter.getRegId() + ")"));
-      ui.displayReportLine("Shortest wait", shortest + " min");
-    }
+      ListInterface<WalkInRegistration> byWaitDesc = copyOf(called);
+      byWaitDesc.sort(Comparator
+          .comparingLong(WalkInRegistration::getWaitingMinutes).reversed());
+      long longest = byWaitDesc.getEntry(1).getWaitingMinutes();
 
-    ui.displaySectionHeading("Outcome");
-    ui.displayReportLine("Conversion rate (registration to booking)",
-        percentValue(booked, total));
+      int count = called.getNumberOfEntries();
+      ui.displayReportLine("Guests served", String.valueOf(count));
+      ui.displayReportLine("Average waiting time", (totalWait / count) + " minutes");
+      ui.displayReportLine("Longest waiting time", longest + " minutes");
+      ui.displayReportLine("Shortest waiting time", shortest + " minutes");
+
+      ui.displaySectionHeading("4. LONGEST WAITS (TOP 3)");
+      int topCount = Math.min(3, byWaitDesc.getNumberOfEntries());
+      for (int i = 1; i <= topCount; i++) {
+        WalkInRegistration reg = byWaitDesc.getEntry(i);
+        Guest guest = data.findGuest(reg.getGuestId());
+        String name = (guest == null) ? "-" : guest.getFullName();
+        ui.displayReportLine(i + ". " + reg.getRegId() + " - " + name,
+            reg.getWaitingMinutes() + " minutes ("
+                + (reg.isUrgent() ? "URGENT" : "NORMAL") + ")");
+      }
+    }
 
     displayArrivalsByHour(all);
 
-    ui.displayReportFooter();
+    ui.displayPrintedReportFooter();
   }
 
   /**
@@ -883,23 +869,27 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
-    int span = last - first + 1;
-    String[] labels = new String[span];
-    double[] values = new double[span];
     int busiest = first;
-
-    for (int i = 0; i < span; i++) {
-      int hour = first + i;
-      labels[i] = String.format("%02d", hour);
-      values[i] = byHour[hour];
-      if (byHour[hour] > byHour[busiest]) {
+    int highest = byHour[first];
+    for (int hour = first; hour <= last; hour++) {
+      if (byHour[hour] > highest) {
+        highest = byHour[hour];
         busiest = hour;
       }
     }
 
-    ui.displayBarChart("Arrivals by hour", "Guests", labels, values);
+    ui.displaySectionHeading("5. ARRIVALS BY HOUR (PEAK PERIOD)");
+    int barWidth = 60;
+    for (int hour = first; hour <= last; hour++) {
+      int count = byHour[hour];
+      int stars = (highest == 0) ? 0 : (int) Math.round((count * (double) barWidth) / highest);
+      System.out.printf("  %02d:00 | %-" + barWidth + "s %d%n",
+          hour, "*".repeat(stars), count);
+    }
+    ui.displayMessage("");
     ui.displayReportLine("Peak arrival hour",
-        String.format("%02d:00  (%d guests)", busiest, byHour[busiest]));
+        String.format("%02d:00 - %02d:59 (%d guests)",
+            busiest, busiest, byHour[busiest]));
   }
 
   /**
@@ -909,95 +899,99 @@ public class WalkInRegistrationMaintenance {
    * report exists to make that power reviewable rather than invisible.
    */
   private void urgencyAuditReport() {
-    ui.displayReportHeader("URGENCY EXCEPTION AUDIT REPORT");
+    ui.displayPrintedReportHeader("URGENCY EXCEPTION AUDIT REPORT");
 
     ListInterface<WalkInRegistration> all = data.getRegistrationList();
     ListInterface<WalkInRegistration> urgent = all.filter(WalkInRegistration::isUrgent);
+    int total = all.getNumberOfEntries();
+    int urgentCount = urgent.getNumberOfEntries();
 
-    ui.displaySectionHeading("Summary");
-    ui.displayReportLine("Total registrations", String.valueOf(all.getNumberOfEntries()));
-    ui.displayReportLine("Urgent exceptions", String.valueOf(urgent.getNumberOfEntries()));
-    ui.displayReportLine("Urgent share",
-        percentValue(urgent.getNumberOfEntries(), all.getNumberOfEntries()));
+    ui.displaySectionHeading("1. OVERRIDE USAGE");
+    ui.displayReportLine("Total guests on record", String.valueOf(total));
+    ui.displayReportLine("Urgent exceptions granted", urgentCount + percentOf(urgentCount, total));
+    ui.displayReportLine("Normal registrations",
+        (total - urgentCount) + percentOf(total - urgentCount, total));
 
     if (urgent.isEmpty()) {
       ui.displayMessage("");
       ui.displayMessage("  No urgency override has been used.");
-      ui.displayReportFooter();
+      ui.displayPrintedReportFooter();
       return;
     }
 
-    ui.displaySectionHeading("Every urgent registration");
-    utility.MessageUI.displayTableHeading(String.format("  %-7s %-22s %-8s %-9s %s",
-        "REG ID", "GUEST", "BY", "WAITED", "REASON"));
-
-    int incomplete = 0;
-    for (int i = 1; i <= urgent.getNumberOfEntries(); i++) {
-      WalkInRegistration reg = urgent.getEntry(i);
-      Guest guest = data.findGuest(reg.getGuestId());
-      String reason = reg.getUrgencyReason();
-
-      // A blank or one-word reason cannot be reviewed, so it is flagged.
-      if (reason == null || reason.isBlank() || !reason.trim().contains(" ")) {
-        incomplete++;
-        reason = (reason == null || reason.isBlank()) ? "(none given)" : reason + "  <-- vague";
-      }
-
-      System.out.printf("  %-7s %-22s %-8s %-9s %s%n",
-          reg.getRegId(),
-          guest == null ? "-" : truncate(guest.getFullName(), 22),
-          reg.getServedBy() == null ? "-" : reg.getServedBy(),
-          reg.getFormattedWaitingTime(), reason);
-    }
-    utility.MessageUI.displayThinRule();
-
-    displayUrgencyByOfficer(urgent);
-
-    ui.displaySectionHeading("Data quality");
-    ui.displayReportLine("Incomplete or vague reasons", String.valueOf(incomplete));
+    displayReasonsGiven(urgent);
 
     displayWaitSaved(all);
 
-    ui.displayReportFooter();
+    ui.displaySectionHeading("4. ALL EXCEPTION CASES (BY GUEST NAME)");
+    ListInterface<WalkInRegistration> byName = copyOf(urgent);
+    byName.sort((a, b) -> {
+      Guest first = data.findGuest(a.getGuestId());
+      Guest second = data.findGuest(b.getGuestId());
+      String nameA = (first == null) ? "" : first.getFullName();
+      String nameB = (second == null) ? "" : second.getFullName();
+      return nameA.compareToIgnoreCase(nameB);
+    });
+
+    for (int i = 1; i <= byName.getNumberOfEntries(); i++) {
+      WalkInRegistration reg = byName.getEntry(i);
+      Guest guest = data.findGuest(reg.getGuestId());
+      String name = (guest == null) ? "-" : guest.getFullName();
+      String reason = reg.getUrgencyReason();
+      if (reason == null || reason.isBlank()) {
+        reason = "(none given)";
+      }
+
+      System.out.printf("  %-7s %-24s %-19s %-10s %s%n",
+          reg.getGuestId(), truncate(name, 24), reg.getFormattedArrivalTime(),
+          reg.getStatus(), reason);
+    }
+
+    ui.displayPrintedReportFooter();
   }
 
   /**
-   * How many overrides each officer has granted.
-   *
-   * A single officer well above the others is worth a supervisor's attention,
-   * which is the whole point of counting them.
+   * Groups the reasons urgency was granted for, so a reviewer sees which
+   * reason is invoked most often rather than reading every case in isolation.
    */
-  private void displayUrgencyByOfficer(ListInterface<WalkInRegistration> urgent) {
-    ListInterface<String> officers = new ArrayList<>();
+  private void displayReasonsGiven(ListInterface<WalkInRegistration> urgent) {
+    ListInterface<String> reasons = new ArrayList<>();
     ListInterface<Integer> counts = new ArrayList<>();
 
     for (int i = 1; i <= urgent.getNumberOfEntries(); i++) {
-      String officer = urgent.getEntry(i).getServedBy();
-      if (officer == null) {
-        officer = "(not recorded)";
+      String reason = urgent.getEntry(i).getUrgencyReason();
+      if (reason == null || reason.isBlank()) {
+        reason = "(none given)";
       }
 
-      int position = officers.getPosition(officer);
+      int position = reasons.getPosition(reason);
       if (position < 0) {
-        officers.add(officer);
+        reasons.add(reason);
         counts.add(1);
       } else {
         counts.replace(position, counts.getEntry(position) + 1);
       }
     }
 
-    if (officers.isEmpty()) {
-      return;
+    int highest = 0;
+    for (int i = 1; i <= counts.getNumberOfEntries(); i++) {
+      highest = Math.max(highest, counts.getEntry(i));
     }
 
-    String[] labels = new String[officers.getNumberOfEntries()];
-    double[] values = new double[officers.getNumberOfEntries()];
-    for (int i = 1; i <= officers.getNumberOfEntries(); i++) {
-      labels[i - 1] = officers.getEntry(i);
-      values[i - 1] = counts.getEntry(i);
+    ui.displaySectionHeading("2. REASONS GIVEN");
+    int barWidth = 30;
+    for (int i = 1; i <= reasons.getNumberOfEntries(); i++) {
+      String reason = reasons.getEntry(i);
+      int count = counts.getEntry(i);
+      int stars = (highest == 0) ? 0 : (int) Math.round((count * (double) barWidth) / highest);
+      System.out.printf("  %-29s | %-" + barWidth + "s %d%n",
+          truncateTilde(reason, 29), "*".repeat(stars), count);
     }
 
-    ui.displayBarChart("Urgent registrations by officer", "Count", labels, values);
+    ui.displayMessage("");
+    for (int i = 1; i <= reasons.getNumberOfEntries(); i++) {
+      ui.displayReportLine("  " + reasons.getEntry(i), counts.getEntry(i) + " case(s)");
+    }
   }
 
   /**
@@ -1008,9 +1002,6 @@ public class WalkInRegistrationMaintenance {
    */
   private void displayWaitSaved(ListInterface<WalkInRegistration> all) {
     ListInterface<WalkInRegistration> called = all.filter(reg -> reg.getCalledAt() != null);
-    if (called.isEmpty()) {
-      return;
-    }
 
     long urgentTotal = 0;
     int urgentCount = 0;
@@ -1028,18 +1019,19 @@ public class WalkInRegistrationMaintenance {
       }
     }
 
+    ui.displaySectionHeading("3. IMPACT ON WAITING TIMES");
     if (urgentCount == 0 || normalCount == 0) {
+      ui.displayMessage("  Not enough served guests in both lanes to compare yet.");
       return;
     }
 
     long urgentAverage = urgentTotal / urgentCount;
     long normalAverage = normalTotal / normalCount;
 
-    ui.displaySectionHeading("Effect of the override");
-    ui.displayReportLine("Average wait, urgent lane", urgentAverage + " min");
-    ui.displayReportLine("Average wait, normal lane", normalAverage + " min");
+    ui.displayReportLine("Average wait - urgent guests (served)", urgentAverage + " minutes");
+    ui.displayReportLine("Average wait - normal guests (served)", normalAverage + " minutes");
     ui.displayReportLine("Time saved by the override",
-        (normalAverage - urgentAverage) + " min");
+        (normalAverage - urgentAverage) + " minutes on average");
   }
 
   // ==================================================================
@@ -1054,18 +1046,18 @@ public class WalkInRegistrationMaintenance {
     return String.format("  (%.1f%%)", (part * 100.0) / whole);
   }
 
-  /** A share on its own, e.g. "42.9%". */
-  private String percentValue(int part, int whole) {
-    if (whole == 0) {
-      return "-";
-    }
-    return String.format("%.1f%%", (part * 100.0) / whole);
-  }
-
   private String truncate(String text, int width) {
     if (text == null) {
       return "-";
     }
     return (text.length() <= width) ? text : text.substring(0, width - 1) + ".";
+  }
+
+  /** Shortens text with a trailing "~", matching the printed report pack's style. */
+  private String truncateTilde(String text, int width) {
+    if (text == null) {
+      return "-";
+    }
+    return (text.length() <= width) ? text : text.substring(0, width - 1) + "~";
   }
 }

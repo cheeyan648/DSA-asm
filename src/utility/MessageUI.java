@@ -482,6 +482,20 @@ public class MessageUI {
     System.out.println("=".repeat(SCREEN_WIDTH));
   }
 
+  /**
+   * Centres a line of text on the screen width, without a surrounding frame.
+   *
+   * Used by the printed report pack, whose pages are plain text rather than
+   * the boxed screens the rest of the system draws.
+   *
+   * @param text the text to centre
+   * @return the text, padded with leading spaces to sit in the middle
+   */
+  public static String centre(String text) {
+    int padding = Math.max(0, (SCREEN_WIDTH - text.length()) / 2);
+    return " ".repeat(padding) + text;
+  }
+
   /** Prints a lighter full-width rule, used under a table heading. */
   public static void displayThinRule() {
     System.out.println("-".repeat(SCREEN_WIDTH));

@@ -364,24 +364,23 @@ public class WalkInRegistrationUI {
   }
 
   /**
-   * Offers the sort orders underneath a listing that is already on screen.
+   * Asks which order to sort the listing by before anything is displayed.
    *
-   * Drawn as a compact chooser rather than a full menu screen so the listing
-   * above it stays visible while the next order is picked.
+   * Shown as its own menu screen so the guest picks an order first, rather
+   * than being shown a default ordering they did not ask for.
    *
    * @return the chosen order, or 0 to leave
    */
-  public int getSortChoiceInline() {
-    MessageUI.displayBlankLine();
-    MessageUI.displayThinRule();
-    MessageUI.displayMessage("  Sort this listing by:");
-    MessageUI.displayMessage("    [1]  Arrival time (earliest first)");
-    MessageUI.displayMessage("    [2]  Guest name (A-Z)");
-    MessageUI.displayMessage("    [3]  Waiting time (longest first)");
-    MessageUI.displayMessage("    [4]  Status, then arrival time");
-    MessageUI.displayMessage("    [0]  Back");
-    MessageUI.displayThinRule();
-
+  public int getSortChoice() {
+    MessageUI.displayMenuScreen("SORTED LISTINGS", null,
+        "Main Menu  >  Walk-In Registration  >  Sorted Listings",
+        new String[] {
+          "Arrival time (earliest first)",
+          "Guest name (A-Z)",
+          "Waiting time (longest first)",
+          "Status, then arrival time"
+        },
+        "Back");
     return MessageUI.readMenuChoice(scanner, 4, "go back");
   }
 
@@ -580,6 +579,39 @@ public class WalkInRegistrationUI {
     MessageUI.displayBoxLine("  Generated: " + java.time.LocalDateTime.now()
         .format(java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm")));
     MessageUI.displayBoxBottom();
+  }
+
+  /**
+   * Opens the Queue Performance and Urgency Audit reports in the plain,
+   * unboxed layout used across the printed report pack, rather than the
+   * boxed screen style the rest of the module uses.
+   *
+   * @param title the report's name
+   */
+  public void displayPrintedReportHeader(String title) {
+    MessageUI.clearScreen();
+    MessageUI.displayRule();
+    MessageUI.displayMessage(MessageUI.centre(
+        "TUNKU ABDUL RAHMAN UNIVERSITY OF MANAGEMENT AND TECHNOLOGY"));
+    MessageUI.displayMessage(MessageUI.centre(
+        "TARUMT RESORT - WALK-IN REGISTRATION SUBSYSTEM"));
+    MessageUI.displayMessage(MessageUI.centre(title));
+    MessageUI.displayRule();
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("Generated at: " + java.time.LocalDateTime.now()
+        .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy, hh:mm a")));
+  }
+
+  /**
+   * Closes a printed-style report with its centred sign-off and a plain
+   * pause, matching the report pack rather than the boxed screens' wording.
+   */
+  public void displayPrintedReportFooter() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayRule();
+    MessageUI.displayMessage(MessageUI.centre("END OF THE REPORT"));
+    MessageUI.displayRule();
+    MessageUI.pause(scanner, "Press Enter to continue");
   }
 
   public void displaySectionHeading(String title) {

@@ -82,6 +82,90 @@ public class OperationalDataInitializer {
     wr6.setServedBy("ST002");
     registrations.add(wr6);
 
+    // Extra sample records so a listing runs past one page (PAGE_SIZE = 15).
+    WalkInRegistration wr7 = new WalkInRegistration("WR0007", "G0001",
+        now.minusMinutes(300), WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 2);
+    wr7.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr7.setCalledAt(now.minusMinutes(292));
+    wr7.setBookedAt(now.minusMinutes(289));
+    wr7.setServedBy("ST001");
+    wr7.setBookingId("BK0010");
+    registrations.add(wr7);
+
+    WalkInRegistration wr8 = new WalkInRegistration("WR0008", "G0003",
+        now.minusMinutes(280), WalkInRegistration.PRIORITY_URGENT,
+        "Medical or emergency situation", "RT02", 1);
+    wr8.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr8.setCalledAt(now.minusMinutes(279));
+    wr8.setBookedAt(now.minusMinutes(276));
+    wr8.setServedBy("ST002");
+    wr8.setBookingId("BK0011");
+    registrations.add(wr8);
+
+    registrations.add(new WalkInRegistration("WR0009", "G0005",
+        now.minusMinutes(258), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 3));
+
+    WalkInRegistration wr10 = new WalkInRegistration("WR0010", "G0007",
+        now.minusMinutes(240), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2);
+    wr10.setStatus(WalkInRegistration.STATUS_NO_SHOW);
+    wr10.setCalledAt(now.minusMinutes(210));
+    wr10.setServedBy("ST001");
+    registrations.add(wr10);
+
+    WalkInRegistration wr11 = new WalkInRegistration("WR0011", "G0004",
+        now.minusMinutes(225), WalkInRegistration.PRIORITY_URGENT,
+        "Complaint escalation", "RT01", 1);
+    wr11.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr11.setCalledAt(now.minusMinutes(224));
+    wr11.setBookedAt(now.minusMinutes(221));
+    wr11.setServedBy("ST002");
+    wr11.setBookingId("BK0012");
+    registrations.add(wr11);
+
+    registrations.add(new WalkInRegistration("WR0012", "G0006",
+        now.minusMinutes(198), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 4));
+
+    WalkInRegistration wr13 = new WalkInRegistration("WR0013", "G0002",
+        now.minusMinutes(180), WalkInRegistration.PRIORITY_NORMAL, null, "RT02", 2);
+    wr13.setStatus(WalkInRegistration.STATUS_CANCELLED);
+    wr13.setServedBy("ST001");
+    registrations.add(wr13);
+
+    WalkInRegistration wr14 = new WalkInRegistration("WR0014", "G0001",
+        now.minusMinutes(165), WalkInRegistration.PRIORITY_URGENT,
+        "Travelling with infant or young children", "RT03", 2);
+    wr14.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr14.setCalledAt(now.minusMinutes(164));
+    wr14.setBookedAt(now.minusMinutes(161));
+    wr14.setServedBy("ST002");
+    wr14.setBookingId("BK0013");
+    registrations.add(wr14);
+
+    registrations.add(new WalkInRegistration("WR0015", "G0003",
+        now.minusMinutes(150), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 1));
+
+    WalkInRegistration wr16 = new WalkInRegistration("WR0016", "G0005",
+        now.minusMinutes(120), WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 3);
+    wr16.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr16.setCalledAt(now.minusMinutes(112));
+    wr16.setBookedAt(now.minusMinutes(109));
+    wr16.setServedBy("ST001");
+    wr16.setBookingId("BK0014");
+    registrations.add(wr16);
+
+    WalkInRegistration wr17 = new WalkInRegistration("WR0017", "G0007",
+        now.minusMinutes(105), WalkInRegistration.PRIORITY_URGENT,
+        "Elderly or disabled guest", "RT02", 2);
+    wr17.setStatus(WalkInRegistration.STATUS_BOOKED);
+    wr17.setCalledAt(now.minusMinutes(104));
+    wr17.setBookedAt(now.minusMinutes(101));
+    wr17.setServedBy("ST002");
+    wr17.setBookingId("BK0015");
+    registrations.add(wr17);
+
+    registrations.add(new WalkInRegistration("WR0018", "G0004",
+        now.minusMinutes(80), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2));
+
     return registrations;
   }
 
