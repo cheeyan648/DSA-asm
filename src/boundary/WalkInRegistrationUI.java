@@ -364,24 +364,23 @@ public class WalkInRegistrationUI {
   }
 
   /**
-   * Offers the sort orders underneath a listing that is already on screen.
+   * Asks which order to sort the listing by before anything is displayed.
    *
-   * Drawn as a compact chooser rather than a full menu screen so the listing
-   * above it stays visible while the next order is picked.
+   * Shown as its own menu screen so the guest picks an order first, rather
+   * than being shown a default ordering they did not ask for.
    *
    * @return the chosen order, or 0 to leave
    */
-  public int getSortChoiceInline() {
-    MessageUI.displayBlankLine();
-    MessageUI.displayThinRule();
-    MessageUI.displayMessage("  Sort this listing by:");
-    MessageUI.displayMessage("    [1]  Arrival time (earliest first)");
-    MessageUI.displayMessage("    [2]  Guest name (A-Z)");
-    MessageUI.displayMessage("    [3]  Waiting time (longest first)");
-    MessageUI.displayMessage("    [4]  Status, then arrival time");
-    MessageUI.displayMessage("    [0]  Back");
-    MessageUI.displayThinRule();
-
+  public int getSortChoice() {
+    MessageUI.displayMenuScreen("SORTED LISTINGS", null,
+        "Main Menu  >  Walk-In Registration  >  Sorted Listings",
+        new String[] {
+          "Arrival time (earliest first)",
+          "Guest name (A-Z)",
+          "Waiting time (longest first)",
+          "Status, then arrival time"
+        },
+        "Back");
     return MessageUI.readMenuChoice(scanner, 4, "go back");
   }
 
@@ -447,6 +446,21 @@ public class WalkInRegistrationUI {
    */
   public boolean displayRegistrationList(ListInterface<WalkInRegistration> list,
       ResortData data, String emptyMessage) {
+    return displayRegistrationList(list, data, emptyMessage, null);
+  }
+
+  /**
+   * Lists registrations a page at a time under a title of the caller's.
+   *
+   * Each page replaces the one before it rather than printing underneath it,
+   * so the screen always shows exactly one page. That means the title has to
+   * be redrawn after every clear, which is why the caller hands it in here
+   * instead of printing it once beforehand.
+   *
+   * @param title the heading to redraw above each page, or null for none
+   */
+  public boolean displayRegistrationList(ListInterface<WalkInRegistration> list,
+      ResortData data, String emptyMessage, String title) {
     if (list.isEmpty()) {
       MessageUI.displayBlankLine();
       MessageUI.displayMessage("  " + emptyMessage);
@@ -456,7 +470,14 @@ public class WalkInRegistrationUI {
     int total = list.getNumberOfEntries();
     int totalPages = MessageUI.pageCount(total);
 
-    for (int page = 1; page <= totalPages; page++) {
+    int page = 1;
+    while (true) {
+      // Only a listing that actually pages needs the screen wiped; a single
+      // page would lose whatever the caller printed above it for nothing.
+      if (totalPages > 1 && title != null) {
+        startAction(title);
+      }
+
       MessageUI.displayBlankLine();
       MessageUI.displayTableHeading(String.format(
           "  %-4s %-7s %-22s %-8s %-5s %-11s %-16s %s",
@@ -480,11 +501,21 @@ public class WalkInRegistrationUI {
       }
 
       MessageUI.displayThinRule();
-      System.out.printf("  %d registration(s).%n", total);
 
-      if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
+      // Which rows these are, not just how many there are altogether - on a
+      // paged listing the count alone does not say where the reader is.
+      if (totalPages > 1) {
+        System.out.printf("  Showing %d-%d of %d registration(s).%n",
+            from, upTo, total);
+      } else {
+        System.out.printf("  %d registration(s).%n", total);
+      }
+
+      int next = MessageUI.readPageCommand(scanner, page, totalPages);
+      if (next == MessageUI.PAGE_QUIT) {
         break;
       }
+      page = next;
     }
     return true;
   }
@@ -513,7 +544,13 @@ public class WalkInRegistrationUI {
     int total = serviceOrder.getNumberOfEntries();
     int totalPages = MessageUI.pageCount(total);
 
-    for (int page = 1; page <= totalPages; page++) {
+    int page = 1;
+    while (true) {
+      // Each page replaces the last, so the title is redrawn with it.
+      if (totalPages > 1) {
+        startAction("CURRENT WALK-IN QUEUE");
+      }
+
       MessageUI.displayBlankLine();
       System.out.printf("  Urgent: %d     Normal: %d     Total: %d%n",
           urgentCount, normalCount, total);
@@ -538,11 +575,17 @@ public class WalkInRegistrationUI {
       }
 
       MessageUI.displayThinRule();
+
+      if (totalPages > 1) {
+        System.out.printf("  Showing %d-%d of %d waiting.%n", from, upTo, total);
+      }
       MessageUI.displayMessage("  Position 1 is served next.");
 
-      if (!MessageUI.askForNextPage(scanner, page, totalPages)) {
+      int next = MessageUI.readPageCommand(scanner, page, totalPages);
+      if (next == MessageUI.PAGE_QUIT) {
         break;
       }
+      page = next;
     }
     return true;
   }
@@ -580,6 +623,39 @@ public class WalkInRegistrationUI {
     MessageUI.displayBoxLine("  Generated: " + java.time.LocalDateTime.now()
         .format(java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm")));
     MessageUI.displayBoxBottom();
+  }
+
+  /**
+   * Opens the Queue Performance and Urgency Audit reports in the plain,
+   * unboxed layout used across the printed report pack, rather than the
+   * boxed screen style the rest of the module uses.
+   *
+   * @param title the report's name
+   */
+  public void displayPrintedReportHeader(String title) {
+    MessageUI.clearScreen();
+    MessageUI.displayRule();
+    MessageUI.displayMessage(MessageUI.centre(
+        "TUNKU ABDUL RAHMAN UNIVERSITY OF MANAGEMENT AND TECHNOLOGY"));
+    MessageUI.displayMessage(MessageUI.centre(
+        "TARUMT RESORT - WALK-IN REGISTRATION SUBSYSTEM"));
+    MessageUI.displayMessage(MessageUI.centre(title));
+    MessageUI.displayRule();
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("Generated at: " + java.time.LocalDateTime.now()
+        .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy, hh:mm a")));
+  }
+
+  /**
+   * Closes a printed-style report with its centred sign-off and a plain
+   * pause, matching the report pack rather than the boxed screens' wording.
+   */
+  public void displayPrintedReportFooter() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayRule();
+    MessageUI.displayMessage(MessageUI.centre("END OF THE REPORT"));
+    MessageUI.displayRule();
+    MessageUI.pause(scanner, "Press Enter to continue");
   }
 
   public void displaySectionHeading(String title) {

@@ -357,20 +357,20 @@ public class MessageUI {
    * so blank lines are printed instead to scroll the old screen out of sight.
    */
   public static void clearScreen() {
-    if (System.console() == null) {
-      scrollScreen();
-      return;
-    }
+    // Escape codes first: they work in a real terminal AND in the NetBeans
+    // Output window, where System.console() is null. \033[3J clears the
+    // scrollback as well, so the previous menu cannot be scrolled back to.
+    System.out.print("\033[H\033[2J\033[3J");
+    System.out.flush();
 
-    try {
-      if (System.getProperty("os.name").toLowerCase().contains("win")) {
+    // A real Windows console also gets cls, in case it ignores the codes.
+    if (System.console() != null
+        && System.getProperty("os.name").toLowerCase().contains("win")) {
+      try {
         new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
-      } else {
-        new ProcessBuilder("clear").inheritIO().start().waitFor();
+      } catch (Exception e) {
+        scrollScreen();
       }
-    } catch (Exception e) {
-      // fall back to printing blank lines if the OS command isn't available
-      scrollScreen();
     }
   }
 
@@ -480,6 +480,20 @@ public class MessageUI {
   /** Prints a full-width rule, used to close a table. */
   public static void displayRule() {
     System.out.println("=".repeat(SCREEN_WIDTH));
+  }
+
+  /**
+   * Centres a line of text on the screen width, without a surrounding frame.
+   *
+   * Used by the printed report pack, whose pages are plain text rather than
+   * the boxed screens the rest of the system draws.
+   *
+   * @param text the text to centre
+   * @return the text, padded with leading spaces to sit in the middle
+   */
+  public static String centre(String text) {
+    int padding = Math.max(0, (SCREEN_WIDTH - text.length()) / 2);
+    return " ".repeat(padding) + text;
   }
 
   /** Prints a lighter full-width rule, used under a table heading. */
@@ -603,7 +617,7 @@ public class MessageUI {
   // ==================================================================
 
   /** What every text prompt returns when the user cancels. */
-  public static final String CANCELLED = " CANCELLED";
+  public static final String CANCELLED = " CANCELLED";
 
   /** What the numeric prompts return when the user cancels. */
   public static final int CANCELLED_INT = Integer.MIN_VALUE;
@@ -1167,7 +1181,7 @@ public class MessageUI {
   // ==================================================================
 
   /** How many rows of a listing are shown at a time. */
-  public static final int PAGE_SIZE = 15;
+  public static final int PAGE_SIZE = 20;
 
   /**
    * Shows one page of a listing and asks what to do next.
@@ -1184,31 +1198,73 @@ public class MessageUI {
    * @return true if the user wants the next page
    */
   public static boolean askForNextPage(Scanner scanner, int page, int totalPages) {
-    if (page >= totalPages) {
-      // Nothing left to show, but the page on screen still has to be read.
-      if (totalPages > 1) {
-        displayThinRule();
-        System.out.printf("  Page %d of %d - end of list.%n", page, totalPages);
-      }
-      return false;
+    return readPageCommand(scanner, page, totalPages) != PAGE_QUIT;
+  }
+
+  /**
+   * Asks which page to show next.
+   *
+   * The listing can be moved through in both directions, or jumped straight to
+   * a page by number, because a reader who has gone past the row they wanted
+   * should not have to leave the listing and start it again. 0 leaves, the
+   * same key that cancels every other prompt in the system.
+   *
+   * @param scanner the Scanner to read from
+   * @param page the page on screen now, counting from 1
+   * @param totalPages how many pages there are altogether
+   * @return the page to show next, or PAGE_QUIT to leave the listing
+   */
+  public static int readPageCommand(Scanner scanner, int page, int totalPages) {
+    if (totalPages <= 1) {
+      return PAGE_QUIT;
     }
 
     displayThinRule();
     while (true) {
-      System.out.printf("  Page %d of %d. [N]ext page or [Q]uit listing: ",
-          page, totalPages);
-      String input = readLine(scanner, "q").toLowerCase();
+      System.out.printf(
+          "  Page %d of %d.  [N]ext, [P]revious, [1-%d] jump, 0 to go back: ",
+          page, totalPages, totalPages);
+      String input = readLine(scanner, "0").toLowerCase();
 
-      if (input.isEmpty() || input.equals("n") || input.equals("next")
-          || input.equals("y") || input.equals("yes")) {
-        return true;
+      if (input.equals("0") || input.equals("q") || input.equals("quit")) {
+        return PAGE_QUIT;
       }
-      if (input.equals("q") || input.equals("quit") || input.equals("0")) {
-        return false;
+
+      // Enter on its own moves forward, which is what a reader working
+      // through a long listing wants most of the time.
+      if (input.isEmpty() || input.equals("n") || input.equals("next")) {
+        if (page >= totalPages) {
+          displayError("You are already on the last page.");
+          continue;
+        }
+        return page + 1;
       }
-      displayError("Please enter N for the next page, or Q to stop.");
+
+      if (input.equals("p") || input.equals("prev") || input.equals("previous")) {
+        if (page <= 1) {
+          displayError("You are already on the first page.");
+          continue;
+        }
+        return page - 1;
+      }
+
+      try {
+        int wanted = Integer.parseInt(input);
+        if (wanted >= 1 && wanted <= totalPages) {
+          return wanted;
+        }
+        displayError("There is no page " + wanted + ". Enter 1 to " + totalPages + ".");
+        continue;
+      } catch (NumberFormatException notANumber) {
+        // fall through to the message below
+      }
+
+      displayError("Enter N, P, a page number, or 0 to go back.");
     }
   }
+
+  /** Returned by readPageCommand when the user has finished with a listing. */
+  public static final int PAGE_QUIT = -1;
 
   /**
    * How many pages a listing of a given size will take.

@@ -33,7 +33,7 @@ public class FrontDeskServiceUI {
         "Main Menu  >  Front-Desk Service",
         new String[] {
           "Bookings (create, edit, update, delete)",
-          "Rooms (availability, assign, expedite cleaning)",
+          "Rooms (availability, assign, expedite cleaning , manage)",
           "Stay (check in, check out)",
           "Billing (payments, loyalty discount)",
           "Search & display",
@@ -65,7 +65,22 @@ public class FrontDeskServiceUI {
           "Assign a room to a pending booking",
           "Move a booking to another room",
           "Request urgent cleaning for a waiting booking",
-          "Room status board"
+          "Room status board",
+          "Manage rooms"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 6, "go back");
+  }
+
+  public int getRoomManagementMenuChoice() {
+    MessageUI.displayMenuScreen("MANAGE ROOMS", null,
+        "Main Menu  >  Front-Desk Service  >  Rooms  >  Manage Rooms",
+        new String[] {
+          "List every room",
+          "Add a room",
+          "Remove a room",
+          "Take a room out of service",
+          "Return a room to service"
         },
         "Back");
     return MessageUI.readMenuChoice(scanner, 5, "go back");
@@ -137,6 +152,16 @@ public class FrontDeskServiceUI {
   public String inputRoomNo() {
     String roomNo = MessageUI.readIdNumber(scanner, "Room number", "", 4);
     return MessageUI.isCancelled(roomNo) ? null : roomNo;
+  }
+
+  public String inputNewRoomNo() {
+    String roomNo = MessageUI.readIdNumber(scanner, "New room number", "", 4);
+    return MessageUI.isCancelled(roomNo) ? null : roomNo;
+  }
+
+  public int inputFloorNumber() {
+    int floor = MessageUI.readInt(scanner, "Floor number", 1, 20);
+    return (floor == MessageUI.CANCELLED_INT) ? -1 : floor;
   }
 
   public String inputInvoiceId() {
@@ -491,6 +516,53 @@ public class FrontDeskServiceUI {
    * @param rooms the rooms
    * @param data used to look up each room's type
    */
+  public boolean displayRoomList(ListInterface<Room> rooms, ResortData data) {
+    if (rooms.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  There are no rooms on record.");
+      return false;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format(
+        "  %-4s %-6s %-6s %-5s %-10s %-22s %s",
+        "NO", "ROOM", "TYPE", "FLOOR", "OCCUPANCY", "HOUSEKEEPING", "SERVICE"));
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      System.out.printf(
+          "  %-4d %-6s %-6s %-5d %-10s %-22s %s%n",
+          i, room.getRoomNo(), room.getTypeId(), room.getFloorNo(),
+          room.getOccupancyStatus(), room.getHousekeepingStatus(),
+          room.isOutOfService() ? "OUT OF SERVICE" : "IN SERVICE");
+    }
+    MessageUI.displayThinRule();
+    System.out.printf("  %d room(s).%n", rooms.getNumberOfEntries());
+    return true;
+  }
+
+  public void displayRoom(Room room, ResortData data) {
+    RoomType type = data.findRoomType(room.getTypeId());
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Room number", room.getRoomNo());
+    MessageUI.displayField("Type", room.getTypeId()
+        + (type == null ? "" : " - " + type.getTypeName()));
+    MessageUI.displayField("Floor", String.valueOf(room.getFloorNo()));
+    MessageUI.displayField("Occupancy", room.getOccupancyStatus());
+    MessageUI.displayField("Housekeeping", room.getHousekeepingStatus());
+    String sellable;
+    if (room.isOutOfService()) {
+      sellable = "No - out of service";
+    } else if (!Room.VACANT.equals(room.getOccupancyStatus())) {
+      sellable = "No - " + room.getOccupancyStatus().toLowerCase();
+    } else if (!Room.READY_FOR_CHECK_IN.equals(room.getHousekeepingStatus())) {
+      sellable = "No - not ready";
+    } else {
+      sellable = "Yes";
+    }
+    MessageUI.displayField("Can be sold now", sellable);
+  }
+
   public void displayRoomBoard(ListInterface<Room> rooms, ResortData data) {
     MessageUI.displayBlankLine();
     MessageUI.displayTableHeading(String.format("  %-6s %-16s %-10s %-22s %s",
