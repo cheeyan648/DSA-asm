@@ -101,6 +101,17 @@ public class Reward implements Serializable {
     stockQuantity++;
   }
 
+  /**
+   * Adds units to the catalogue stock.
+   *
+   * @param amount how many to add; ignored when zero or negative
+   */
+  public void addQuantity(int amount) {
+    if (amount > 0) {
+      stockQuantity += amount;
+    }
+  }
+
   public boolean isActive() {
     return active;
   }

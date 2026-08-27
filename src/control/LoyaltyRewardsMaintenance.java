@@ -136,15 +136,24 @@ public class LoyaltyRewardsMaintenance {
           displayCatalogue();
           break;
         case 2:
-          requestRedemption();
+          addNewReward();
           break;
         case 3:
-          processNextRedemption();
+          deleteRewardMenu();
           break;
         case 4:
-          displayPendingQueue();
+          restockReward();
           break;
         case 5:
+          requestRedemption();
+          break;
+        case 6:
+          processNextRedemption();
+          break;
+        case 7:
+          displayPendingQueue();
+          break;
+        case 8:
           displayRedemptionHistory();
           break;
         default:
@@ -554,6 +563,201 @@ public class LoyaltyRewardsMaintenance {
     ui.startAction("REWARD CATALOGUE");
     ui.displayRewardCatalogue(data.getRewardList(), null);
     ui.pause();
+  }
+
+  /**
+   * Adds a new reward to the catalogue when its ID is not already in use.
+   *
+   * @param newReward the reward to add; its ID is generated if left blank
+   * @return true if the reward was added and saved
+   */
+  public boolean addReward(Reward newReward) {
+    if (newReward == null || newReward.getRewardName() == null
+        || newReward.getRewardName().isBlank()) {
+      return false;
+    }
+    if (newReward.getPointsRequired() <= 0) {
+      return false;
+    }
+    if (newReward.getCategory() == null || newReward.getCategory().isBlank()) {
+      return false;
+    }
+    if (newReward.getMinimumTier() == null || newReward.getMinimumTier().isBlank()) {
+      return false;
+    }
+    if (newReward.getStockQuantity() < 0) {
+      return false;
+    }
+
+    if (newReward.getRewardId() == null || newReward.getRewardId().isBlank()) {
+      newReward.setRewardId(data.nextRewardId());
+    }
+
+    if (data.findReward(newReward.getRewardId()) != null) {
+      return false;
+    }
+
+    data.getRewardList().add(newReward);
+    data.saveLoyalty();
+    return true;
+  }
+
+  /**
+   * Removes a reward from the catalogue by ID.
+   *
+   * @param rewardId the reward to delete, e.g. RW001
+   * @return true if the reward was found and removed
+   */
+  public boolean deleteReward(String rewardId) {
+    if (rewardId == null || rewardId.isBlank()) {
+      return false;
+    }
+
+    Reward reward = data.findReward(rewardId);
+    if (reward == null) {
+      return false;
+    }
+
+    data.getRewardList().removeEntry(reward);
+    data.saveLoyalty();
+    return true;
+  }
+
+  /**
+   * Adds stock to an existing reward and saves the updated catalogue.
+   *
+   * @param rewardId the reward to restock, e.g. RW001
+   * @param amount how many units to add
+   * @return true if the reward was found and restocked
+   */
+  public boolean restockReward(String rewardId, int amount) {
+    if (rewardId == null || amount <= 0) {
+      return false;
+    }
+
+    Reward reward = data.findReward(rewardId);
+    if (reward == null) {
+      return false;
+    }
+
+    reward.addQuantity(amount);
+    data.saveLoyalty();
+    return true;
+  }
+
+  /** Collects a new reward from the user and adds it to the catalogue. */
+  private void addNewReward() {
+    ui.startAction("ADD A NEW REWARD");
+
+    Reward draft = ui.promptAddNewReward();
+    if (draft == null) {
+      ui.displayMessage("  Add reward cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (addReward(draft)) {
+      ui.displaySuccess("Reward " + draft.getRewardId() + " - "
+          + draft.getRewardName() + " added with "
+          + draft.getStockQuantity() + " in stock.");
+    } else {
+      ui.displayError("Could not add reward. The ID may already exist or the "
+          + "details were invalid.");
+    }
+    ui.pause();
+  }
+
+  /** Prompts for a reward ID and removes it from the catalogue. */
+  private void deleteRewardMenu() {
+    ui.startAction("DELETE A REWARD");
+    ui.displayRewardCatalogue(data.getRewardList(), null);
+
+    String rewardId = ui.inputRewardId();
+    if (rewardId == null) {
+      ui.displayMessage("  Delete reward cancelled.");
+      ui.pause();
+      return;
+    }
+
+    Reward reward = data.findReward(rewardId);
+    if (reward == null) {
+      ui.displayError("Reward " + rewardId + " was not found.");
+      ui.pause();
+      return;
+    }
+
+    if (hasPendingRedemptionFor(rewardId)) {
+      ui.displayError("Reward " + rewardId + " cannot be deleted while a "
+          + "redemption request for it is still pending.");
+      ui.pause();
+      return;
+    }
+
+    if (!ui.confirm("Delete " + rewardId + " - " + reward.getRewardName() + "?")) {
+      ui.displayMessage("  Delete cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (deleteReward(rewardId)) {
+      ui.displaySuccess("Reward " + rewardId + " - " + reward.getRewardName()
+          + " has been removed.");
+    } else {
+      ui.displayError("Could not delete reward " + rewardId + ".");
+    }
+    ui.pause();
+  }
+
+  /**
+   * Prompts for a reward and a quantity to add, then updates the catalogue.
+   */
+  private void restockReward() {
+    ui.startAction("RESTOCK A REWARD");
+    ui.displayRewardCatalogue(data.getRewardList(), null);
+
+    String rewardId = ui.inputRewardId();
+    if (rewardId == null) {
+      ui.displayMessage("  Restock cancelled.");
+      ui.pause();
+      return;
+    }
+
+    Reward reward = data.findReward(rewardId);
+    if (reward == null) {
+      ui.displayError("Reward " + rewardId + " was not found.");
+      ui.pause();
+      return;
+    }
+
+    ui.displayMessage("");
+    MessageUI.displayField("Reward", reward.getRewardName());
+    MessageUI.displayField("Current quantity", String.valueOf(reward.getStockQuantity()));
+    ui.displayMessage("");
+
+    Integer amount = ui.inputRestockQuantity();
+    if (amount == null) {
+      ui.displayMessage("  Restock cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (restockReward(rewardId, amount)) {
+      ui.displaySuccess("Restocked " + rewardId + " - " + reward.getRewardName()
+          + " by " + amount + ". New quantity: " + reward.getStockQuantity() + ".");
+    } else {
+      ui.displayError("Restock failed.");
+    }
+    ui.pause();
+  }
+
+  private boolean hasPendingRedemptionFor(String rewardId) {
+    ListInterface<Redemption> pending = data.getPendingRedemptions();
+    for (int position = 1; position <= pending.getNumberOfEntries(); position++) {
+      if (rewardId.equals(pending.getEntry(position).getRewardId())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

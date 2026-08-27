@@ -71,13 +71,16 @@ public class LoyaltyRewardsUI {
         "Main Menu  >  Loyalty & Rewards  >  Rewards",
         new String[] {
           "View the reward catalogue",
+          "Add a new reward",
+          "Delete a reward",
+          "Restock a reward",
           "Request a redemption",
           "Process the next pending request",
           "View the pending queue",
           "View redemption history"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 5, "go back");
+    return MessageUI.readMenuChoice(scanner, 8, "go back");
   }
 
   public int getNotificationMenuChoice() {
@@ -151,6 +154,145 @@ public class LoyaltyRewardsUI {
   }
 
   /**
+   * Asks for a reward ID such as RW001. C cancels; 0 is not a cancel key here
+   * because a typed zero would otherwise be indistinguishable from backing out.
+   *
+   * @return the normalised ID, or null if cancelled
+   */
+  public String inputRewardId() {
+    while (true) {
+      System.out.print("  Reward ID (e.g. RW001, C to cancel): ");
+      String input = MessageUI.readLine(scanner, "c");
+
+      if (input.equalsIgnoreCase("c")) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+
+      String value = input.toUpperCase();
+      if (value.startsWith("RW")) {
+        value = value.substring(2);
+      }
+
+      if (!MessageUI.isAllDigits(value)) {
+        MessageUI.displayError("Please enter a reward ID, e.g. RW001.");
+        continue;
+      }
+
+      try {
+        int number = Integer.parseInt(value);
+        if (number <= 0) {
+          MessageUI.displayError("The number must be 1 or more.");
+          continue;
+        }
+        return "RW" + String.format("%03d", number);
+      } catch (NumberFormatException tooLong) {
+        MessageUI.displayError("That number is too large.");
+      }
+    }
+  }
+
+  /**
+   * Asks how many units to add back to a reward's stock.
+   *
+   * @return the amount to add, or null if cancelled
+   */
+  public Integer inputRestockQuantity() {
+    return readIntOrCancel("Quantity to add", 1, 9999);
+  }
+
+  /**
+   * Collects the details for a new reward. Every prompt uses C to cancel, so
+   * a typed 0 can still be a valid stock count or cash value.
+   *
+   * The reward ID is assigned by the control layer.
+   *
+   * @return a new Reward without an ID, or null if cancelled
+   */
+  public Reward promptAddNewReward() {
+    MessageUI.displayMessage("  A new reward ID will be assigned automatically.");
+    MessageUI.displayBlankLine();
+
+    String name = readTextOrCancel("Reward name");
+    if (name == null) {
+      return null;
+    }
+
+    String category = readChoiceOrCancel("Category", new String[] {
+        Reward.CAT_ROOM,
+        Reward.CAT_DINING,
+        Reward.CAT_SPA,
+        Reward.CAT_TRANSPORT,
+        Reward.CAT_VOUCHER
+    });
+    if (category == null) {
+      return null;
+    }
+
+    Integer pointsRequired = readIntOrCancel("Points required", 1, 99999);
+    if (pointsRequired == null) {
+      return null;
+    }
+
+    String minimumTier = readChoiceOrCancel("Minimum tier", new String[] {
+        Member.SILVER,
+        Member.GOLD,
+        Member.PLATINUM,
+        Member.DIAMOND
+    });
+    if (minimumTier == null) {
+      return null;
+    }
+
+    Integer stockQuantity = readIntOrCancel("Initial stock quantity", 0, 9999);
+    if (stockQuantity == null) {
+      return null;
+    }
+
+    Double cashValue = inputCashValue();
+    if (cashValue == null) {
+      return null;
+    }
+
+    return new Reward(null, name, category, pointsRequired, minimumTier,
+        stockQuantity, true, cashValue);
+  }
+
+  /**
+   * Reads a non-negative cash value where 0 is valid and C cancels.
+   *
+   * @return the amount in RM, or null if cancelled
+   */
+  public Double inputCashValue() {
+    while (true) {
+      System.out.print("  Cash value off a bill (RM, C to cancel): ");
+      String input = MessageUI.readLine(scanner, "c");
+
+      if (input.equalsIgnoreCase("c")) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        double value = Double.parseDouble(input);
+        if (value < 0) {
+          MessageUI.displayError("An amount cannot be negative.");
+          continue;
+        }
+        return Math.round(value * 100.0) / 100.0;
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Please enter an amount, e.g. 150.00");
+      }
+    }
+  }
+
+  /**
    * Asks which reward is wanted, listing what each costs and needs.
    *
    * Rewards the member cannot have are still shown, but marked, so the officer
@@ -199,6 +341,74 @@ public class LoyaltyRewardsUI {
 
   public void pause() {
     MessageUI.pause(scanner);
+  }
+
+  /**
+   * Reads required text where C cancels. 0 is an ordinary value, not a way out.
+   *
+   * @return the text, or null if cancelled
+   */
+  private String readTextOrCancel(String prompt) {
+    while (true) {
+      System.out.print("  " + prompt + " (C to cancel): ");
+      String input = MessageUI.readLine(scanner, "c");
+
+      if (input.equalsIgnoreCase("c")) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+      return input;
+    }
+  }
+
+  /**
+   * Reads a whole number in range where C cancels. 0 is valid when min is 0.
+   *
+   * @return the number, or null if cancelled
+   */
+  private Integer readIntOrCancel(String prompt, int min, int max) {
+    while (true) {
+      System.out.printf("  %s (%d-%d, C to cancel): ", prompt, min, max);
+      String input = MessageUI.readLine(scanner, "c");
+
+      if (input.equalsIgnoreCase("c")) {
+        return null;
+      }
+      if (input.isEmpty()) {
+        MessageUI.displayError("This cannot be left blank.");
+        continue;
+      }
+
+      try {
+        int value = Integer.parseInt(input);
+        if (value < min || value > max) {
+          MessageUI.displayError("Please enter a number from " + min + " to " + max + ".");
+          continue;
+        }
+        return value;
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Please enter a whole number.");
+      }
+    }
+  }
+
+  /**
+   * Asks the user to pick one of a set of values, with C to cancel.
+   *
+   * @return the chosen value, or null if cancelled
+   */
+  private String readChoiceOrCancel(String prompt, String[] choices) {
+    MessageUI.displayBlankLine();
+    for (int i = 0; i < choices.length; i++) {
+      System.out.printf("    [%d]  %s%n", i + 1, choices[i]);
+    }
+    MessageUI.displayBlankLine();
+
+    Integer picked = readIntOrCancel(prompt, 1, choices.length);
+    return (picked == null) ? null : choices[picked - 1];
   }
 
   // ==================================================================
