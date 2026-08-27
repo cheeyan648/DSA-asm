@@ -132,6 +132,8 @@ public class WalkInRegistrationMaintenance {
           displayQueue();
           ui.pause();
           break;
+        // The searches keep prompting until 0, so they need no pause here.
+        // The filters run once and pause so the result can be read.
         case 2:
           searchByRegistrationId();
           break;
@@ -140,9 +142,11 @@ public class WalkInRegistrationMaintenance {
           break;
         case 4:
           filterByStatus();
+          ui.pause();
           break;
         case 5:
           filterByPriority();
+          ui.pause();
           break;
         default:
           break;
@@ -569,9 +573,12 @@ public class WalkInRegistrationMaintenance {
    * job on this screen.
    */
   private void searchByRegistrationId() {
-    while (true) {
-      ui.startAction("SEARCH BY REGISTRATION NUMBER");
+    // The title is drawn once and the prompt repeats under it, so several
+    // registrations can be checked in a row with the results building up.
+    // 0 is the only way out, as at every other prompt in the system.
+    ui.startAction("SEARCH BY REGISTRATION NUMBER");
 
+    while (true) {
       String regId = ui.inputRegistrationId();
       if (regId == null) {
         return;
@@ -583,15 +590,10 @@ public class WalkInRegistrationMaintenance {
         // comes round again with the message still on screen.
         ui.displayError("No registration " + regId
             + ". Enter another number, or 0 to go back.");
-        ui.pause("Press ENTER to try another number");
         continue;
       }
 
       showRegistrationDetail(reg);
-
-      if (!ui.confirmAnother("Look up another registration number?")) {
-        return;
-      }
     }
   }
 
@@ -611,9 +613,9 @@ public class WalkInRegistrationMaintenance {
    * almost always the one who has just arrived that is being asked about.
    */
   private void searchByName() {
-    while (true) {
-      ui.startAction("SEARCH BY GUEST NAME");
+    ui.startAction("SEARCH BY GUEST NAME");
 
+    while (true) {
       String term = ui.inputSearchName();
       if (term == null) {
         return;
@@ -627,55 +629,45 @@ public class WalkInRegistrationMaintenance {
           });
 
       sortNewestFirst(matches);
-      ui.displayRegistrationList(matches, data, "No guest matched \"" + term + "\".");
 
-      if (!ui.confirmAnother("Search for another name?")) {
-        return;
+      // A listing long enough to page clears the screen on its way out, so
+      // the title is redrawn before the next prompt or it would be lost.
+      if (ui.displayRegistrationList(matches, data,
+          "No guest matched \"" + term + "\".")) {
+        ui.startAction("SEARCH BY GUEST NAME");
       }
     }
   }
 
   private void filterByStatus() {
-    while (true) {
-      ui.startAction("FILTER BY STATUS");
+    ui.startAction("FILTER BY STATUS");
 
-      String status = ui.inputStatusFilter();
-      if (status == null) {
-        return;
-      }
-
-      ListInterface<WalkInRegistration> matches =
-          data.getRegistrationList().filter(reg -> status.equals(reg.getStatus()));
-
-      sortNewestFirst(matches);
-      ui.displayRegistrationList(matches, data, "No registration is " + status + ".");
-
-      if (!ui.confirmAnother("Filter by another status?")) {
-        return;
-      }
+    String status = ui.inputStatusFilter();
+    if (status == null) {
+      return;
     }
+
+    ListInterface<WalkInRegistration> matches =
+        data.getRegistrationList().filter(reg -> status.equals(reg.getStatus()));
+
+    sortNewestFirst(matches);
+    ui.displayRegistrationList(matches, data, "No registration is " + status + ".");
   }
 
   private void filterByPriority() {
-    while (true) {
-      ui.startAction("FILTER BY PRIORITY");
+    ui.startAction("FILTER BY PRIORITY");
 
-      String priority = ui.inputPriorityFilter();
-      if (priority == null) {
-        return;
-      }
-
-      ListInterface<WalkInRegistration> matches =
-          data.getRegistrationList().filter(reg -> priority.equals(reg.getPriority()));
-
-      sortNewestFirst(matches);
-      ui.displayRegistrationList(matches, data,
-          "No " + priority + " registration found.");
-
-      if (!ui.confirmAnother("Filter by another priority?")) {
-        return;
-      }
+    String priority = ui.inputPriorityFilter();
+    if (priority == null) {
+      return;
     }
+
+    ListInterface<WalkInRegistration> matches =
+        data.getRegistrationList().filter(reg -> priority.equals(reg.getPriority()));
+
+    sortNewestFirst(matches);
+    ui.displayRegistrationList(matches, data,
+        "No " + priority + " registration found.");
   }
 
   /**

@@ -357,20 +357,20 @@ public class MessageUI {
    * so blank lines are printed instead to scroll the old screen out of sight.
    */
   public static void clearScreen() {
-    if (System.console() == null) {
-      scrollScreen();
-      return;
-    }
+    // Escape codes first: they work in a real terminal AND in the NetBeans
+    // Output window, where System.console() is null. \033[3J clears the
+    // scrollback as well, so the previous menu cannot be scrolled back to.
+    System.out.print("\033[H\033[2J\033[3J");
+    System.out.flush();
 
-    try {
-      if (System.getProperty("os.name").toLowerCase().contains("win")) {
+    // A real Windows console also gets cls, in case it ignores the codes.
+    if (System.console() != null
+        && System.getProperty("os.name").toLowerCase().contains("win")) {
+      try {
         new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
-      } else {
-        new ProcessBuilder("clear").inheritIO().start().waitFor();
+      } catch (Exception e) {
+        scrollScreen();
       }
-    } catch (Exception e) {
-      // fall back to printing blank lines if the OS command isn't available
-      scrollScreen();
     }
   }
 
@@ -603,7 +603,7 @@ public class MessageUI {
   // ==================================================================
 
   /** What every text prompt returns when the user cancels. */
-  public static final String CANCELLED = " CANCELLED";
+  public static final String CANCELLED = " CANCELLED";
 
   /** What the numeric prompts return when the user cancels. */
   public static final int CANCELLED_INT = Integer.MIN_VALUE;
@@ -1195,18 +1195,19 @@ public class MessageUI {
 
     displayThinRule();
     while (true) {
-      System.out.printf("  Page %d of %d. [N]ext page or [Q]uit listing: ",
+      System.out.printf("  Page %d of %d. [N]ext page, 0 to go back: ",
           page, totalPages);
-      String input = readLine(scanner, "q").toLowerCase();
+      String input = readLine(scanner, "0").toLowerCase();
 
       if (input.isEmpty() || input.equals("n") || input.equals("next")
           || input.equals("y") || input.equals("yes")) {
         return true;
       }
-      if (input.equals("q") || input.equals("quit") || input.equals("0")) {
+      // 0 leaves the listing - the same key that cancels every other prompt.
+      if (input.equals("0") || input.equals("q") || input.equals("quit")) {
         return false;
       }
-      displayError("Please enter N for the next page, or Q to stop.");
+      displayError("Please enter N for the next page, or 0 to go back.");
     }
   }
 
