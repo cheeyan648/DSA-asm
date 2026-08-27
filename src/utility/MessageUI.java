@@ -351,26 +351,31 @@ public class MessageUI {
    * so blank lines are printed instead to scroll the old screen out of sight.
    */
   public static void clearScreen() {
-    if (System.console() == null) {
-      scrollScreen();
-      return;
-    }
+    // ANSI escape codes are tried first because they work everywhere the
+    // program is actually run - a real terminal, and the NetBeans Output
+    // window. \033[H moves the cursor home, \033[2J wipes the visible screen
+    // and \033[3J wipes the scrollback, so the old menu cannot be scrolled
+    // back to. Without the third code the previous screen is still there,
+    // just pushed out of sight.
+    System.out.print("\033[H\033[2J\033[3J");
+    System.out.flush();
 
-    try {
-      if (System.getProperty("os.name").toLowerCase().contains("win")) {
+    // A real console gets the OS command as well. ANSI alone is enough on
+    // almost every terminal, but this covers an older Windows console that
+    // does not interpret the escape codes.
+    if (System.console() != null
+        && System.getProperty("os.name").toLowerCase().contains("win")) {
+      try {
         new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
-      } else {
-        new ProcessBuilder("clear").inheritIO().start().waitFor();
+      } catch (Exception e) {
+        scrollScreen();
       }
-    } catch (Exception e) {
-      // fall back to printing blank lines if the OS command isn't available
-      scrollScreen();
     }
   }
 
   /**
-   * Pushes the previous screen out of view by printing blank lines. Used where
-   * a true clear is not possible, such as the NetBeans Output window.
+   * Last resort when neither the escape codes nor the OS command work: pushes
+   * the old screen out of view by printing blank lines.
    */
   private static void scrollScreen() {
     for (int i = 0; i < 50; i++) {

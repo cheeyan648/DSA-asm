@@ -10,51 +10,31 @@ import utility.MessageUI;
 /**
  * Console interface for the Walk-In Registration & Standard Booking module.
  *
- * This class only talks to the user - it collects input and prints output. All
- * decisions about the queue itself belong to
- * control.WalkInRegistrationBookingMaintenance.
+ * Data flow: this UI - WalkInRegistrationBookingMaintenance - WalkInGuestDAO
+ * - walkInGuests.dat. Nothing is stored here; 0 cancels every prompt.
+ *
+ * ADT use: takes ListInterface&lt;WalkInGuest&gt; only to read and print. It
+ * never adds, removes or reorders - the control class owns the list and has
+ * already searched, filtered or sorted it before passing it here.
  *
  * @author Tan Chee Yan
  */
 public class WalkInRegistrationBookingUI {
 
-  // Shared with every other UI class - see MessageUI.scanner for why.
   private Scanner scanner = MessageUI.scanner;
 
   private static final DateTimeFormatter REPORT_TIMESTAMP =
       DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy, hh:mm a");
 
-  // Width of the report rules, wide enough for the widest report row.
   private static final int REPORT_WIDTH = 78;
 
-  // Width of the guest table rules. Matches the columns in columnHeadings()
-  // plus the leading "No." and trailing "Ahead" columns added per row.
   private static final int TABLE_WIDTH = 100;
-
-  // How many guests one page of a listing shows. Long listings are split into
-  // pages of this size so a busy queue cannot scroll off the top of the screen
-  // in one burst.
   private static final int ROWS_PER_PAGE = 20;
 
-  // Returned by readPageCommand() when the user has finished with a listing.
-  // Not a valid page number, so it can never be mistaken for one.
   private static final int PAGE_QUIT = -1;
 
-  // ==================================================================
-  // MENUS
-  // ==================================================================
+  // ===== MENUS - each draws one screen and returns the number typed =====
 
-  /**
-   * Draws a framed menu screen, so every menu in this module looks the same and
-   * matches the system home page.
-   *
-   * @param title the menu's heading
-   * @param subtitle a short line under the heading explaining the menu, or null
-   * for none
-   * @param breadcrumb the trail showing where this screen sits in the system
-   * @param options the menu options in order, starting from option 1
-   * @param backLabel what option 0 does, e.g. "Back to main menu"
-   */
   private void displayMenuScreen(String title, String subtitle, String breadcrumb,
       String[] options, String backLabel) {
     MessageUI.clearScreen();
@@ -69,9 +49,6 @@ public class WalkInRegistrationBookingUI {
     MessageUI.displayBoxBlank();
     MessageUI.displayBoxDivider();
 
-    // Breadcrumb: shows where this screen sits, so the user always knows which
-    // part of the system they are in without having to remember how they got
-    // here.
     MessageUI.displayBoxLine("  " + breadcrumb);
     MessageUI.displayBoxDivider();
     MessageUI.displayBoxBlank();
@@ -86,16 +63,6 @@ public class WalkInRegistrationBookingUI {
     MessageUI.displayBoxBottom();
   }
 
-  /**
-   * Spreads a heading out with spaces between its letters, which makes a short
-   * title read as a heading rather than as another line of text.
-   *
-   * Applied only to short headings - spacing out a long one would push it past
-   * the width of the frame.
-   *
-   * @param text the heading to space out
-   * @return the spaced heading, or the original text if it is too long
-   */
   private String spaced(String text) {
     if (text.length() > 30) {
       return text;
@@ -193,17 +160,6 @@ public class WalkInRegistrationBookingUI {
     return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
 
-  // ==================================================================
-  // SCREEN
-  // ==================================================================
-
-  /**
-   * Clears the screen and prints the title of the action about to run, so each
-   * action starts on a clean screen with the menu it was chosen from no longer
-   * cluttering the display.
-   *
-   * @param title the name of the action being started
-   */
   public void startAction(String title) {
     MessageUI.clearScreen();
     System.out.println();
@@ -212,46 +168,17 @@ public class WalkInRegistrationBookingUI {
     MessageUI.displayBoxBottom();
   }
 
-  // ==================================================================
-  // CHARACTER TESTS
-  //
-  // Written by hand rather than with String.matches() and a regular
-  // expression. A regex is a whole pattern language hidden inside one string,
-  // so what the rule actually is only becomes clear once the pattern is
-  // decoded; these loops state each rule directly in Java and can be stepped
-  // through in a debugger a character at a time.
-  // ==================================================================
+  // ===== CHARACTER TESTS - hand-written instead of regex =====
 
-  /**
-   * Task: Sees whether a character is a letter A-Z or a-z.
-   *
-   * @param character the character to test
-   * @return true if it is a letter, or false if not
-   */
   private boolean isLetter(char character) {
     return (character >= 'A' && character <= 'Z')
         || (character >= 'a' && character <= 'z');
   }
 
-  /**
-   * Task: Sees whether a character is a digit 0-9.
-   *
-   * @param character the character to test
-   * @return true if it is a digit, or false if not
-   */
   private boolean isDigit(char character) {
     return character >= '0' && character <= '9';
   }
 
-  /**
-   * Task: Sees whether a piece of text contains at least one letter.
-   *
-   * Used to reject an entry made up entirely of digits or symbols, such as
-   * "123", which is not a plausible name.
-   *
-   * @param text the text to examine
-   * @return true if at least one letter is present, or false if none is
-   */
   private boolean containsLetter(String text) {
     for (int i = 0; i < text.length(); i++) {
       if (isLetter(text.charAt(i))) {
@@ -261,15 +188,6 @@ public class WalkInRegistrationBookingUI {
     return false;
   }
 
-  /**
-   * Task: Sees whether every character of a name is one a real name may use.
-   *
-   * Permits letters, digits, spaces, apostrophes, hyphens, full stops and the
-   * slash that appears in Malaysian names such as "Muthu a/l Samy".
-   *
-   * @param name the name to examine
-   * @return true if every character is permitted, or false if any is not
-   */
   private boolean hasOnlyNameCharacters(String name) {
     for (int i = 0; i < name.length(); i++) {
       char character = name.charAt(i);
@@ -289,15 +207,6 @@ public class WalkInRegistrationBookingUI {
     return true;
   }
 
-  /**
-   * Task: Sees whether every character of a contact number is permitted.
-   *
-   * Digits carry the number itself; spaces and dashes are allowed purely so it
-   * can be typed in a readable grouping such as "012-345 6789".
-   *
-   * @param contactNumber the contact number to examine
-   * @return true if every character is permitted, or false if any is not
-   */
   private boolean hasOnlyContactCharacters(String contactNumber) {
     for (int i = 0; i < contactNumber.length(); i++) {
       char character = contactNumber.charAt(i);
@@ -308,15 +217,6 @@ public class WalkInRegistrationBookingUI {
     return true;
   }
 
-  /**
-   * Task: Builds a copy of the text containing only its digits.
-   *
-   * Lets the length rules count the digits that matter while ignoring whatever
-   * spacing the user typed for readability.
-   *
-   * @param text the text to strip
-   * @return the digits of text, in order, with everything else removed
-   */
   private String digitsOf(String text) {
     StringBuilder digits = new StringBuilder();
     for (int i = 0; i < text.length(); i++) {
@@ -328,13 +228,6 @@ public class WalkInRegistrationBookingUI {
     return digits.toString();
   }
 
-  /**
-   * Task: Sees whether the text is exactly the given number of digits.
-   *
-   * @param text the text to examine
-   * @param length how many digits are required
-   * @return true if text is that many characters and all of them are digits
-   */
   private boolean isAllDigits(String text, int length) {
     if (text.length() != length) {
       return false;
@@ -347,22 +240,12 @@ public class WalkInRegistrationBookingUI {
     return true;
   }
 
-  // ==================================================================
-  // INPUT
-  // ==================================================================
+  // ===== INPUT - validated here, so the control class can trust what it gets =====
 
   /**
-   * Prompts for the details of a new walk-in guest.
+   * Builds the WalkInGuest entity the control class then adds to its List ADT
+   * and pushes onto its undo Stack.
    *
-   * The guest ID is NOT asked for - it is assigned automatically by the control
-   * class, so the front-desk officer cannot mistype it or reuse one. Entering 0
-   * at the name prompt abandons the registration and returns null, as does
-   * running out of input, so the caller must always null-check the result.
-   *
-   * @param urgent true to register the guest as an urgent exception case, false
-   * for a normal walk-in joining the back of the queue
-   * @param assignedId the ID the control class has reserved for this guest,
-   * shown to the user so they know what it will be
    * @return the new guest, or null if the user cancelled
    */
   public WalkInGuest inputWalkInGuest(boolean urgent, String assignedId) {
@@ -391,17 +274,6 @@ public class WalkInRegistrationBookingUI {
         LocalDateTime.now());
   }
 
-  /**
-   * Reads a guest name, re-prompting until it is a plausible name.
-   *
-   * A name must contain at least one letter, so a digits-only entry like "123"
-   * is rejected. Digits themselves are allowed within a name (e.g. "John Lim
-   * 2nd"), as are the punctuation marks that appear in real names - spaces,
-   * apostrophes, hyphens, full stops and the "s/o" and "a/p" slashes common in
-   * Malaysian names.
-   *
-   * @return the trimmed name, or null if the user entered 0 to cancel
-   */
   private String inputName() {
     while (true) {
       System.out.print("Enter guest name     (0 to cancel): ");
@@ -443,18 +315,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Reads a contact number, re-prompting until it is a valid Malaysian phone
-   * number of 9 to 10 digits.
-   *
-   * Dashes and spaces are allowed for readability and ignored when counting, so
-   * "012-3456789", "012 345 6789" and "0123456789" are all accepted and all
-   * count as 10 digits. Each way the input can be wrong produces its own
-   * message saying what the rule is and how many digits were actually entered,
-   * rather than one generic "invalid" for every case.
-   *
-   * @return the trimmed contact number, or null if the user cancelled
-   */
   private String inputContactNumber() {
     while (true) {
       System.out.print("Enter contact number (0 to cancel): ");
@@ -472,7 +332,6 @@ public class WalkInRegistrationBookingUI {
         return null;
       }
 
-      // Only digits, spaces and dashes are permitted at all.
       if (!hasOnlyContactCharacters(contactNumber)) {
         displayMessage("Invalid contact number! It may contain digits only, "
             + "with optional dashes or spaces.");
@@ -505,25 +364,12 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * States the contact number rule, shown after every contact number error so
-   * the user always knows what is expected without having to guess.
-   */
   private void displayContactNumberRule() {
     System.out.println("  The contact number must contain 9 to 10 digits and start with 0.");
     System.out.println("  Dashes and spaces are optional.");
     System.out.println("  Examples: 012-3456789, 012 345 6789, 0123456789, 03-12345678");
   }
 
-  /**
-   * Reads why an urgent guest is being allowed to skip the chronological queue.
-   *
-   * A free-text reason is offered alongside the common presets so unusual cases
-   * are still recordable. The reason is what makes the exception auditable
-   * later in the Urgency Exception Audit Report.
-   *
-   * @return the chosen reason, or null if the user cancelled
-   */
   private String inputUrgencyReason() {
     String[] presets = {
       "Elderly or unwell guest",
@@ -568,12 +414,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Reads a guest ID to search for. Accepts the number alone or with the WG
-   * prefix, so both "1006" and "WG1006" work.
-   *
-   * @return the full guest ID including the WG prefix, or null if cancelled
-   */
   public String inputGuestIdToSearch() {
     while (true) {
       System.out.print("\nEnter guest ID to search (e.g. 1006, or 0 to cancel): ");
@@ -603,11 +443,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Reads a name fragment to search for.
-   *
-   * @return the trimmed search text, or null if cancelled
-   */
   public String inputNameToSearch() {
     while (true) {
       System.out.print("\nEnter name or part of a name (or 0 to cancel): ");
@@ -628,11 +463,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Asks which status to filter the queue by.
-   *
-   * @return one of the WalkInGuest.STATUS_* values, or null if cancelled
-   */
   public String inputStatusFilter() {
     System.out.println("\nShow guests with which status?");
     System.out.println("  [1]  Waiting");
@@ -654,11 +484,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Asks which guest type to filter the queue by.
-   *
-   * @return 1 for urgent, 2 for normal, 0 if cancelled
-   */
   public int inputTypeFilter() {
     System.out.println("\nShow guests of which type?");
     System.out.println("  [1]  Urgent (exception cases)");
@@ -669,15 +494,8 @@ public class WalkInRegistrationBookingUI {
   }
 
   /**
-   * Prints a compact one-line-per-guest list for choosing from.
-   *
-   * Deliberately not paged: this list exists only so the user can pick a
-   * position from it, and a pager between the list and the prompt would swallow
-   * the very keystroke they are about to type. Keeping each entry to one short
-   * line means even a long queue stays manageable on screen.
-   *
-   * @param list the guests to choose from
-   * @param heading the title to show above them
+   * Walks the List ADT by position (1-based) with getEntry, so the number shown
+   * against each guest is the same one the user types to pick them.
    */
   public void displayGuestPickList(ListInterface<WalkInGuest> list, String heading) {
     if (list == null || list.isEmpty()) {
@@ -698,12 +516,6 @@ public class WalkInRegistrationBookingUI {
     System.out.println("Total waiting: " + list.getNumberOfEntries());
   }
 
-  /**
-   * Asks which waiting guest to cancel, by queue position.
-   *
-   * @param maximumPosition how many guests are currently waiting
-   * @return the 1-based position chosen, or 0 to cancel
-   */
   public int inputPositionToCancel(int maximumPosition) {
     while (true) {
       System.out.print("\nEnter the position to cancel (1-" + maximumPosition
@@ -732,12 +544,6 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Asks the user to confirm an action they cannot undo.
-   *
-   * @param prompt the question to ask
-   * @return true only if the user answered yes
-   */
   public boolean confirm(String prompt) {
     while (true) {
       System.out.print("\n" + prompt + " (Y/N): ");
@@ -757,15 +563,8 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  // ==================================================================
-  // OUTPUT
-  // ==================================================================
+  // ===== OUTPUT - given a ready-made list, these decide only how it looks =====
 
-  /**
-   * Prints one guest's details, or a "no guest" notice when there is none.
-   *
-   * @param guest the guest to display, may be null
-   */
   public void displayGuest(WalkInGuest guest) {
     if (guest == null) {
       System.out.println("\nNo guest to display.");
@@ -786,24 +585,12 @@ public class WalkInRegistrationBookingUI {
   }
 
   /**
-   * Prints a list of guests under a heading, numbering each row.
+   * Every queue, search, filter and sorted listing ends up here already ordered.
    *
-   * Walks the list with its iterator rather than indexing, so the display works
-   * for any ListInterface implementation.
+   * Reads the List ADT three ways: getNumberOfEntries() to size the pages,
+   * getEntry() to fetch each row, and countIf() to count those still waiting.
    *
-   * The "Ahead" column counts how many guests must still be served before that
-   * row's guest - so the guest at the front shows 0. It is only meaningful for
-   * a guest who is still waiting; a served or cancelled guest shows "-" because
-   * they are no longer in the line at all.
-   *
-   * @param list the guests to print
-   * @param heading the title to show above them
-   * @param emptyMessage what to say when the list has no entries
-   * @return true if the user quit a paged listing with [Q], which is already a
-   * deliberate "I have finished looking" keystroke. The caller uses this to
-   * skip the usual "Press Enter to continue" so leaving a listing takes one
-   * keystroke rather than two. Returns false for a single-page listing, which
-   * has no [Q] prompt and so still needs the pause to stay readable.
+   * @return true if the user quit with [Q], so the caller can skip its pause
    */
   public boolean displayGuestList(ListInterface<WalkInGuest> list, String heading,
       String emptyMessage) {
@@ -820,14 +607,10 @@ public class WalkInRegistrationBookingUI {
       int firstRow = (currentPage - 1) * ROWS_PER_PAGE + 1;
       int lastRow = Math.min(currentPage * ROWS_PER_PAGE, totalRows);
 
-      // Everything before this page still counts towards the "ahead" figures,
-      // so the running total is primed by walking the earlier rows. Without
-      // this, page 2 would restart the count at 0 and misreport the queue.
+      // Primed from the earlier rows, or page 2 would restart the count at 0.
       int guestsAhead = countWaitingBefore(list, firstRow);
 
       if (totalPages > 1) {
-        // Re-clear on each page so the pages replace each other instead of
-        // scrolling the earlier ones off the top.
         MessageUI.clearScreen();
       }
 
@@ -842,8 +625,6 @@ public class WalkInRegistrationBookingUI {
         System.out.printf("%-4d %s %-5s%n", rowNumber, guest,
             waiting ? String.valueOf(guestsAhead) : "-");
 
-        // Only a guest who is still waiting occupies a place in the line, so
-        // only they push the following waiting guests further back.
         if (waiting) {
           guestsAhead++;
         }
@@ -862,9 +643,6 @@ public class WalkInRegistrationBookingUI {
 
       int command = readPageCommand(currentPage, totalPages);
       if (command == PAGE_QUIT) {
-        // The listing is wiped on the way out so the caller's next screen
-        // starts clean, rather than being drawn underneath the table the user
-        // has just finished with.
         MessageUI.clearScreen();
         return true;
       }
@@ -872,14 +650,8 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Counts how many guests before a given row are still waiting, so a page that
-   * does not start at row 1 still reports correct "ahead" figures.
-   *
-   * @param list the full list being displayed
-   * @param firstRow the 1-based row the page starts at
-   * @return the number of waiting guests in rows 1 to firstRow - 1
-   */
+  /** Counts by walking the List rather than countIf, since only rows 1 to
+   * firstRow-1 are wanted and countIf has no position range. */
   private int countWaitingBefore(ListInterface<WalkInGuest> list, int firstRow) {
     int waitingSoFar = 0;
     for (int row = 1; row < firstRow; row++) {
@@ -890,13 +662,6 @@ public class WalkInRegistrationBookingUI {
     return waitingSoFar;
   }
 
-  /**
-   * Asks which page to show next.
-   *
-   * @param currentPage the page on screen now
-   * @param totalPages how many pages there are altogether
-   * @return the page number to move to, or PAGE_QUIT to stop paging
-   */
   private int readPageCommand(int currentPage, int totalPages) {
     while (true) {
       System.out.println();
@@ -942,18 +707,13 @@ public class WalkInRegistrationBookingUI {
             + totalPages + ".");
         continue;
       } catch (NumberFormatException e) {
-        // fall through to the message below
+        // fall through
       }
 
       displayMessage("Invalid input! Enter N, P, a page number, or Q.");
     }
   }
 
-  /**
-   * Announces the guest who has just been taken off the front of the queue.
-   *
-   * @param guest the guest now being served, or null if the queue was empty
-   */
   public void displayGuestServedMessage(WalkInGuest guest) {
     if (guest == null) {
       displayMessage("No guests are waiting - there is no one to serve.");
@@ -967,23 +727,11 @@ public class WalkInRegistrationBookingUI {
     displayGuest(guest);
   }
 
-  /**
-   * Prints a one-line confirmation or error.
-   *
-   * @param message the text to show
-   */
   public void displayMessage(String message) {
     System.out.println("\n" + message);
   }
 
-  /**
-   * Prints the banner every report opens with.
-   *
-   * @param reportTitle the name of the report
-   */
   public void displayReportHeader(String reportTitle) {
-    // A report is a full-screen document, so it starts from a cleared screen
-    // rather than under the menu it was chosen from.
     MessageUI.clearScreen();
     System.out.println();
     System.out.println("=".repeat(REPORT_WIDTH));
@@ -995,51 +743,26 @@ public class WalkInRegistrationBookingUI {
     System.out.println("-".repeat(REPORT_WIDTH));
   }
 
-  /**
-   * Prints the footer every report closes with.
-   */
   public void displayReportFooter() {
     System.out.println("-".repeat(REPORT_WIDTH));
     System.out.println(centre("END OF THE REPORT"));
     System.out.println("=".repeat(REPORT_WIDTH));
   }
 
-  /**
-   * Prints a section title within a report.
-   *
-   * @param title the section name
-   */
   public void displayReportSection(String title) {
     System.out.println();
     System.out.println(title);
     System.out.println("-".repeat(REPORT_WIDTH));
   }
 
-  /**
-   * Prints one "label : value" statistic line within a report.
-   *
-   * @param label what the figure measures
-   * @param value the figure itself
-   */
   public void displayReportLine(String label, String value) {
     System.out.printf("  %-46s : %s%n", label, value);
   }
 
-  /**
-   * Prints one blank line, used to space sections of a report apart.
-   *
-   * Exists so the control class never has to write to the console itself - the
-   * ECB pattern requires that only boundary objects communicate with the user.
-   */
   public void displayBlankLine() {
     System.out.println();
   }
 
-  /**
-   * Prints one guest as a row in the exception-case listing of a report.
-   *
-   * @param guest the guest to print
-   */
   public void displayExceptionRow(WalkInGuest guest) {
     System.out.printf("  %-9s %-24s %-17s %-10s %s%n",
         guest.getGuestId(),
@@ -1049,16 +772,6 @@ public class WalkInRegistrationBookingUI {
         guest.getUrgencyReason() == null ? "-" : guest.getUrgencyReason());
   }
 
-  /**
-   * Prints a horizontal bar chart, one row per category.
-   *
-   * The longest bar is scaled to fit the report width, so the chart stays
-   * readable whether the biggest count is 3 or 300.
-   *
-   * @param labels the category names
-   * @param counts how many fall in each category, same length as labels
-   * @param maximumBarWidth the widest a bar may be drawn
-   */
   public void displayBarChart(String[] labels, int[] counts, int maximumBarWidth) {
     if (labels == null || counts == null || labels.length == 0) {
       System.out.println("  (no data to chart)");
@@ -1077,8 +790,6 @@ public class WalkInRegistrationBookingUI {
       return;
     }
 
-    // Size the label column to the longest label so captions are never cut off
-    // and the bars still line up with each other.
     int labelWidth = 0;
     for (String label : labels) {
       if (label != null && label.length() > labelWidth) {
@@ -1087,8 +798,6 @@ public class WalkInRegistrationBookingUI {
     }
 
     for (int i = 0; i < labels.length; i++) {
-      // Scale each bar against the highest count so the chart always fills the
-      // available width without ever overflowing it.
       int barWidth = (int) Math.round((double) counts[i] / highest * maximumBarWidth);
       if (counts[i] > 0 && barWidth == 0) {
         barWidth = 1;
@@ -1098,41 +807,23 @@ public class WalkInRegistrationBookingUI {
     }
   }
 
-  /**
-   * Waits for the user to press Enter so output stays on screen instead of
-   * being wiped by the clearScreen() at the top of the next menu.
-   */
   public void pause() {
     System.out.print("\nPress Enter to continue...");
-    // hasNextLine() guards against input being exhausted (e.g. piped input or
-    // Ctrl+D), which would otherwise throw NoSuchElementException here.
     if (scanner.hasNextLine()) {
       scanner.nextLine();
     }
   }
 
-  /**
-   * Column headings for a full guest table, matching the layout of
-   * WalkInGuest.toString() plus the leading "No." and trailing "Ahead" columns
-   * that displayGuestList() adds.
-   */
   private String columnHeadings() {
     return String.format("%-4s %-9s %-26s %-14s %-8s %-17s %-9s %-5s",
         "No.", "Guest ID", "Name", "Contact", "Type", "Arrived", "Status", "Ahead");
   }
 
-  /**
-   * Column headings for a single guest shown on its own, where there is no
-   * queue position or "ahead" count to report.
-   */
   private String singleGuestHeadings() {
     return String.format("%-9s %-26s %-14s %-8s %-17s %-9s",
         "Guest ID", "Name", "Contact", "Type", "Arrived", "Status");
   }
 
-  /**
-   * Pads text with leading spaces so it sits in the middle of a report line.
-   */
   private String centre(String text) {
     if (text.length() >= REPORT_WIDTH) {
       return text;
