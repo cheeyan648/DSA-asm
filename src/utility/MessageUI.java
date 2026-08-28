@@ -704,8 +704,25 @@ public class MessageUI {
    * @return the amount, or CANCELLED_AMOUNT if the user typed 0
    */
   public static double readAmount(Scanner scanner, String prompt) {
+    return readAmount(scanner, prompt, "0 to cancel");
+  }
+
+  /**
+   * Asks for an amount of money under wording the caller chooses.
+   *
+   * The note in brackets is supplied rather than fixed, so a screen that has
+   * already said what 0 does does not say it twice. The RM sits after the
+   * colon, where the figure is about to be typed.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what the amount is for
+   * @param note what to put in brackets after the prompt
+   * @return the amount, or CANCELLED_AMOUNT if the user typed 0
+   */
+  public static double readAmount(Scanner scanner, String prompt, String note) {
     while (true) {
-      System.out.print("  " + prompt + " (RM, 0 to cancel): ");
+      System.out.print("  " + prompt
+          + ((note == null || note.isBlank()) ? "" : " (" + note + ")") + ": RM ");
       String input = readLine(scanner);
 
       if (isCancelKey(input)) {

@@ -399,12 +399,12 @@ public class UnitTest {
     runner.check("and it cannot be cleaned for somebody either",
         !occupied.isCleanable());
 
-    Room outOfService = new Room("3001", "RT05", 30, Room.VACANT,
+    Room outOfService = new Room("3005", "RT03", 30, Room.VACANT,
         Room.READY_FOR_CHECK_IN, true, LocalDateTime.now(), "");
     runner.check("out of service beats everything else", !outOfService.isAssignable());
     runner.check("and cannot be cleaned into use", !outOfService.isCleanable());
 
-    Room inspected = new Room("2004", "RT04", 20, Room.VACANT,
+    Room inspected = new Room("2004", "RT02", 20, Room.VACANT,
         Room.INSPECTED, false, LocalDateTime.now(), "");
     runner.check("inspected is not yet ready to sell", !inspected.isAssignable());
     runner.check("but it is cleanable", inspected.isCleanable());

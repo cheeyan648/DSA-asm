@@ -1,5 +1,6 @@
 package control;
 
+import adt.ArrayList;
 import adt.ListInterface;
 import boundary.FrontDeskServiceUI;
 import entity.Booking;
@@ -9,6 +10,7 @@ import entity.Invoice;
 import entity.Payment;
 import entity.Redemption;
 import entity.Room;
+import entity.RoomArrangement;
 import entity.RoomAssignment;
 import entity.RoomType;
 import entity.WalkInRegistration;
@@ -99,10 +101,64 @@ public class FrontDeskServiceMaintenance {
         case 5:
           markNoShow();
           break;
+        case 6:
+          displayBookingRecords();
+          break;
         default:
           break;
       }
     } while (choice != 0);
+  }
+
+  /**
+   * The bookings that have been billed, and their receipts.
+   *
+   * Only bookings with an invoice appear: a booking with no bill has nothing
+   * to show a receipt for. The listing is redrawn after each receipt so
+   * several can be looked at without leaving and coming back.
+   */
+  private void displayBookingRecords() {
+    while (true) {
+      ui.startAction("BOOKING RECORDS");
+
+      // Newest first, so the booking just taken is at the top of the list.
+      ListInterface<Invoice> records = copyOfInvoices(data.getInvoiceList());
+      records.sort(java.util.Comparator.comparing(Invoice::getIssuedAt,
+          java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+
+      if (!ui.displayBookingRecords(records, data)) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayMessage("");
+      int position = ui.inputListPosition(records.getNumberOfEntries(),
+          "Number of the record to view its receipt");
+      if (position < 0) {
+        return;
+      }
+
+      Invoice invoice = records.getEntry(position);
+      Booking booking = data.findBooking(invoice.getBookingId());
+      if (booking == null) {
+        ui.displayError("That record's booking is missing.");
+        ui.pause();
+        continue;
+      }
+
+      // A receipt reprinted from the records shows no change: whatever was
+      // handed back went back at the counter, not now.
+      displayReceipt(booking, invoice, 0.0);
+    }
+  }
+
+  /** A copy, so sorting a listing cannot reorder the stored invoices. */
+  private ListInterface<Invoice> copyOfInvoices(ListInterface<Invoice> source) {
+    ListInterface<Invoice> copy = new ArrayList<>();
+    for (int i = 1; i <= source.getNumberOfEntries(); i++) {
+      copy.add(source.getEntry(i));
+    }
+    return copy;
   }
 
   private void runRoomMenu() {
@@ -120,12 +176,9 @@ public class FrontDeskServiceMaintenance {
           moveBookingToAnotherRoom();
           break;
         case 4:
-          requestUrgentCleaning();
-          break;
-        case 5:
           displayRoomBoard();
           break;
-        case 6:
+        case 5:
           runRoomManagementMenu();
           break;
         default:
@@ -222,16 +275,19 @@ public class FrontDeskServiceMaintenance {
     }
 
     ui.displayMessage("");
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
-
-    Room room = data.findRoom(roomNo);
-    if (room == null) {
-      ui.displayError("There is no room " + roomNo + ".");
-      ui.pause();
-      return;
+    String roomNo;
+    Room room;
+    while (true) {
+      roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return;
+      }
+      room = data.findRoom(roomNo);
+      if (room != null) {
+        break;
+      }
+      ui.displayError("There is no room " + roomNo
+          + ". Enter another number, or 0 to go back.");
     }
 
     ui.displayRoom(room, data);
@@ -368,116 +424,84 @@ public class FrontDeskServiceMaintenance {
   // ==================================================================
 
   /**
-   * Records a booking made other than by walking in - online, by phone, or a
-   * corporate account.
+   * Turns a guest who has been called to the counter into a booking.
    *
-   * A booking made this way is always normal priority: there is no way to
-   * create an urgent one without a walk-in registration behind it, because
-   * urgency is granted to a person standing at the counter, not claimed over
-   * the telephone.
+   * A booking is only ever made from a walk-in registration. The IC or passport
+   * number is the only thing typed here: everything else - the name, the room
+   * type, the nights and the dates - is read back from what the guest already
+   * gave at registration, so the same stay cannot be recorded two different
+   * ways in the two modules. A guest who is not in the queue is sent to
+   * register first rather than being booked from scratch.
    */
   private void createBooking() {
     ui.startAction("CREATE A NEW BOOKING");
 
-    String icPassport = MessageUI.readIcPassport(MessageUI.scanner,
-        "Guest IC / Passport number");
-    if (MessageUI.isCancelled(icPassport)) {
-      ui.displayMessage("  Booking cancelled.");
+    ui.displayMessage("  A booking is made from a walk-in registration.");
+    ui.displayMessage("  The guest must have been called to the counter first.");
+    ui.displayMessage("");
+
+    // Everyone who has reached the counter and has no booking yet. Listing
+    // them beats asking for a document: the officer picks a number rather
+    // than copying an IC off a screen they have just left.
+    ListInterface<WalkInRegistration> atCounter = data.getRegistrationList().filter(
+        reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
+    atCounter.sort(java.util.Comparator.comparing(WalkInRegistration::getCalledAt,
+        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+
+    WalkInRegistration calledWalkIn = ui.chooseServedRegistration(atCounter, data);
+    if (calledWalkIn == null) {
       ui.pause();
       return;
     }
 
-    Guest guest = data.findGuestByIc(icPassport);
+    Guest guest = data.findGuest(calledWalkIn.getGuestId());
     if (guest == null) {
-      String name = MessageUI.readName(MessageUI.scanner, "Full name");
-      if (MessageUI.isCancelled(name)) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-      String contact = MessageUI.readPhone(MessageUI.scanner, "Contact number");
-      if (MessageUI.isCancelled(contact)) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-      String email = MessageUI.readOptionalEmail(MessageUI.scanner, "Email");
-      if (MessageUI.isCancelled(email)) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-
-      guest = service.findOrCreateGuest(icPassport, name, contact, email);
-      data.saveMasters();
-      ui.displaySuccess("New guest record " + guest.getGuestId() + " created.");
-    } else {
-      ui.displaySuccess("Guest found: " + guest.getFullName()
-          + " (" + guest.getGuestId() + ").");
-    }
-
-    String typeId = ui.inputRoomType(data.getRoomTypeList());
-    if (typeId == null) {
-      ui.displayMessage("  Booking cancelled.");
+      ui.displayError("That registration's guest record is missing.");
       ui.pause();
       return;
     }
-    RoomType type = data.findRoomType(typeId);
 
-    // A guest sent over from the walk-in queue already said how many nights
-    // they wanted when they registered. Those dates are worked out and offered
-    // here rather than asked for again, so the answer they gave at the door is
-    // the answer the booking is made with.
-    final String bookingGuestId = guest.getGuestId();
-    WalkInRegistration calledWalkIn = data.getRegistrationList().search(
-        reg -> bookingGuestId.equals(reg.getGuestId())
-            && WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
-
-    LocalDate checkIn;
-    LocalDate checkOut;
-
-    if (calledWalkIn != null) {
-      checkIn = LocalDate.now();
-      checkOut = checkIn.plusDays(calledWalkIn.getRequestedNights());
-
-      ui.displayMessage("");
-      ui.displaySuccess("This guest was sent over from the walk-in queue ("
-          + calledWalkIn.getRegId() + ").");
-      ui.displayWalkInStay(calledWalkIn, checkIn, checkOut);
-
-      if (!ui.confirm("Use these dates?")) {
-        checkIn = null;
-        checkOut = null;
-      }
-    } else {
-      checkIn = null;
-      checkOut = null;
+    RoomType type = data.findRoomType(calledWalkIn.getRequestedTypeId());
+    if (type == null) {
+      ui.displayError("The requested room type " + calledWalkIn.getRequestedTypeId()
+          + " no longer exists.");
+      ui.pause();
+      return;
     }
 
-    if (checkIn == null) {
-      checkIn = ui.inputDate("Check-in date");
-      if (checkIn == null) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-      if (checkIn.isBefore(LocalDate.now())) {
-        ui.displayError("The check-in date cannot be in the past.");
-        ui.pause();
-        return;
-      }
+    int nights = calledWalkIn.getRequestedNights();
 
-      checkOut = ui.inputDate("Check-out date");
-      if (checkOut == null) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-      if (!checkOut.isAfter(checkIn)) {
-        ui.displayError("The check-out date must be after the check-in date.");
-        ui.pause();
-        return;
-      }
+    // The registration is the only source of the dates. Nothing is re-asked
+    // here: the check-out follows from the nights the guest already gave.
+    LocalDate checkIn = calledWalkIn.getRequestedCheckInDate();
+    if (checkIn == null) {
+      ui.displayError("Registration " + calledWalkIn.getRegId()
+          + " has no check-in date on record.");
+      ui.displayMessage("  It predates the current registration form"
+          + " - re-register this guest.");
+      ui.pause();
+      return;
+    }
+    LocalDate checkOut = checkIn.plusDays(nights);
+
+    ui.displaySuccess("This guest was sent over from the walk-in queue.");
+
+    ui.displayMessage("");
+    ui.displayField("Guest", guest.getFullName() + " (" + guest.getGuestId() + ")");
+    ui.displayField("IC / Passport", guest.getIcPassportNo());
+    ui.displayField("Contact", guest.getContactNumber());
+    ui.displayField("Walk-in registration", calledWalkIn.getRegId());
+    ui.displayField("Room type", type.getTypeName() + " (" + type.getTypeId() + ")");
+    ui.displayField("Priority", calledWalkIn.getPriority());
+    if (calledWalkIn.isUrgent()) {
+      ui.displayField("Urgency reason", calledWalkIn.getUrgencyReason());
+    }
+    ui.displayCalculatedStay(checkIn, checkOut, nights);
+
+    if (!ui.confirm("Create the booking from these details?")) {
+      ui.displayMessage("  Booking cancelled - the guest is still IN_SERVICE.");
+      ui.pause();
+      return;
     }
 
     int guests = ui.inputGuestCount(type.getMaxOccupancy());
@@ -487,30 +511,344 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
-    String source = ui.inputBookingSource();
-    if (source == null) {
-      ui.displayMessage("  Booking cancelled.");
+    Booking booking = new Booking(
+        data.nextBookingId(),
+        guest.getGuestId(),
+        type.getTypeId(),
+        checkIn,
+        checkOut,
+        guests,
+        calledWalkIn.getPriority(),
+        Booking.SOURCE_WALK_IN,
+        calledWalkIn.getRegId(),
+        type.getBaseRatePerNight(),
+        LocalDateTime.now(),
+        staffId);
+
+    data.addBooking(booking);
+
+    // The walk-in is finished the moment it becomes a booking.
+    LocalDateTime now = LocalDateTime.now();
+    calledWalkIn.setStatus(WalkInRegistration.STATUS_BOOKED);
+    calledWalkIn.setBookingId(booking.getBookingId());
+    calledWalkIn.setBookedAt(now);
+    calledWalkIn.setServedBy(staffId);
+    calledWalkIn.setServedAt(now);
+
+    data.saveAll();
+
+    ui.displaySuccess("Booking " + booking.getBookingId()
+        + " created from registration " + calledWalkIn.getRegId() + ".");
+    ui.displayBooking(booking, data);
+
+    // A booking is not finished until the guest has a room and has paid for
+    // it. Both steps run here rather than being left to separate menu items,
+    // because a guest standing at the counter expects to leave with a room.
+    ui.displayMessage("");
+    ui.displaySectionHeading("Room");
+    if (assignRoomTo(booking)) {
+      settleBookingAtCounter(booking);
       ui.pause();
       return;
     }
 
-    Booking booking = new Booking(data.nextBookingId(), guest.getGuestId(), typeId,
-        checkIn, checkOut, guests, Booking.PRIORITY_NORMAL, source, null,
-        type.getBaseRatePerNight(), LocalDateTime.now(), staffId);
-    data.addBooking(booking);
-    data.saveFrontDesk();
+    // Nothing of the type they asked for can be made ready. Rather than
+    // leaving them with a booking that may never get a room, the party is
+    // offered whatever combination of free rooms would actually house them.
+    offerAlternativesOrCancel(booking, guest, guests);
+    ui.pause();
+  }
 
-    ui.displaySuccess("Booking " + booking.getBookingId()
-        + " created as PENDING - no room assigned yet.");
-    ui.displayBooking(booking, data);
+  /**
+   * Last resort when the requested room type cannot be met.
+   *
+   * The party is shown every arrangement of free rooms that would house them -
+   * three Standard Twins, or a Deluxe King and a Standard Twin - and takes one
+   * or cancels. Splitting a party creates one booking per room, all under the
+   * same guest and the same registration, because a booking holds a single
+   * room; keeping them separate means each room bills and checks out normally.
+   *
+   * @param booking the booking that could not be given a room
+   * @param guest whose party it is
+   * @param guests how many people are staying
+   */
+  private void offerAlternativesOrCancel(Booking booking, Guest guest, int guests) {
+    // Only rooms that are ready now. Cleaning work is raised and ordered at
+    // check-out, so a room still waiting on housekeeping is not on offer here
+    // - the guest is given what can actually be handed over today.
+    ListInterface<RoomArrangement> options = service.findRoomArrangements(
+        guests, booking.getCheckInDate(), booking.getCheckOutDate());
+
+    if (options.isEmpty()) {
+      ui.displayMessage("");
+      ui.displayError("No combination of ready rooms can house "
+          + guests + " guest(s) for those dates.");
+      cancelUnhousedBooking(booking, guest);
+      return;
+    }
 
     ui.displayMessage("");
-    if (ui.confirm("Assign a room now?")) {
-      assignRoomTo(booking);
-    } else {
-      ui.displayMessage("  The booking stays PENDING until a room is assigned.");
+    ui.displayMessage("  The room type asked for cannot be given, but the party");
+    ui.displayMessage("  can still be housed by splitting it across other rooms.");
+
+    RoomArrangement chosen = ui.chooseArrangement(options, guests, this::typeOfRoom);
+    if (chosen == null) {
+      cancelUnhousedBooking(booking, guest);
+      return;
     }
-    ui.pause();
+
+    bookArrangement(booking, guest, chosen);
+  }
+
+  /**
+   * Gives a party its chosen arrangement, one booking per room.
+   *
+   * The booking already created takes the first room; any further rooms get
+   * bookings of their own against the same guest and registration. Each is
+   * priced at its own room's rate, so a party in a suite and a twin pays for
+   * one of each rather than two of either.
+   */
+  private void bookArrangement(Booking booking, Guest guest, RoomArrangement chosen) {
+    ListInterface<Room> rooms = chosen.getRooms();
+    ListInterface<Booking> made = new ArrayList<>();
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      RoomType type = typeOfRoom(room);
+
+      Booking target;
+      if (i == 1) {
+        // Re-point the booking already made at the room it is actually getting.
+        booking.setTypeId(room.getTypeId());
+        booking.setRatePerNight(type.getBaseRatePerNight());
+        target = booking;
+      } else {
+        target = new Booking(data.nextBookingId(), guest.getGuestId(),
+            room.getTypeId(), booking.getCheckInDate(), booking.getCheckOutDate(),
+            1, booking.getPriority(), booking.getSource(), booking.getRegId(),
+            type.getBaseRatePerNight(), LocalDateTime.now(), staffId);
+        data.addBooking(target);
+      }
+
+      ServiceResult<Booking> assigned = service.assignRoom(target.getBookingId(),
+          room.getRoomNo(), staffId, RoomAssignment.REASON_INITIAL);
+      if (assigned.isFailure()) {
+        ui.displayError("Room " + room.getRoomNo() + ": " + assigned.getMessage());
+        continue;
+      }
+      made.add(target);
+    }
+
+    data.saveAll();
+
+    if (made.isEmpty()) {
+      ui.displayError("None of those rooms could be given after all.");
+      cancelUnhousedBooking(booking, guest);
+      return;
+    }
+
+    ui.displayMessage("");
+    ui.displaySuccess(made.getNumberOfEntries()
+        + " booking(s) created for " + guest.getFullName() + ".");
+    ui.displayMessage("  Rooms " + chosen.roomNumbers() + ", all under this guest.");
+
+    for (int i = 1; i <= made.getNumberOfEntries(); i++) {
+      Booking each = made.getEntry(i);
+      ui.displayMessage("");
+      ui.displaySectionHeading("Booking " + each.getBookingId()
+          + " - room " + each.getRoomNo());
+      ui.displayBooking(each, data);
+      settleBookingAtCounter(each);
+    }
+  }
+
+  /**
+   * Cancels a booking nothing could house, and says so to the guest.
+   *
+   * The room was never given, so there is nothing to release and nothing has
+   * been charged - the booking is simply closed and the guest thanked.
+   */
+  private void cancelUnhousedBooking(Booking booking, Guest guest) {
+    booking.setBookingStatus(Booking.STATUS_CANCELLED);
+
+    // The walk-in ends with the booking: they were served, not left waiting.
+    WalkInRegistration reg = (booking.getRegId() == null)
+        ? null : data.findRegistration(booking.getRegId());
+    if (reg != null) {
+      reg.setBookingId(null);
+      reg.setStatus(WalkInRegistration.STATUS_CANCELLED);
+    }
+
+    data.saveAll();
+
+    ui.displayBookingCancelled(guest.getFullName());
+    ui.displayMessage("");
+    ui.displayMessage("  Booking " + booking.getBookingId() + " has been cancelled.");
+  }
+
+  private RoomType typeOfRoom(Room room) {
+    return (room == null) ? null : data.findRoomType(room.getTypeId());
+  }
+
+  /**
+   * Takes what is owed on a booking that has just been given a room.
+   *
+   * The bill is raised the moment the room is assigned, so it can be collected
+   * here while the guest is still at the counter - which is what stops a room
+   * being held for a stay nobody has paid for.
+   *
+   * @param booking the booking now holding a room
+   */
+  private void settleBookingAtCounter(Booking booking) {
+    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+    if (invoice == null) {
+      ui.displayError("No invoice was raised for this booking.");
+      return;
+    }
+
+    ui.displayMessage("");
+    ui.displaySectionHeading("Payment");
+    ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
+
+    // The bill is settled here or the booking does not stand. The officer is
+    // asked for the amount rather than asked whether to take one, because a
+    // guest at the counter is paying - the only way out is to abandon the
+    // booking, which cancels it rather than leaving a room held for nothing.
+    double changeDue = collectPayment(invoice, "0 to abandon the booking");
+    if (changeDue == ABANDONED) {
+      abandonUnpaidBooking(booking);
+      return;
+    }
+
+    displayReceipt(booking, invoice, changeDue);
+  }
+
+  /** Returned by collectPayment when the officer gave up on the bill. */
+  private static final double ABANDONED = -1.0;
+
+  /**
+   * Takes the money for a bill in one go.
+   *
+   * The whole balance is settled in a single payment: anything short of it is
+   * refused and asked again, because a stay half paid for is not paid for, and
+   * a guest standing at the counter can hand over the rest there and then.
+   * Anything above the balance is change rather than revenue, so only what is
+   * owed reaches the invoice and the remainder goes back to the guest.
+   *
+   * @param invoice the bill to settle
+   * @param quitLabel what typing 0 does, as the prompt should word it
+   * @return the change to hand back, or ABANDONED if they gave up
+   */
+  private double collectPayment(Invoice invoice, String quitLabel) {
+    final double owed = invoice.getOutstandingBalance();
+
+    while (!invoice.isSettled()) {
+      // The method is settled first, because it decides what amounts may be
+      // taken: only cash can be over-tendered, since only cash has change to
+      // give back. A card or transfer moves an exact sum.
+      String method = ui.inputPaymentMethod();
+      if (method == null) {
+        return ABANDONED;
+      }
+      boolean isCash = Payment.CASH.equals(method);
+
+      double tendered = ui.inputAmount("Amount received", isCash
+          ? String.format("RM%.2f due, more is fine, %s", owed, quitLabel)
+          : String.format("RM%.2f exactly, %s", owed, quitLabel));
+      if (tendered == MessageUI.CANCELLED_AMOUNT) {
+        return ABANDONED;
+      }
+
+      // A part payment leaves a room held for a stay nobody has paid for, so
+      // it is refused outright rather than recorded and chased later.
+      if (tendered + 0.005 < owed) {
+        ui.displayError(String.format(
+            "RM%.2f is not enough - the full RM%.2f is due.", tendered, owed));
+        continue;
+      }
+
+      // Nothing hands change back on a card or a transfer: the guest is
+      // charged what the terminal is told, so the sum has to be exact.
+      if (!isCash && tendered > owed + 0.005) {
+        ui.displayError(String.format(
+            "A %s payment must be exactly RM%.2f - there is no change to give.",
+            method, owed));
+        ui.displayMessage("  Enter the exact amount, or pay by cash instead.");
+        continue;
+      }
+
+      String reference = null;
+      if (Payment.requiresReference(method)) {
+        reference = ui.inputPaymentReference();
+        if (reference == null) {
+          ui.displayMessage("  Payment cancelled - the bill is still open.");
+          continue;
+        }
+      }
+
+      ServiceResult<Payment> result = service.recordPayment(invoice.getInvoiceId(),
+          owed, method, reference, staffId);
+
+      if (result.isFailure()) {
+        ui.displayError(result.getMessage());
+        continue;
+      }
+
+      ui.displaySuccess(result.getMessage());
+
+      double change = tendered - owed;
+      if (change > 0.005) {
+        ui.displayMessage(String.format("  Tendered RM%.2f - change due RM%.2f.",
+            tendered, change));
+        return change;
+      }
+      return 0.0;
+    }
+
+    return 0.0;
+  }
+
+  /**
+   * Shows what was paid, then clears the screen once the officer has done with
+   * it - the receipt is the last thing on screen, and nothing follows it until
+   * they say so.
+   *
+   * @param booking the booking now paid for
+   * @param invoice its settled bill
+   * @param changeDue anything handed back to the guest
+   */
+  private void displayReceipt(Booking booking, Invoice invoice, double changeDue) {
+    Guest guest = data.findGuest(booking.getGuestId());
+
+    ui.displayReceipt(booking, invoice, service.paymentsFor(invoice.getInvoiceId()),
+        guest == null ? "-" : guest.getFullName(), changeDue);
+
+    ui.pause("Press ENTER to close the receipt");
+    ui.clearScreen();
+  }
+
+  /**
+   * Gives up a booking the guest would not pay for.
+   *
+   * The room was reserved the moment it was assigned, so it has to be handed
+   * back - leaving it held for an unpaid booking would keep it from the next
+   * guest for nothing.
+   */
+  private void abandonUnpaidBooking(Booking booking) {
+    releaseRoomAndReservation(booking);
+    booking.setBookingStatus(Booking.STATUS_CANCELLED);
+
+    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+    if (invoice != null) {
+      data.getInvoiceList().removeEntry(invoice);
+    }
+
+    data.saveAll();
+
+    ui.displayMessage("");
+    ui.displayError("Booking " + booking.getBookingId()
+        + " was not paid for and has been cancelled.");
+    ui.displayMessage("  Room " + booking.getRoomNo() + " is free again.");
   }
 
   /**
@@ -520,74 +858,271 @@ public class FrontDeskServiceMaintenance {
    * booking was made may since have been taken by somebody else.
    */
   private void amendBooking() {
-    ui.startAction("AMEND A BOOKING");
+    while (true) {
+      ui.startAction("EDIT A BOOKING");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
-    }
-    if (Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())
-        || Booking.STATUS_CANCELLED.equals(booking.getBookingStatus())) {
-      ui.displayError("A " + booking.getBookingStatus() + " booking cannot be amended.");
-      ui.pause();
-      return;
-    }
+      ListInterface<Booking> amendable = amendableBookings();
+      Booking booking = ui.chooseBookingToAmend(amendable, data);
+      if (booking == null) {
+        ui.pause();
+        return;
+      }
 
+      editBookingFields(booking);
+
+      if (!ui.confirmAnother("Edit another booking?")) {
+        return;
+      }
+    }
+  }
+
+  /**
+   * The bookings that may still be changed.
+   *
+   * A stay that has started cannot be amended: the guest is already in the
+   * room, so moving the dates under them would rewrite something that has
+   * happened. Only a booking arriving tomorrow or later is offered, and a
+   * cancelled or finished one never is.
+   *
+   * @return the amendable bookings, earliest arrival first
+   */
+  private ListInterface<Booking> amendableBookings() {
+    LocalDate tomorrow = LocalDate.now().plusDays(1);
+
+    ListInterface<Booking> amendable = data.getBookingList().filter(booking ->
+        !booking.getCheckInDate().isBefore(tomorrow)
+            && (Booking.STATUS_PENDING.equals(booking.getBookingStatus())
+                || Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())));
+
+    amendable.sort(java.util.Comparator.comparing(Booking::getCheckInDate));
+    return amendable;
+  }
+
+  /**
+   * Edits one booking, a field at a time, until the officer is done.
+   *
+   * Each change is shown against what it replaces and confirmed on its own,
+   * rather than the whole booking being retyped to alter one thing.
+   */
+  private void editBookingFields(Booking booking) {
+    while (true) {
+      ui.startAction("EDIT BOOKING " + booking.getBookingId());
+      ui.displayBooking(booking, data);
+
+      int choice = ui.getAmendFieldChoice(booking);
+      switch (choice) {
+        case 1:
+          amendCheckInDate(booking);
+          break;
+        case 2:
+          amendNights(booking);
+          break;
+        case 3:
+          amendGuestCount(booking);
+          break;
+        case 4:
+          amendRoomType(booking);
+          break;
+        default:
+          return;
+      }
+    }
+  }
+
+  private void amendCheckInDate(Booking booking) {
+    ui.startAction("CHANGE THE CHECK-IN DATE");
     ui.displayBooking(booking, data);
+    ui.displayMessage("");
 
     LocalDate checkIn = ui.inputDate("New check-in date");
     if (checkIn == null) {
-      ui.displayMessage("  Amendment cancelled.");
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+    if (checkIn.isBefore(LocalDate.now().plusDays(1))) {
+      ui.displayError("A booking can only be moved to tomorrow or later.");
       ui.pause();
       return;
     }
 
-    LocalDate checkOut = ui.inputDate("New check-out date");
-    if (checkOut == null) {
-      ui.displayMessage("  Amendment cancelled.");
-      ui.pause();
-      return;
-    }
-    if (!checkOut.isAfter(checkIn)) {
-      ui.displayError("The check-out date must be after the check-in date.");
+    // The stay keeps its length: moving the arrival moves the departure with
+    // it, so a guest who booked three nights still has three.
+    LocalDate checkOut = checkIn.plusDays(booking.getNumberOfNights());
+
+    ui.displayProposedChange("Stay",
+        booking.getCheckInDate() + " to " + booking.getCheckOutDate(),
+        checkIn + " to " + checkOut);
+
+    applyDateChange(booking, checkIn, checkOut);
+  }
+
+  private void amendNights(Booking booking) {
+    ui.startAction("CHANGE THE NUMBER OF NIGHTS");
+    ui.displayBooking(booking, data);
+    ui.displayMessage("");
+
+    int nights = ui.inputNights();
+    if (nights < 0) {
+      ui.displayMessage("  Nothing has been changed.");
       ui.pause();
       return;
     }
 
-    RoomType type = data.findRoomType(booking.getTypeId());
-    int guests = ui.inputGuestCount(type == null ? 6 : type.getMaxOccupancy());
-    if (guests < 0) {
-      ui.displayMessage("  Amendment cancelled.");
-      ui.pause();
-      return;
-    }
+    LocalDate checkOut = booking.getCheckInDate().plusDays(nights);
 
-    // A booking that already holds a room must not be moved onto dates
-    // somebody else has taken.
+    ui.displayProposedChange("Nights",
+        booking.getNumberOfNights() + " night(s), leaving " + booking.getCheckOutDate(),
+        nights + " night(s), leaving " + checkOut);
+
+    applyDateChange(booking, booking.getCheckInDate(), checkOut);
+  }
+
+  /**
+   * Moves a booking's dates once the officer has confirmed them.
+   *
+   * A booking already holding a room has to be checked against the other
+   * stays first: dates that were free when it was made may since have gone.
+   */
+  private void applyDateChange(Booking booking, LocalDate checkIn, LocalDate checkOut) {
     if (booking.getRoomNo() != null
         && service.hasDateClash(booking.getRoomNo(), checkIn, checkOut,
             booking.getBookingId())) {
+      ui.displayMessage("");
       ui.displayError("Room " + booking.getRoomNo()
           + " is already booked over those dates. Move the guest first.");
       ui.pause();
       return;
     }
 
+    ui.displayMessage("");
+    if (!ui.confirm("Apply this change?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
     booking.setCheckInDate(checkIn);
     booking.setCheckOutDate(checkOut);
-    booking.setNumberOfGuests(guests);
+    repriceBooking(booking);
 
-    // The bill follows the nights actually booked.
+    ui.displaySuccess("Booking " + booking.getBookingId() + " updated.");
+    ui.displayBooking(booking, data);
+    ui.pause("Press ENTER to accept the edit");
+  }
+
+  private void amendGuestCount(Booking booking) {
+    ui.startAction("CHANGE THE NUMBER OF GUESTS");
+    ui.displayBooking(booking, data);
+    ui.displayMessage("");
+
+    RoomType type = data.findRoomType(booking.getTypeId());
+    int maximum = (type == null) ? 6 : type.getMaxOccupancy();
+    ui.displayMessage("  " + (type == null ? booking.getTypeId() : type.getTypeName())
+        + " sleeps up to " + maximum + ".");
+
+    int guests = ui.inputGuestCount(maximum);
+    if (guests < 0) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    ui.displayProposedChange("Guests",
+        String.valueOf(booking.getNumberOfGuests()), String.valueOf(guests));
+
+    ui.displayMessage("");
+    if (!ui.confirm("Apply this change?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    booking.setNumberOfGuests(guests);
+    data.saveFrontDesk();
+
+    ui.displaySuccess("Booking " + booking.getBookingId() + " updated.");
+    ui.displayBooking(booking, data);
+    ui.pause("Press ENTER to accept the edit");
+  }
+
+  /**
+   * Moves a booking to a different room type.
+   *
+   * The room goes back if it no longer suits: a booking cannot keep a Standard
+   * Twin while claiming to be a Family Suite, so it returns to PENDING and is
+   * given a room of the new type from the Rooms menu.
+   */
+  private void amendRoomType(Booking booking) {
+    ui.startAction("CHANGE THE ROOM TYPE");
+    ui.displayBooking(booking, data);
+    ui.displayMessage("");
+
+    String typeId = ui.inputRoomType(data.getRoomTypeList());
+    if (typeId == null) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+    if (typeId.equals(booking.getTypeId())) {
+      ui.displayMessage("  That is already the booking's room type.");
+      ui.pause();
+      return;
+    }
+
+    RoomType wanted = data.findRoomType(typeId);
+    if (wanted.getMaxOccupancy() < booking.getNumberOfGuests()) {
+      ui.displayError(wanted.getTypeName() + " sleeps " + wanted.getMaxOccupancy()
+          + ", but this booking is for " + booking.getNumberOfGuests() + " guest(s).");
+      ui.displayMessage("  Change the number of guests first, or pick a larger type.");
+      ui.pause();
+      return;
+    }
+
+    RoomType current = data.findRoomType(booking.getTypeId());
+    ui.displayProposedChange("Room type",
+        (current == null ? booking.getTypeId() : current.getTypeName())
+            + String.format("  (RM%.2f/night)", booking.getRatePerNight()),
+        wanted.getTypeName()
+            + String.format("  (RM%.2f/night)", wanted.getBaseRatePerNight()));
+
+    if (booking.getRoomNo() != null) {
+      ui.displayMessage("");
+      ui.displayMessage("  Room " + booking.getRoomNo()
+          + " does not match the new type and will be given up.");
+      ui.displayMessage("  The booking returns to PENDING until a room is assigned.");
+    }
+
+    ui.displayMessage("");
+    if (!ui.confirm("Apply this change?")) {
+      ui.displayMessage("  Nothing has been changed.");
+      ui.pause();
+      return;
+    }
+
+    if (booking.getRoomNo() != null) {
+      releaseRoomAndReservation(booking);
+      booking.setRoomNo(null);
+      booking.setBookingStatus(Booking.STATUS_PENDING);
+    }
+
+    booking.setTypeId(typeId);
+    booking.setRatePerNight(wanted.getBaseRatePerNight());
+    repriceBooking(booking);
+
+    ui.displaySuccess("Booking " + booking.getBookingId() + " updated.");
+    ui.displayBooking(booking, data);
+    ui.pause("Press ENTER to accept the edit");
+  }
+
+  /** Keeps the bill in step with the nights and rate now booked. */
+  private void repriceBooking(Booking booking) {
     Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
     if (invoice != null) {
       invoice.setRoomCharge(booking.getRatePerNight() * booking.getNumberOfNights());
       invoice.setAmountPaid(service.sumPayments(invoice.getInvoiceId()));
     }
-
-    data.saveFrontDesk();
-    ui.displaySuccess("Booking " + booking.getBookingId() + " amended.");
-    ui.displayBooking(booking, data);
-    ui.pause();
+    data.saveAll();
   }
 
   /**
@@ -598,39 +1133,60 @@ public class FrontDeskServiceMaintenance {
    * ahead, because the room is dirty whether or not anyone is waiting.
    */
   private void cancelBooking() {
-    ui.startAction("CANCEL A BOOKING");
+    // Answering no returns to the listing rather than ending the action, so a
+    // booking picked by mistake costs one answer instead of the whole screen.
+    while (true) {
+      ui.startAction("CANCEL A BOOKING");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
+      ListInterface<Booking> cancellable = cancellableBookings();
+      Booking booking = ui.chooseBooking(cancellable, data,
+          "Number of the booking to cancel", new String[] {
+            "No booking can be cancelled.",
+            "A guest who has checked in must be checked out instead."
+          });
+
+      if (booking == null) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayBooking(booking, data);
+      ui.displayMessage("");
+
+      if (!ui.confirm("Are you sure you want to cancel booking "
+          + booking.getBookingId() + "?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      releaseRoomAndReservation(booking);
+      booking.setBookingStatus(Booking.STATUS_CANCELLED);
+      data.saveAll();
+
+      ui.displaySuccess("Booking " + booking.getBookingId() + " cancelled.");
+      if (booking.getRoomNo() != null) {
+        ui.displayMessage("  Room " + booking.getRoomNo() + " has been given up.");
+      }
+      ui.pause("Press ENTER to accept the cancellation");
     }
-    if (Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())) {
-      ui.displayError("This guest has already checked in. Check them out instead.");
-      ui.pause();
-      return;
-    }
-    if (Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())
-        || Booking.STATUS_CANCELLED.equals(booking.getBookingStatus())) {
-      ui.displayError("This booking is already " + booking.getBookingStatus() + ".");
-      ui.pause();
-      return;
-    }
+  }
 
-    ui.displayBooking(booking, data);
-    ui.displayMessage("");
+  /**
+   * The bookings that may still be cancelled.
+   *
+   * A guest already in the room is checked out rather than cancelled, and one
+   * that has finished or been cancelled already has nothing left to give up.
+   *
+   * @return the cancellable bookings, earliest arrival first
+   */
+  private ListInterface<Booking> cancellableBookings() {
+    ListInterface<Booking> cancellable = data.getBookingList().filter(booking ->
+        Booking.STATUS_PENDING.equals(booking.getBookingStatus())
+            || Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus()));
 
-    if (!ui.confirm("Cancel this booking?")) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
-
-    releaseRoomAndReservation(booking);
-    booking.setBookingStatus(Booking.STATUS_CANCELLED);
-    data.saveAll();
-
-    ui.displaySuccess("Booking " + booking.getBookingId() + " cancelled.");
-    ui.pause();
+    cancellable.sort(java.util.Comparator.comparing(Booking::getCheckInDate));
+    return cancellable;
   }
 
   /**
@@ -639,65 +1195,118 @@ public class FrontDeskServiceMaintenance {
    * data, cancellation preserves the audit trail instead.
    */
   private void deleteBooking() {
-    ui.startAction("DELETE AN UNASSIGNED BOOKING");
+    while (true) {
+      ui.startAction("DELETE AN UNASSIGNED BOOKING");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
-    }
-    if (!Booking.STATUS_PENDING.equals(booking.getBookingStatus())
-        || booking.getRoomNo() != null
-        || booking.getRegId() != null
-        || data.findInvoiceByBooking(booking.getBookingId()) != null) {
-      ui.displayError("Only an unassigned standalone pending booking can be deleted.");
-      ui.displayMessage("  Cancel this booking instead to keep its operational history.");
-      ui.pause();
-      return;
-    }
+      ListInterface<Booking> deletable = deletableBookings();
+      Booking booking = ui.chooseBooking(deletable, data,
+          "Number of the booking to delete", new String[] {
+            "No booking can be deleted.",
+            "Only a pending booking with no room, no invoice and no walk-in",
+            "behind it can be removed - cancel the others instead, so their",
+            "operational history is kept."
+          });
 
-    ui.displayBooking(booking, data);
-    if (!ui.confirm("Permanently delete this booking?")) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
+      if (booking == null) {
+        ui.pause();
+        return;
+      }
 
-    data.removeBooking(booking);
-    data.saveFrontDesk();
-    ui.displaySuccess("Booking " + booking.getBookingId() + " deleted.");
-    ui.pause();
+      ui.displayBooking(booking, data);
+      ui.displayMessage("");
+      ui.displayMessage("  Deleting removes the booking entirely. It cannot be undone.");
+
+      if (!ui.confirm("Are you sure you want to delete booking "
+          + booking.getBookingId() + "?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      data.removeBooking(booking);
+      data.saveFrontDesk();
+
+      ui.displaySuccess("Booking " + booking.getBookingId() + " deleted.");
+      ui.pause("Press ENTER to accept the deletion");
+    }
+  }
+
+  /**
+   * The bookings that may be removed outright rather than cancelled.
+   *
+   * Once a booking has taken a room, raised a bill or come from a walk-in, it
+   * has a history worth keeping, so only an untouched pending one qualifies.
+   *
+   * @return the deletable bookings, earliest arrival first
+   */
+  private ListInterface<Booking> deletableBookings() {
+    ListInterface<Booking> deletable = data.getBookingList().filter(booking ->
+        Booking.STATUS_PENDING.equals(booking.getBookingStatus())
+            && booking.getRoomNo() == null
+            && booking.getRegId() == null
+            && data.findInvoiceByBooking(booking.getBookingId()) == null);
+
+    deletable.sort(java.util.Comparator.comparing(Booking::getCheckInDate));
+    return deletable;
   }
 
   /** Records that a confirmed guest never arrived. */
   private void markNoShow() {
-    ui.startAction("MARK A BOOKING AS NO-SHOW");
+    while (true) {
+      ui.startAction("MARK A BOOKING AS NO-SHOW");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
+      ListInterface<Booking> expected = noShowCandidates();
+      Booking booking = ui.chooseBooking(expected, data,
+          "Number of the booking that never arrived", new String[] {
+            "No booking is waiting to be marked as a no-show.",
+            "Only a CONFIRMED booking - one holding a room whose guest has",
+            "not checked in - can be recorded as a no-show."
+          });
+
+      if (booking == null) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayBooking(booking, data);
+      ui.displayMessage("");
+      ui.displayMessage("  The room will be given up and the booking closed.");
+
+      if (!ui.confirm("Are you sure booking " + booking.getBookingId()
+          + " never arrived?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      String heldRoom = booking.getRoomNo();
+      releaseRoomAndReservation(booking);
+      booking.setBookingStatus(Booking.STATUS_NO_SHOW);
+      data.saveAll();
+
+      ui.displaySuccess("Booking " + booking.getBookingId() + " recorded as a no-show.");
+      if (heldRoom != null) {
+        ui.displayMessage("  Room " + heldRoom + " is free again.");
+      }
+      ui.pause("Press ENTER to accept the no-show");
     }
-    if (!Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())) {
-      ui.displayError("Only a CONFIRMED booking can be a no-show - this one is "
-          + booking.getBookingStatus() + ".");
-      ui.pause();
-      return;
-    }
+  }
 
-    ui.displayBooking(booking, data);
-    ui.displayMessage("");
+  /**
+   * The bookings whose guest could still fail to turn up.
+   *
+   * Only a CONFIRMED booking qualifies: one that is holding a room but whose
+   * guest has not checked in. A pending booking has no room to give up, and a
+   * checked-in guest plainly arrived.
+   *
+   * @return the candidates, earliest arrival first
+   */
+  private ListInterface<Booking> noShowCandidates() {
+    ListInterface<Booking> expected = data.getBookingList().filter(
+        booking -> Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus()));
 
-    if (!ui.confirm("Mark this booking as a no-show?")) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
-
-    releaseRoomAndReservation(booking);
-    booking.setBookingStatus(Booking.STATUS_NO_SHOW);
-    data.saveAll();
-
-    ui.displaySuccess("Booking " + booking.getBookingId() + " recorded as a no-show.");
-    ui.pause();
+    expected.sort(java.util.Comparator.comparing(Booking::getCheckInDate));
+    return expected;
   }
 
   /**
@@ -762,10 +1371,13 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
+    RoomType type = data.findRoomType(typeId);
+    String typeName = (type == null) ? typeId : type.getTypeName();
+
     ListInterface<Room> ready = service.findAvailableRooms(typeId, checkIn, checkOut);
     ui.displaySectionHeading("Ready to assign now");
     if (ready.isEmpty()) {
-      ui.displayMessage("  No " + typeId + " room is ready for those dates.");
+      ui.displayMessage("  No " + typeName + " room is ready for those dates.");
     } else {
       ui.displayRoomBoard(ready, data);
     }
@@ -777,7 +1389,45 @@ public class FrontDeskServiceMaintenance {
       ui.displayMessage("  Closest to ready is listed first.");
     }
 
+    // The rooms of this type that are simply spoken for. Shown so the officer
+    // can see the type is sold rather than merely dirty, and when each one
+    // frees up - without naming whose booking it is, which is not their
+    // business at this desk.
+    ListInterface<Room> taken = takenRoomsOfType(typeId, checkIn, checkOut);
+    if (!taken.isEmpty()) {
+      ui.displaySectionHeading("Already booked over these dates");
+      ui.displayTakenRooms(taken, data, checkIn, checkOut);
+    }
+
     ui.pause();
+  }
+
+  /**
+   * Rooms of a type that are unavailable because somebody already has them.
+   *
+   * Only a date clash counts here: a room that is merely dirty is listed under
+   * cleaning instead, and one out of service is not on offer at all.
+   *
+   * @param typeId the type being asked about
+   * @param checkIn the first night wanted
+   * @param checkOut the morning the guest would leave
+   * @return the rooms of that type already booked across those dates
+   */
+  private ListInterface<Room> takenRoomsOfType(String typeId, LocalDate checkIn,
+      LocalDate checkOut) {
+    ListInterface<Room> taken = new ArrayList<>();
+    ListInterface<Room> rooms = data.getRoomList();
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      if (!typeId.equals(room.getTypeId()) || room.isOutOfService()) {
+        continue;
+      }
+      if (service.hasDateClash(room.getRoomNo(), checkIn, checkOut, null)) {
+        taken.add(room);
+      }
+    }
+    return taken;
   }
 
   /**
@@ -811,7 +1461,12 @@ public class FrontDeskServiceMaintenance {
         return;
       }
 
-      assignRoomTo(pending.getEntry(position));
+      // Giving a room raises the bill, so the chance to settle it is offered
+      // here too - the same rule whichever screen the room came from.
+      Booking given = pending.getEntry(position);
+      if (assignRoomTo(given)) {
+        settleBookingAtCounter(given);
+      }
 
       if (!ui.confirmAnother("Give a room to another booking?")) {
         return;
@@ -822,58 +1477,48 @@ public class FrontDeskServiceMaintenance {
   /**
    * Finds and assigns a room for a booking.
    *
-   * When nothing is ready the officer is offered the cleaning route rather
-   * than simply being refused, which is what stops a guest being turned away
-   * over a room that is twenty minutes from ready.
+   * Only a room housekeeping has finished with is offered - the service checks
+   * both that it is free for the dates and that it is clean, so a room cannot
+   * be sold out from under a cleaner. When nothing is ready the officer is
+   * offered the cleaning route rather than simply being refused, which is what
+   * stops a guest being turned away over a room twenty minutes from ready.
+   *
+   * @param booking the booking to give a room to
+   * @return true if the booking now holds a room
    */
-  private void assignRoomTo(Booking booking) {
+  private boolean assignRoomTo(Booking booking) {
     ListInterface<Room> available = service.findAvailableRooms(
         booking.getTypeId(), booking.getCheckInDate(), booking.getCheckOutDate());
 
     if (!available.isEmpty()) {
+      ui.displayMessage("  These rooms are vacant for the dates and cleaned.");
       String roomNo = ui.chooseRoom(available);
       if (roomNo == null) {
         ui.displayMessage("  Assignment cancelled.");
-        return;
+        return false;
       }
 
       ServiceResult<Booking> assigned = service.assignRoom(booking.getBookingId(),
           roomNo, staffId, RoomAssignment.REASON_INITIAL);
 
-      if (assigned.isSuccess()) {
-        ui.displaySuccess(assigned.getMessage());
-        ui.displayBooking(booking, data);
-      } else {
+      if (assigned.isFailure()) {
         ui.displayError(assigned.getMessage());
+        return false;
       }
-      return;
+
+      ui.displaySuccess(assigned.getMessage());
+      ui.displayBooking(booking, data);
+      return true;
     }
 
-    ui.displayError("No " + booking.getTypeId() + " room is ready for those dates.");
-
-    ListInterface<Room> cleanable = service.findCleanableRooms(
-        booking.getTypeId(), booking.getCheckInDate(), booking.getCheckOutDate());
-
-    if (cleanable.isEmpty()) {
-      ui.displayMessage("  No room of that type can be made ready either.");
-      ui.displayMessage("  Offer a different room type, or cancel the booking.");
-      return;
-    }
-
-    ui.displaySectionHeading("Rooms that could be cleaned for this booking");
-    ui.displayRoomBoard(cleanable, data);
-
-    if (ui.confirm("Ask housekeeping to prepare one of these?")) {
-      ServiceResult<HousekeepingTask> expedited =
-          service.requestUrgentCleaning(booking.getBookingId(), staffId);
-
-      if (expedited.isSuccess()) {
-        ui.displaySuccess(expedited.getMessage());
-        ui.displayMessage("  The booking stays PENDING until the room is ready.");
-      } else {
-        ui.displayError(expedited.getMessage());
-      }
-    }
+    // Only a room housekeeping has finished with can be sold. The front desk
+    // no longer asks for a room to be cleaned out of turn: cleaning work is
+    // raised at check-out and ordered there, so what is dirty now is simply
+    // not on offer. A party that cannot be housed is offered other room types.
+    RoomType wanted = data.findRoomType(booking.getTypeId());
+    ui.displayError("No " + (wanted == null ? booking.getTypeId() : wanted.getTypeName())
+        + " room is ready for those dates.");
+    return false;
   }
 
   /** Moves a guest to a different room, keeping the history of both. */
@@ -932,39 +1577,6 @@ public class FrontDeskServiceMaintenance {
     ui.pause();
   }
 
-  /** Asks housekeeping to prepare a room out of turn for a waiting booking. */
-  private void requestUrgentCleaning() {
-    ui.startAction("REQUEST URGENT CLEANING");
-
-    ListInterface<Booking> pending = data.getBookingList().filter(
-        booking -> Booking.STATUS_PENDING.equals(booking.getBookingStatus()));
-
-    if (!ui.displayBookingList(pending, data, "No booking is waiting for a room.")) {
-      ui.pause();
-      return;
-    }
-
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
-    }
-
-    ServiceResult<HousekeepingTask> expedited =
-        service.requestUrgentCleaning(booking.getBookingId(), staffId);
-
-    if (expedited.isSuccess()) {
-      ui.displaySuccess(expedited.getMessage());
-      if (booking.isUrgent()) {
-        ui.displayMessage("  The booking is URGENT, so the task went to the urgent lane.");
-      } else {
-        ui.displayMessage("  The booking is NORMAL, so the task stays in the normal lane.");
-      }
-    } else {
-      ui.displayError(expedited.getMessage());
-    }
-    ui.pause();
-  }
-
   /** The whole room board - both statuses and whether each room is sellable. */
   private void displayRoomBoard() {
     ui.startAction("ROOM STATUS BOARD");
@@ -982,14 +1594,33 @@ public class FrontDeskServiceMaintenance {
 
     ListInterface<Booking> confirmed = data.getBookingList().filter(
         booking -> Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus()));
+    confirmed.sort(java.util.Comparator.comparing(Booking::getCheckInDate));
 
-    if (!ui.displayBookingList(confirmed, data, "No booking is waiting to check in.")) {
+    Booking booking = ui.chooseBooking(confirmed, data,
+        "Number of the booking checking in", new String[] {
+          "No booking is waiting to check in.",
+          "Only a CONFIRMED booking - one holding a room - can check in."
+        });
+    if (booking == null) {
       ui.pause();
       return;
     }
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
+    // A stay is paid for when it is booked, so by the time a guest arrives to
+    // check in there is nothing left to collect. An open bill here means the
+    // booking was made some other way; it is sent to Billing rather than
+    // taking money at this desk, which is not what this screen is for.
+    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+    if (invoice != null && !invoice.isSettled()) {
+      ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
+      ui.displayMessage("");
+      ui.displayError(String.format("RM%.2f is still outstanding on %s.",
+          invoice.getOutstandingBalance(), invoice.getInvoiceId()));
+      ui.displayMessage("  A stay is paid for when it is booked, so this one is"
+          + " unusual.");
+      ui.displayMessage("  Settle it at Billing > Record a payment, then check"
+          + " the guest in.");
+      ui.pause();
       return;
     }
 
@@ -1002,15 +1633,6 @@ public class FrontDeskServiceMaintenance {
 
     ui.displaySuccess(result.getMessage());
     ui.displayBooking(booking, data);
-
-    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-    if (invoice != null && !invoice.isSettled()) {
-      ui.displayMessage("");
-      if (ui.confirm(String.format("Take a payment now? RM%.2f is outstanding.",
-          invoice.getOutstandingBalance()))) {
-        takePaymentFor(invoice);
-      }
-    }
     ui.pause();
   }
 
@@ -1025,47 +1647,34 @@ public class FrontDeskServiceMaintenance {
 
     ListInterface<Booking> stayed = data.getBookingList().filter(
         booking -> Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus()));
+    stayed.sort(java.util.Comparator.comparing(Booking::getCheckOutDate));
 
-    if (!ui.displayBookingList(stayed, data, "No guest is currently checked in.")) {
-      ui.pause();
-      return;
-    }
-
-    Booking booking = promptForBooking();
+    Booking booking = ui.chooseBooking(stayed, data,
+        "Number of the booking checking out", new String[] {
+          "No guest is currently checked in.",
+          "Only a CHECKED_IN booking can check out."
+        });
     if (booking == null) {
-      return;
-    }
-
-    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-    if (invoice == null) {
-      ui.displayError("This booking has no invoice.");
       ui.pause();
       return;
     }
 
-    ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
-
-    // The bill has to be settled first: once the guest has gone there is
-    // nobody left to collect from.
-    if (!invoice.isSettled()) {
+    // Nothing is collected here. The stay was paid for when it was booked and
+    // a bill cannot be part paid, so a guest who is checked in has settled up
+    // already - check-out is only about handing the room back.
+    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
+    if (invoice != null && !invoice.isSettled()) {
+      ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
       ui.displayMessage("");
-      ui.displayError(String.format("RM%.2f is still outstanding.",
-          invoice.getOutstandingBalance()));
-
-      if (!ui.confirm("Settle the bill now?")) {
-        ui.displayMessage("  Check-out abandoned - the bill is still open.");
-        ui.pause();
-        return;
-      }
-
-      takePaymentFor(invoice);
-      if (!invoice.isSettled()) {
-        ui.displayError("The bill is still not settled. Check-out abandoned.");
-        ui.pause();
-        return;
-      }
+      ui.displayError(String.format("RM%.2f is still outstanding on %s.",
+          invoice.getOutstandingBalance(), invoice.getInvoiceId()));
+      ui.displayMessage("  Settle it at Billing > Record a payment, then check"
+          + " the guest out.");
+      ui.pause();
+      return;
     }
 
+    ui.displayBooking(booking, data);
     ui.displayMessage("");
     if (!ui.confirm("Check this guest out?")) {
       ui.displayMessage("  Nothing has been changed.");
@@ -1073,7 +1682,19 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
-    ServiceResult<Booking> result = service.checkOut(booking.getBookingId(), staffId);
+    // Check-out is the one place the front desk hands work to housekeeping,
+    // so it is where the urgency is set. The officer knows whether the room
+    // is wanted back today; nothing in the records does.
+    int urgency = ui.inputCleaningUrgency(booking.getRoomNo());
+    if (urgency < 0) {
+      ui.displayMessage("  Check-out cancelled - nothing has been changed.");
+      ui.pause();
+      return;
+    }
+    boolean urgent = (urgency == 1);
+
+    ServiceResult<Booking> result = service.checkOut(booking.getBookingId(),
+        staffId, urgent);
     if (result.isFailure()) {
       ui.displayError(result.getMessage());
       ui.pause();
@@ -1082,7 +1703,12 @@ public class FrontDeskServiceMaintenance {
 
     ui.displaySuccess(result.getMessage());
     ui.displayMessage("");
-    ui.displayMessage("  The room has been sent to housekeeping as DIRTY.");
+    ui.displayMessage("  Room " + booking.getRoomNo()
+        + " is now DIRTY and has gone to housekeeping.");
+    ui.displayMessage(urgent
+        ? "  It went to the URGENT lane and is cleaned before the rest."
+        : "  It joins the normal cleaning round.");
+    ui.displayMessage("  Housekeeping sees it under Cleaning Queue.");
 
     // Whatever this stay just did to the guest's loyalty account is looked
     // up fresh rather than assumed, so it is shown exactly as Loyalty & Rewards
@@ -1144,16 +1770,20 @@ public class FrontDeskServiceMaintenance {
     }
     ui.displayThinRule();
 
-    String invoiceId = ui.inputInvoiceId();
-    if (invoiceId == null) {
-      return;
-    }
+    Invoice invoice;
+    while (true) {
+      String invoiceId = ui.inputInvoiceId();
+      if (invoiceId == null) {
+        return;
+      }
 
-    Invoice invoice = data.findInvoice(invoiceId);
-    if (invoice == null) {
-      ui.displayError("No invoice with ID " + invoiceId + ".");
-      ui.pause();
-      return;
+      invoice = data.findInvoice(invoiceId);
+      if (invoice != null) {
+        break;
+      }
+
+      ui.displayError("No invoice with ID " + invoiceId
+          + ". Enter another number, or 0 to go back.");
     }
 
     takePaymentFor(invoice);
@@ -1170,35 +1800,18 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
-    double amount = ui.inputAmount(String.format("Amount received (RM%.2f outstanding)",
-        invoice.getOutstandingBalance()));
-    if (amount == MessageUI.CANCELLED_AMOUNT) {
-      ui.displayMessage("  Payment cancelled.");
+    // A bill is settled in one payment wherever it is taken, so this screen
+    // collects it the same way the counter does. Nothing anywhere can leave a
+    // stay part paid.
+    double changeDue = collectPayment(invoice, "0 to cancel");
+    if (changeDue == ABANDONED) {
+      ui.displayMessage("  Payment cancelled - the bill is still open.");
       return;
     }
 
-    String method = ui.inputPaymentMethod();
-    if (method == null) {
-      ui.displayMessage("  Payment cancelled.");
-      return;
-    }
-
-    String reference = null;
-    if (Payment.requiresReference(method)) {
-      reference = ui.inputPaymentReference();
-      if (reference == null) {
-        ui.displayMessage("  Payment cancelled.");
-        return;
-      }
-    }
-
-    ServiceResult<Payment> result = service.recordPayment(invoice.getInvoiceId(),
-        amount, method, reference, staffId);
-
-    if (result.isSuccess()) {
-      ui.displaySuccess(result.getMessage());
-    } else {
-      ui.displayError(result.getMessage());
+    Booking booking = data.findBooking(invoice.getBookingId());
+    if (booking != null) {
+      displayReceipt(booking, invoice, changeDue);
     }
   }
 
@@ -1262,21 +1875,26 @@ public class FrontDeskServiceMaintenance {
   /**
    * Finds a booking by ID, using the tree rather than scanning the list.
    *
-   * @return the booking, or null if it was not found or the user cancelled
+   * A number that names no booking is re-asked rather than ending the action,
+   * so a typo costs one line instead of sending the officer back to the menu.
+   *
+   * @return the booking, or null if the user typed 0 to quit
    */
   private Booking promptForBooking() {
-    String bookingId = ui.inputBookingId();
-    if (bookingId == null) {
-      return null;
-    }
+    while (true) {
+      String bookingId = ui.inputBookingId();
+      if (bookingId == null) {
+        return null;
+      }
 
-    Booking booking = data.findBooking(bookingId);
-    if (booking == null) {
-      ui.displayError("No booking with ID " + bookingId + ".");
-      ui.pause();
-      return null;
+      Booking booking = data.findBooking(bookingId);
+      if (booking != null) {
+        return booking;
+      }
+
+      ui.displayError("No booking with ID " + bookingId
+          + ". Enter another number, or 0 to go back.");
     }
-    return booking;
   }
 
   private void searchByBookingId() {
@@ -1378,19 +1996,22 @@ public class FrontDeskServiceMaintenance {
   private void searchByRoom() {
     ui.startAction("SEARCH BY ROOM NUMBER");
 
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
+    String roomNo;
+    while (true) {
+      roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return;
+      }
+      if (data.findRoom(roomNo) != null) {
+        break;
+      }
+      ui.displayError("Room " + roomNo
+          + " does not exist. Enter another number, or 0 to go back.");
     }
 
-    if (data.findRoom(roomNo) == null) {
-      ui.displayError("Room " + roomNo + " does not exist.");
-      ui.pause();
-      return;
-    }
-
+    final String searchRoomNo = roomNo;
     ListInterface<Booking> matches = data.getBookingList().filter(
-        booking -> roomNo.equals(booking.getRoomNo()));
+        booking -> searchRoomNo.equals(booking.getRoomNo()));
 
     ui.displayBookingList(matches, data, "Room " + roomNo + " has never been booked.");
     ui.pause();

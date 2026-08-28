@@ -2,6 +2,7 @@ package entity;
 
 import java.io.Serializable;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
@@ -57,6 +58,13 @@ public class WalkInRegistration implements Serializable {
   private String urgencyReason;
   private String requestedTypeId;
   private int requestedNights;
+
+  /**
+   * The arrival date the guest gave at the desk. The departure date is never
+   * stored alongside it - it is always derived from this date plus the nights,
+   * so the two can never drift apart if either is later amended.
+   */
+  private LocalDate requestedCheckInDate;
   private String status;
   private LocalDateTime calledAt;
   private LocalDateTime bookedAt;
@@ -68,6 +76,13 @@ public class WalkInRegistration implements Serializable {
 
   public WalkInRegistration(String regId, String guestId, LocalDateTime arrivalTime,
       String priority, String urgencyReason, String requestedTypeId, int requestedNights) {
+    this(regId, guestId, arrivalTime, priority, urgencyReason, requestedTypeId,
+        requestedNights, arrivalTime == null ? null : arrivalTime.toLocalDate());
+  }
+
+  public WalkInRegistration(String regId, String guestId, LocalDateTime arrivalTime,
+      String priority, String urgencyReason, String requestedTypeId, int requestedNights,
+      LocalDate requestedCheckInDate) {
     this.regId = regId;
     this.guestId = guestId;
     this.arrivalTime = arrivalTime;
@@ -75,6 +90,7 @@ public class WalkInRegistration implements Serializable {
     this.urgencyReason = urgencyReason;
     this.requestedTypeId = requestedTypeId;
     this.requestedNights = requestedNights;
+    this.requestedCheckInDate = requestedCheckInDate;
     this.status = STATUS_WAITING;
     this.queuedAt = arrivalTime;
   }
@@ -133,6 +149,24 @@ public class WalkInRegistration implements Serializable {
 
   public void setRequestedNights(int requestedNights) {
     this.requestedNights = requestedNights;
+  }
+
+  public LocalDate getRequestedCheckInDate() {
+    return requestedCheckInDate;
+  }
+
+  public void setRequestedCheckInDate(LocalDate requestedCheckInDate) {
+    this.requestedCheckInDate = requestedCheckInDate;
+  }
+
+  /**
+   * The departure date the requested stay works out to.
+   *
+   * @return check-in plus the nights requested, or null if no date was given
+   */
+  public LocalDate getRequestedCheckOutDate() {
+    return (requestedCheckInDate == null)
+        ? null : requestedCheckInDate.plusDays(requestedNights);
   }
 
   public String getStatus() {

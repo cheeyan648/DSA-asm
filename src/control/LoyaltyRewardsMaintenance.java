@@ -219,22 +219,28 @@ public class LoyaltyRewardsMaintenance {
       return;
     }
 
+    // The number in the first column is what gets typed, so nobody has to
+    // know a guest ID before they can enrol somebody.
     ui.displaySectionHeading("Guests who are not yet members");
-    ui.displayTableHeading(String.format("  %-7s %-28s %-16s %s",
-        "GUEST", "NAME", "IC / PASSPORT", "CONTACT"));
+    ui.displayTableHeading(String.format("  %-5s %-7s %-26s %-16s %s",
+        "NO", "GUEST", "NAME", "IC / PASSPORT", "CONTACT"));
 
     for (int i = 1; i <= notMembers.getNumberOfEntries(); i++) {
       Guest guest = notMembers.getEntry(i);
-      System.out.printf("  %-7s %-28s %-16s %s%n",
-          guest.getGuestId(), guest.getFullName(),
+      System.out.printf("  [%d]   %-7s %-26s %-16s %s%n",
+          i, guest.getGuestId(), guest.getFullName(),
           guest.getIcPassportNo(), guest.getContactNumber());
     }
     ui.displayThinRule();
+    System.out.printf("  %d guest(s) not yet enrolled.%n",
+        notMembers.getNumberOfEntries());
 
-    String guestId = ui.inputGuestId();
-    if (guestId == null) {
+    int position = ui.inputListPosition(notMembers.getNumberOfEntries(),
+        "Number of the guest to enrol");
+    if (position < 0) {
       return;
     }
+    String guestId = notMembers.getEntry(position).getGuestId();
 
     ServiceResult<Member> result = service.enrolMember(guestId);
     if (result.isFailure()) {
@@ -389,8 +395,8 @@ public class LoyaltyRewardsMaintenance {
     }
 
     ui.displaySectionHeading("Completed stays");
-    ui.displayTableHeading(String.format("  %-8s %-24s %-8s %10s  %s",
-        "BOOKING", "GUEST", "MEMBER", "BILL", "POINTS AWARDED?"));
+    ui.displayTableHeading(String.format("  %-5s %-8s %-22s %-8s %10s  %s",
+        "NO", "BOOKING", "GUEST", "MEMBER", "BILL", "POINTS AWARDED?"));
 
     for (int i = 1; i <= settled.getNumberOfEntries(); i++) {
       Booking booking = settled.getEntry(i);
@@ -402,19 +408,22 @@ public class LoyaltyRewardsMaintenance {
           txn -> booking.getBookingId().equals(txn.getBookingId())
               && PointTransaction.EARN.equals(txn.getTxnType()));
 
-      System.out.printf("  %-8s %-24s %-8s %10.2f  %s%n",
-          booking.getBookingId(),
+      System.out.printf("  [%d]   %-8s %-22s %-8s %10.2f  %s%n",
+          i, booking.getBookingId(),
           guest == null ? "-" : guest.getFullName(),
           member == null ? "not a member" : member.getMemberId(),
           invoice == null ? 0.0 : invoice.getTotalAmount(),
           awarded == null ? "no" : "yes (" + awarded.getPoints() + ")");
     }
     ui.displayThinRule();
+    System.out.printf("  %d completed stay(s).%n", settled.getNumberOfEntries());
 
-    String bookingId = ui.inputBookingId();
-    if (bookingId == null) {
+    int position = ui.inputListPosition(settled.getNumberOfEntries(),
+        "Number of the stay to award points for");
+    if (position < 0) {
       return;
     }
+    String bookingId = settled.getEntry(position).getBookingId();
 
     ServiceResult<PointTransaction> result = service.awardPointsForStay(bookingId);
     if (result.isFailure()) {
@@ -667,24 +676,43 @@ public class LoyaltyRewardsMaintenance {
     ui.pause();
   }
 
+  /**
+   * Asks for a reward ID and finds it, re-asking until one names a reward.
+   *
+   * @return the reward, or null if the user typed 0 to quit
+   */
+  /**
+   * Asks which reward to act on, showing the catalogue first.
+   *
+   * @return the chosen reward, or null if the officer went back
+   */
+  private Reward promptForReward() {
+    return promptForReward("Number of the reward");
+  }
+
+  /**
+   * Asks which reward to act on, under wording that fits the action.
+   *
+   * @param prompt what the number is being asked for
+   * @return the chosen reward, or null if the officer went back
+   */
+  private Reward promptForReward(String prompt) {
+    return ui.chooseReward(data.getRewardList(), prompt,
+        "The reward catalogue is empty.");
+  }
+
   /** Prompts for a reward ID and removes it from the catalogue. */
   private void deleteRewardMenu() {
     ui.startAction("DELETE A REWARD");
     ui.displayRewardCatalogue(data.getRewardList(), null);
 
-    String rewardId = ui.inputRewardId();
-    if (rewardId == null) {
+    Reward reward = promptForReward();
+    if (reward == null) {
       ui.displayMessage("  Delete reward cancelled.");
       ui.pause();
       return;
     }
-
-    Reward reward = data.findReward(rewardId);
-    if (reward == null) {
-      ui.displayError("Reward " + rewardId + " was not found.");
-      ui.pause();
-      return;
-    }
+    String rewardId = reward.getRewardId();
 
     if (hasPendingRedemptionFor(rewardId)) {
       ui.displayError("Reward " + rewardId + " cannot be deleted while a "
@@ -715,16 +743,9 @@ public class LoyaltyRewardsMaintenance {
     ui.startAction("RESTOCK A REWARD");
     ui.displayRewardCatalogue(data.getRewardList(), null);
 
-    String rewardId = ui.inputRewardId();
-    if (rewardId == null) {
-      ui.displayMessage("  Restock cancelled.");
-      ui.pause();
-      return;
-    }
-
-    Reward reward = data.findReward(rewardId);
+    Reward reward = promptForReward();
     if (reward == null) {
-      ui.displayError("Reward " + rewardId + " was not found.");
+      ui.displayMessage("  Restock cancelled.");
       ui.pause();
       return;
     }
@@ -741,8 +762,8 @@ public class LoyaltyRewardsMaintenance {
       return;
     }
 
-    if (restockReward(rewardId, amount)) {
-      ui.displaySuccess("Restocked " + rewardId + " - " + reward.getRewardName()
+    if (restockReward(reward.getRewardId(), amount)) {
+      ui.displaySuccess("Restocked " + reward.getRewardId() + " - " + reward.getRewardName()
           + " by " + amount + ". New quantity: " + reward.getStockQuantity() + ".");
     } else {
       ui.displayError("Restock failed.");
@@ -1293,20 +1314,34 @@ public class LoyaltyRewardsMaintenance {
   // HELPERS
   // ==================================================================
 
-  /** Asks for a member ID and finds them, reporting a bad ID. */
+  /**
+   * Asks for a member ID and finds them.
+   *
+   * An ID that names no member is re-asked rather than ending the action, so a
+   * typo costs one line instead of sending the user back to the menu.
+   *
+   * @return the member, or null if the user typed 0 to quit
+   */
+  /**
+   * Asks which member to act on, showing them all first.
+   *
+   * Nobody should have to remember a member ID to use this module, so the
+   * list is put on screen and a row number is what gets typed.
+   */
   private Member promptForMember() {
-    String memberId = ui.inputMemberId();
-    if (memberId == null) {
-      return null;
-    }
+    return promptForMember("Number of the member");
+  }
 
-    Member member = data.findMember(memberId);
-    if (member == null) {
-      ui.displayError("No member with ID " + memberId + ".");
-      ui.pause();
-      return null;
-    }
-    return member;
+  /**
+   * Asks which member to act on, under wording that fits the action.
+   *
+   * @param prompt what the number is being asked for
+   * @return the chosen member, or null if the officer went back
+   */
+  private Member promptForMember(String prompt) {
+    ListInterface<Member> members = copyOf(data.getMemberList());
+    members.sort(java.util.Comparator.comparing(Member::getMemberId));
+    return ui.chooseMember(members, data, prompt, "There are no members yet.");
   }
 
   private ListInterface<Member> copyOf(ListInterface<Member> source) {

@@ -103,11 +103,14 @@ public class SystemTest {
 
     // --- Being served ---------------------------------------------
     // Everyone ahead of them is dealt with first, which is the queue working.
+    // Only one guest holds the counter at a time, so each is cleared before
+    // the next is called - otherwise the unfinished one keeps their place.
     while (!reg.equals(data.getWaitingList().peekNext())) {
       ServiceResult<WalkInRegistration> other = service.serveNextGuest(FRONT_DESK);
       if (other.isFailure()) {
         break;
       }
+      other.getValue().setStatus(WalkInRegistration.STATUS_CANCELLED);
     }
 
     ServiceResult<WalkInRegistration> called = service.serveNextGuest(FRONT_DESK);
@@ -131,7 +134,7 @@ public class SystemTest {
 
     // --- Getting a room -------------------------------------------
     // Make sure exactly one RT03 room is ready, so the outcome is predictable.
-    Room target = data.findRoom("1005");
+    Room target = data.findRoom("3001");
     target.setOccupancyStatus(Room.VACANT);
     target.setHousekeepingStatus(Room.READY_FOR_CHECK_IN);
     target.setOutOfService(false);
@@ -141,14 +144,14 @@ public class SystemTest {
         !available.isEmpty());
 
     ServiceResult<Booking> assigned = service.assignRoom(booking.getBookingId(),
-        "1005", FRONT_DESK, RoomAssignment.REASON_INITIAL);
+        "3001", FRONT_DESK, RoomAssignment.REASON_INITIAL);
     runner.check("the room can be assigned", assigned.isSuccess());
     runner.checkEquals("the booking is confirmed", Booking.STATUS_CONFIRMED,
         booking.getBookingStatus());
     runner.checkEquals("the room is held", Room.RESERVED,
         target.getOccupancyStatus());
     runner.check("and nobody else can have it",
-        !service.isRoomAvailable("1005", from, to, null));
+        !service.isRoomAvailable("3001", from, to, null));
 
     Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
     runner.check("a bill is raised", invoice != null);
@@ -156,33 +159,38 @@ public class SystemTest {
         booking.getRatePerNight() * 2, invoice.getRoomCharge());
     runner.checkEquals("and it is unpaid", Invoice.UNPAID, invoice.getPaymentStatus());
 
-    // --- Checking in ----------------------------------------------
-    ServiceResult<Booking> checkedIn = service.checkIn(booking.getBookingId());
-    runner.check("the guest can check in", checkedIn.isSuccess());
-    runner.checkEquals("the booking is checked in", Booking.STATUS_CHECKED_IN,
-        booking.getBookingStatus());
-    runner.checkEquals("and the room is occupied", Room.OCCUPIED,
-        target.getOccupancyStatus());
-
     // --- Paying ---------------------------------------------------
-    double half = invoice.getOutstandingBalance() / 2;
-    service.recordPayment(invoice.getInvoiceId(), half, Payment.CARD,
-        "APPR-TEST01", FRONT_DESK);
-    runner.checkEquals("a deposit leaves it partly paid", Invoice.PARTIAL,
-        invoice.getPaymentStatus());
+    // The stay is paid for at the counter, before the key is handed over.
+    runner.check("check-in is refused while the bill is unpaid",
+        service.checkIn(booking.getBookingId()).isFailure());
 
-    // Leaving with a bill outstanding is refused.
-    runner.check("check-out is refused while money is owed",
-        service.checkOut(booking.getBookingId(), FRONT_DESK).isFailure());
+    // A deposit is not a payment: the whole stay is settled in one go, so
+    // half the balance is turned away and the bill is left as it was.
+    double half = invoice.getOutstandingBalance() / 2;
+    runner.check("a half payment is refused",
+        service.recordPayment(invoice.getInvoiceId(), half, Payment.CARD,
+            "APPR-TEST01", FRONT_DESK).isFailure());
+    runner.checkEquals("the bill is still unpaid", Invoice.UNPAID,
+        invoice.getPaymentStatus());
+    runner.check("and an unpaid bill still refuses check-in",
+        service.checkIn(booking.getBookingId()).isFailure());
 
     service.recordPayment(invoice.getInvoiceId(), invoice.getOutstandingBalance(),
         Payment.CASH, null, FRONT_DESK);
     runner.checkEquals("settling it makes it paid", Invoice.PAID,
         invoice.getPaymentStatus());
-    runner.checkEquals("two payments are recorded", 2,
+    runner.checkEquals("one payment settles the whole bill", 1,
         service.paymentsFor(invoice.getInvoiceId()).getNumberOfEntries());
-    runner.checkAmount("and they add up to the bill", invoice.getTotalAmount(),
+    runner.checkAmount("and it adds up to the bill", invoice.getTotalAmount(),
         service.sumPayments(invoice.getInvoiceId()));
+
+    // --- Checking in ----------------------------------------------
+    ServiceResult<Booking> checkedIn = service.checkIn(booking.getBookingId());
+    runner.check("the guest can check in once it is settled", checkedIn.isSuccess());
+    runner.checkEquals("the booking is checked in", Booking.STATUS_CHECKED_IN,
+        booking.getBookingStatus());
+    runner.checkEquals("and the room is occupied", Room.OCCUPIED,
+        target.getOccupancyStatus());
 
     // --- Leaving --------------------------------------------------
     int tasksBefore = data.getTaskList().getNumberOfEntries();
@@ -199,10 +207,10 @@ public class SystemTest {
     runner.checkEquals("a cleaning task was raised without being asked for",
         tasksBefore + 1, data.getTaskList().getNumberOfEntries());
     runner.check("the room cannot be sold in the meantime",
-        !service.isRoomAvailable("1005", to, to.plusDays(2), null));
+        !service.isRoomAvailable("3001", to, to.plusDays(2), null));
 
     // --- Cleaning it for the next guest ---------------------------
-    HousekeepingTask task = data.findOpenTaskForRoom("1005");
+    HousekeepingTask task = data.findOpenTaskForRoom("3001");
     runner.check("the cleaning task exists", task != null);
     runner.check("and is waiting in the queue",
         data.getCleaningQueue().toServiceOrder().contains(task));
@@ -220,7 +228,7 @@ public class SystemTest {
 
     // The loop closes: the room is back where the journey started.
     runner.check("and it is sellable to the next guest",
-        service.isRoomAvailable("1005", to, to.plusDays(2), null));
+        service.isRoomAvailable("3001", to, to.plusDays(2), null));
   }
 
   /**
@@ -292,26 +300,15 @@ public class SystemTest {
     runner.check("no RT01 room is ready",
         service.findAvailableRooms("RT01", from, to).isEmpty());
 
-    // Rather than turning them away, a room is prepared for them.
-    ServiceResult<HousekeepingTask> expedited =
-        service.requestUrgentCleaning(booking.getBookingId(), FRONT_DESK);
-    runner.check("housekeeping is asked to prepare one", expedited.isSuccess());
+    // The front desk can no longer ask for a room to be cleaned out of turn:
+    // a dirty room is simply not sellable, and the booking waits PENDING.
+    runner.checkEquals("the urgent booking waits as PENDING",
+        Booking.STATUS_PENDING, booking.getBookingStatus());
 
-    HousekeepingTask task = expedited.getValue();
-    runner.checkEquals("the task goes into the urgent cleaning lane",
-        HousekeepingTask.PRIORITY_URGENT, task.getPriority());
-    runner.checkEquals("and knows which booking is waiting on it",
-        booking.getBookingId(), task.getReservedForBookingId());
-    runner.checkEquals("the booking waits as PENDING", Booking.STATUS_PENDING,
-        booking.getBookingStatus());
-
-    // The urgent task is taken before any normal one, however long they have
-    // been queued. Other seeded urgent jobs may already be waiting.
-    HousekeepingTask nextToClean = data.getCleaningQueue().peekNext();
-    runner.check("the next room a housekeeper will take is urgent",
-        nextToClean != null && nextToClean.isUrgent());
-    runner.check("the prepared task is waiting in the urgent lane",
-        data.getCleaningQueue().toServiceOrder().contains(task) && task.isUrgent());
+    // Housekeeping works its own round. Once a room comes through to ready,
+    // the waiting guest can have it.
+    HousekeepingTask task = data.findOpenTaskForRoom("1001");
+    runner.check("the dirty room has a cleaning task", task != null);
 
     if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(task.getStatus())) {
       service.updateTaskStatus(task.getTaskId(),
@@ -331,10 +328,6 @@ public class SystemTest {
     runner.check("and the waiting guest gets it", assigned.isSuccess());
     runner.checkEquals("their booking is confirmed at last",
         Booking.STATUS_CONFIRMED, booking.getBookingStatus());
-
-    // Nobody is waiting on it any more, so it should be back to normal.
-    runner.checkEquals("the reservation on the task is cleared", null,
-        task.getReservedForBookingId());
   }
 
   /** A room must go round the loop and come back sellable. */
@@ -356,17 +349,19 @@ public class SystemTest {
     Guest first = service.findOrCreateGuest("900101-14-1111", "First Guest",
         "012-1111111", "");
     Booking firstBooking = new Booking(data.nextBookingId(), first.getGuestId(),
-        "RT04", firstFrom, firstTo, 2, Booking.PRIORITY_NORMAL,
+        "RT02", firstFrom, firstTo, 2, Booking.PRIORITY_NORMAL,
         Booking.SOURCE_ONLINE, null, 420.00, LocalDateTime.now(), FRONT_DESK);
     data.addBooking(firstBooking);
 
     service.assignRoom(firstBooking.getBookingId(), "2003", FRONT_DESK,
         RoomAssignment.REASON_INITIAL);
-    service.checkIn(firstBooking.getBookingId());
 
+    // Paid at the counter before the key is handed over.
     Invoice firstInvoice = data.findInvoiceByBooking(firstBooking.getBookingId());
     service.recordPayment(firstInvoice.getInvoiceId(),
         firstInvoice.getOutstandingBalance(), Payment.CASH, null, FRONT_DESK);
+
+    service.checkIn(firstBooking.getBookingId());
     service.checkOut(firstBooking.getBookingId(), FRONT_DESK);
 
     runner.checkEquals("after the first guest the room is dirty", Room.DIRTY,
@@ -379,7 +374,7 @@ public class SystemTest {
     Guest second = service.findOrCreateGuest("910202-14-2222", "Second Guest",
         "012-2222222", "");
     Booking secondBooking = new Booking(data.nextBookingId(), second.getGuestId(),
-        "RT04", secondFrom, secondTo, 2, Booking.PRIORITY_NORMAL,
+        "RT02", secondFrom, secondTo, 2, Booking.PRIORITY_NORMAL,
         Booking.SOURCE_PHONE, null, 420.00, LocalDateTime.now(), FRONT_DESK);
     data.addBooking(secondBooking);
 
@@ -446,18 +441,19 @@ public class SystemTest {
     LocalDate to = from.plusDays(2);
 
     Booking booking = new Booking(data.nextBookingId(), guest.getGuestId(),
-        "RT05", from, to, 2, Booking.PRIORITY_NORMAL, Booking.SOURCE_ONLINE,
+        "RT03", from, to, 2, Booking.PRIORITY_NORMAL, Booking.SOURCE_ONLINE,
         null, 780.00, LocalDateTime.now(), FRONT_DESK);
     data.addBooking(booking);
 
     service.assignRoom(booking.getBookingId(), "3001", FRONT_DESK,
         RoomAssignment.REASON_INITIAL);
-    service.checkIn(booking.getBookingId());
 
+    // Paid at the counter before the key is handed over.
     Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
     service.recordPayment(invoice.getInvoiceId(), invoice.getOutstandingBalance(),
         Payment.BANK_TRANSFER, "MBB-TEST123", FRONT_DESK);
 
+    service.checkIn(booking.getBookingId());
     service.checkOut(booking.getBookingId(), FRONT_DESK);
 
     runner.check("the stay earned points", member.getPointsBalance() > 0);

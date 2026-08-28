@@ -219,6 +219,17 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
+    LocalDate checkIn = ui.inputCheckInDate();
+    if (checkIn == null) {
+      ui.displayMessage("  Registration cancelled.");
+      ui.pause();
+      return;
+    }
+
+    // The departure date is never asked for - it follows from the nights, and
+    // is shown here so the officer confirms the stay the guest actually gets.
+    ui.displayCalculatedStay(checkIn, nights);
+
     String reason = null;
     if (urgent) {
       reason = ui.inputUrgencyReason();
@@ -232,7 +243,7 @@ public class WalkInRegistrationMaintenance {
     WalkInRegistration reg = new WalkInRegistration(data.nextRegistrationId(),
         guest.getGuestId(), LocalDateTime.now(),
         urgent ? WalkInRegistration.PRIORITY_URGENT : WalkInRegistration.PRIORITY_NORMAL,
-        reason, typeId, nights);
+        reason, typeId, nights, checkIn);
 
     // One registration, three ADTs: stored in the List, queued in the lane
     // its priority names, and pushed onto the Stack in case it is undone.
@@ -246,7 +257,7 @@ public class WalkInRegistrationMaintenance {
         : "Registered. The guest joins the back of the normal queue.");
 
     RoomType type = data.findRoomType(typeId);
-    ui.displayRegistration(reg, guest.getFullName(),
+    ui.displayRegistration(reg, guest,
         type == null ? typeId : type.getTypeName());
 
     int ahead = countAhead(reg);
@@ -294,7 +305,7 @@ public class WalkInRegistrationMaintenance {
     RoomType type = data.findRoomType(last.getRequestedTypeId());
 
     ui.displayMessage("  This registration will be removed:");
-    ui.displayRegistration(last, guest == null ? "-" : guest.getFullName(),
+    ui.displayRegistration(last, guest,
         type == null ? last.getRequestedTypeId() : type.getTypeName());
     ui.displayMessage("");
 
@@ -322,6 +333,27 @@ public class WalkInRegistrationMaintenance {
   private void serveNextGuest() {
     ui.startAction("SERVE NEXT GUEST");
 
+    // A guest called but not yet booked still holds the counter. Showing who
+    // it is - rather than only refusing - tells the officer what to go and
+    // finish, since the booking is made on the Front Desk side.
+    WalkInRegistration atCounter = service.findGuestAtCounter();
+    if (atCounter != null) {
+      Guest waiting = data.findGuest(atCounter.getGuestId());
+      RoomType wanted = data.findRoomType(atCounter.getRequestedTypeId());
+
+      ui.displayError("Somebody is already at the counter.");
+      ui.displayMessage("  Their booking has not been made yet, so they keep"
+          + " their place.");
+      ui.displayRegistration(atCounter, waiting,
+          wanted == null ? atCounter.getRequestedTypeId() : wanted.getTypeName());
+      ui.displayMessage("");
+      ui.displayMessage("  Finish this booking at Front Desk > Bookings >"
+          + " Create a new booking,");
+      ui.displayMessage("  or cancel the registration, before calling anyone else.");
+      ui.pause();
+      return;
+    }
+
     // peekNext() reads the front of the urgent lane, or the normal lane
     // when urgent is empty - without removing anyone.
     WalkInRegistration next = data.getWaitingList().peekNext();
@@ -335,7 +367,7 @@ public class WalkInRegistrationMaintenance {
     RoomType type = data.findRoomType(next.getRequestedTypeId());
 
     ui.displayMessage("  Next in the queue:");
-    ui.displayRegistration(next, guest == null ? "-" : guest.getFullName(),
+    ui.displayRegistration(next, guest,
         type == null ? next.getRequestedTypeId() : type.getTypeName());
     ui.displayMessage("");
 
@@ -420,7 +452,7 @@ public class WalkInRegistrationMaintenance {
 
     Guest guest = data.findGuest(reg.getGuestId());
     RoomType type = data.findRoomType(reg.getRequestedTypeId());
-    ui.displayRegistration(reg, guest == null ? "-" : guest.getFullName(),
+    ui.displayRegistration(reg, guest,
         type == null ? reg.getRequestedTypeId() : type.getTypeName());
     ui.displayMessage("");
 
@@ -515,7 +547,7 @@ public class WalkInRegistrationMaintenance {
   private void showRegistrationDetail(WalkInRegistration reg) {
     Guest guest = data.findGuest(reg.getGuestId());
     RoomType type = data.findRoomType(reg.getRequestedTypeId());
-    ui.displayRegistration(reg, guest == null ? "-" : guest.getFullName(),
+    ui.displayRegistration(reg, guest,
         type == null ? reg.getRequestedTypeId() : type.getTypeName());
   }
 

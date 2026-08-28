@@ -5,6 +5,8 @@ import control.ResortData;
 import entity.Guest;
 import entity.RoomType;
 import entity.WalkInRegistration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -191,6 +193,45 @@ public class WalkInRegistrationUI {
   public int inputNights() {
     int nights = MessageUI.readInt(scanner, "Number of nights", 1, 30);
     return (nights == MessageUI.CANCELLED_INT) ? -1 : nights;
+  }
+
+  /**
+   * Asks which day the guest wants to arrive.
+   *
+   * Re-asked rather than refused when a past date is given, so a mistyped year
+   * costs one line instead of the whole registration.
+   *
+   * @return the arrival date, or null if cancelled
+   */
+  public LocalDate inputCheckInDate() {
+    while (true) {
+      LocalDate checkIn = MessageUI.readDate(scanner, "Check-in date");
+      if (checkIn == null) {
+        return null;
+      }
+      if (checkIn.isBefore(LocalDate.now())) {
+        MessageUI.displayError("The check-in date cannot be in the past.");
+        continue;
+      }
+      return checkIn;
+    }
+  }
+
+  /**
+   * Shows the stay the guest asked for, with the departure date it works out
+   * to, so both are on screen before the registration is stored.
+   *
+   * @param checkIn the arrival date given
+   * @param nights how many nights were asked for
+   */
+  public void displayCalculatedStay(LocalDate checkIn, int nights) {
+    DateTimeFormatter dayFormat = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy");
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Nights requested", nights + " night(s)");
+    MessageUI.displayField("Check-in", checkIn.format(dayFormat));
+    MessageUI.displayField("Check-out", checkIn.plusDays(nights).format(dayFormat));
+    MessageUI.displayBlankLine();
   }
 
   /**
@@ -411,15 +452,30 @@ public class WalkInRegistrationUI {
    * @param guestName who it is for
    * @param typeName the room type they asked for
    */
-  public void displayRegistration(WalkInRegistration reg, String guestName, String typeName) {
+  public void displayRegistration(WalkInRegistration reg, Guest guest, String typeName) {
     MessageUI.displayBlankLine();
     MessageUI.displayField("Registration ID", reg.getRegId());
-    MessageUI.displayField("Guest", guestName + " (" + reg.getGuestId() + ")");
+    MessageUI.displayField("Guest", (guest == null ? "-" : guest.getFullName())
+        + " (" + reg.getGuestId() + ")");
+
+    // The document is what the front desk looks the guest up by when they
+    // reach the counter, so it belongs on the card the officer is reading.
+    MessageUI.displayField("IC / Passport",
+        (guest == null || guest.getIcPassportNo() == null) ? "-" : guest.getIcPassportNo());
+    if (guest != null && guest.getContactNumber() != null
+        && !guest.getContactNumber().isBlank()) {
+      MessageUI.displayField("Contact", guest.getContactNumber());
+    }
+
     MessageUI.displayField("Priority", reg.getPriority());
     if (reg.isUrgent()) {
       MessageUI.displayField("Urgency reason", reg.getUrgencyReason());
     }
     MessageUI.displayField("Requested", typeName + ", " + reg.getRequestedNights() + " night(s)");
+    if (reg.getRequestedCheckInDate() != null) {
+      MessageUI.displayField("Stay", reg.getRequestedCheckInDate() + " to "
+          + reg.getRequestedCheckOutDate());
+    }
     MessageUI.displayField("Arrived", reg.getFormattedArrivalTime());
     MessageUI.displayField("Joined queue", reg.getFormattedQueuedAt());
     if (reg.getServedAt() != null) {
@@ -479,9 +535,12 @@ public class WalkInRegistrationUI {
       }
 
       MessageUI.displayBlankLine();
+      // The document is carried on every row: it is what the front desk types
+      // to turn an IN_SERVICE registration into a booking, so it should be
+      // readable straight off whichever listing the officer is looking at.
       MessageUI.displayTableHeading(String.format(
-          "  %-4s %-7s %-22s %-8s %-5s %-11s %-16s %s",
-          "NO", "REG ID", "GUEST", "PRIORITY", "TYPE", "STATUS",
+          "  %-4s %-7s %-18s %-16s %-8s %-5s %-11s %-16s %s",
+          "NO", "REG ID", "GUEST", "IC / PASSPORT", "PRIORITY", "TYPE", "STATUS",
           "QUEUED", "LEFT QUEUE"));
 
       int from = MessageUI.firstRowOnPage(page);
@@ -491,12 +550,13 @@ public class WalkInRegistrationUI {
         WalkInRegistration reg = list.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
+        String document = (guest == null) ? "-" : guest.getIcPassportNo();
 
         // Both ends of the wait are shown: when they joined the queue, and
         // when they left it. A guest still waiting has no second stamp yet.
-        System.out.printf("  %-4d %-7s %-22s %-8s %-5s %-11s %-16s %s%n",
-            i, reg.getRegId(), truncate(name, 22), reg.getPriority(),
-            reg.getRequestedTypeId(), reg.getStatus(),
+        System.out.printf("  %-4d %-7s %-18s %-16s %-8s %-5s %-11s %-16s %s%n",
+            i, reg.getRegId(), truncate(name, 18), truncate(document, 16),
+            reg.getPriority(), reg.getRequestedTypeId(), reg.getStatus(),
             reg.getFormattedQueuedAt(), reg.getFormattedServedAt());
       }
 
@@ -556,8 +616,10 @@ public class WalkInRegistrationUI {
           urgentCount, normalCount, total);
       MessageUI.displayBlankLine();
 
-      MessageUI.displayTableHeading(String.format("  %-4s %-7s %-24s %-8s %-8s %-7s %s",
-          "POS", "REG ID", "GUEST", "PRIORITY", "ARRIVED", "WAITED", "AHEAD"));
+      MessageUI.displayTableHeading(String.format(
+          "  %-4s %-7s %-20s %-16s %-8s %-8s %-7s %s",
+          "POS", "REG ID", "GUEST", "IC / PASSPORT", "PRIORITY", "ARRIVED",
+          "WAITED", "AHEAD"));
 
       // POS counts from the front of the whole queue, not from the top of the
       // page, because it is the number the officer types to act on a guest.
@@ -568,10 +630,11 @@ public class WalkInRegistrationUI {
         WalkInRegistration reg = serviceOrder.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
+        String document = (guest == null) ? "-" : guest.getIcPassportNo();
 
-        System.out.printf("  %-4d %-7s %-24s %-8s %-8s %-7s %d%n",
-            i, reg.getRegId(), truncate(name, 24), reg.getPriority(),
-            shortTime(reg), reg.getFormattedWaitingTime(), i - 1);
+        System.out.printf("  %-4d %-7s %-20s %-16s %-8s %-8s %-7s %d%n",
+            i, reg.getRegId(), truncate(name, 20), truncate(document, 16),
+            reg.getPriority(), shortTime(reg), reg.getFormattedWaitingTime(), i - 1);
       }
 
       MessageUI.displayThinRule();
