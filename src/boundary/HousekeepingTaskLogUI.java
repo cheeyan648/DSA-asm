@@ -1,11 +1,16 @@
 package boundary;
 
+import adt.ArrayList;
 import adt.ListInterface;
 import control.ResortData;
 import entity.HousekeepingTask;
 import entity.Room;
 import entity.RoomStatusLog;
 import entity.RoomType;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Comparator;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -27,33 +32,57 @@ public class HousekeepingTaskLogUI {
     MessageUI.displayMenuScreen("HOUSEKEEPING", null,
         "Main Menu  >  Housekeeping Task Log",
         new String[] {
-          "Cleaning queue (take the next room)",
-          "Update a task's status",
-          "Roll back the last status update",
-          "Search & monitor",
+          "Housekeeping Operations",
+          "Update Task Status",
+          "Rollback",
+          "Search & Monitor",
           "Reports"
         },
-        "Back to main menu");
-    return MessageUI.readMenuChoice(scanner, 5, "go back to the main menu");
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
   }
 
-  // Shows the cleaning-queue menu and returns the chosen option.
-  public int getQueueMenuChoice() {
-    MessageUI.displayMenuScreen("CLEANING QUEUE", null,
-        "Main Menu  >  Housekeeping  >  Cleaning Queue",
+  // Shows Housekeeping Operations: view queue, take next room, or raise a task.
+  public int getOperationsMenuChoice() {
+    MessageUI.displayMenuScreen("HOUSEKEEPING OPERATIONS", null,
+        "Main Menu  >  Housekeeping  >  Housekeeping Operations",
         new String[] {
-          "Take the next room (urgent lane first)",
-          "Display the cleaning queue",
-          "Raise a new task for a room"
+          "View Cleaning Queue",
+          "Take Next Room",
+          "Raise New Task for a Room"
         },
         "Back");
     return MessageUI.readMenuChoice(scanner, 3, "go back");
   }
 
-  // Shows the search-and-monitor menu and returns the chosen option.
-  public int getSearchMenuChoice() {
+  // Shows Update Task Status: original normal cleaning or stayover cleaning.
+  public int getUpdateMenuChoice() {
+    MessageUI.displayMenuScreen("UPDATE TASK STATUS", null,
+        "Main Menu  >  Housekeeping  >  Update Task Status",
+        new String[] {
+          "Normal Cleaning",
+          "Stayover Cleaning"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
+  }
+
+  // Shows Search & Monitor: original normal search or stayover monitor.
+  public int getSearchAndMonitorMenuChoice() {
     MessageUI.displayMenuScreen("SEARCH & MONITOR", null,
         "Main Menu  >  Housekeeping  >  Search & Monitor",
+        new String[] {
+          "Normal Cleaning",
+          "Stayover Cleaning"
+        },
+        "Back");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
+  }
+
+  // Shows the original search-and-monitor menu for task records, filters and the status board.
+  public int getSearchMenuChoice() {
+    MessageUI.displayMenuScreen("NORMAL CLEANING", null,
+        "Main Menu  >  Housekeeping  >  Search & Monitor  >  Normal Cleaning",
         new String[] {
           "View & Search Task Records",
           "Filter tasks by status",
@@ -61,6 +90,16 @@ public class HousekeepingTaskLogUI {
         },
         "Back");
     return MessageUI.readMenuChoice(scanner, 3, "go back");
+  }
+
+  // Asks Filter by Date, View All or Back under the Stayover records already shown.
+  public int getStayoverMonitorChoice() {
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  [1] Filter by Date");
+    MessageUI.displayMessage("  [2] View All");
+    MessageUI.displayMessage("  [0] Back");
+    MessageUI.displayBlankLine();
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
 
   // Shows the Housekeeping reports menu and returns the chosen option.
@@ -181,16 +220,17 @@ public class HousekeepingTaskLogUI {
   }
 
   /**
-   * Asks for a room number, or returns null if the user cancels.
+   * Asks for a numeric Room ID, or returns null if the user cancels.
    *
-   * 0 cancels. An invalid number is given Try Again or Exit rather than
-   * being retried silently.
+   * Used by Raise New Task and Stayover Cleaning. Normal Cleaning Update
+   * still uses inputTaskId. 0 cancels.
    *
-   * @return the four-digit room number, or null if cancelled
+   * @return the four-digit room ID, or null if cancelled
    */
   public String inputRoomNo() {
     while (true) {
-      System.out.print("  Enter room number (0 to cancel): ");
+      System.out.println("  Room ID (e.g. 1234):");
+      System.out.print("  > ");
       String input = MessageUI.readLine(scanner);
 
       if (MessageUI.isCancelKey(input)) {
@@ -217,21 +257,118 @@ public class HousekeepingTaskLogUI {
   }
 
   /**
-   * Asks which status a task should move to.
+   * Asks for a stayover date as dd/MM/yyyy.
    *
-   * Only the steps this task type may take from where it is now are offered,
-   * so an impossible move cannot be chosen in the first place.
+   * 0 cancels. An invalid date is given Try Again or Exit rather than being
+   * retried silently.
+   *
+   * @return the date, or null if cancelled
+   */
+  public LocalDate inputStayoverDate() {
+    DateTimeFormatter format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    while (true) {
+      System.out.print("  Enter date (dd/MM/yyyy, 0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
+      if (MessageUI.isCancelKey(input)) {
+        return null;
+      }
+      try {
+        return LocalDate.parse(input, format);
+      } catch (DateTimeParseException badDate) {
+        System.out.println("  [!] Invalid date.");
+        if (!confirmTryAgain()) {
+          return null;
+        }
+      }
+    }
+  }
+
+  /**
+   * Asks for a displayed stayover row number and returns that record.
+   *
+   * 0 cancels. A number that is not on the list is rejected and the prompt
+   * is shown again. The stored Room ID and Booking ID are not typed in.
+   *
+   * @param records the stayover records just shown, 1-based in display order
+   * @return the selected record, or null if cancelled
+   */
+  public HousekeepingTask inputStayoverRecordSelection(ListInterface<HousekeepingTask> records) {
+    while (true) {
+      System.out.println("  Select No. (0 to cancel):");
+      System.out.print("  > ");
+      String input = MessageUI.readLine(scanner);
+
+      if (MessageUI.isCancelKey(input)) {
+        return null;
+      }
+
+      try {
+        int picked = Integer.parseInt(input);
+        if (picked >= 1 && picked <= records.getNumberOfEntries()) {
+          return records.getEntry(picked);
+        }
+      } catch (NumberFormatException notANumber) {
+        // fall through to invalid selection
+      }
+
+      System.out.println("  [!] Invalid selection.");
+    }
+  }
+
+  /**
+   * Asks whether to move this stayover room to its only valid next status.
+   *
+   * @param task the stayover-service record being updated
+   * @return the next status, or null if cancelled
+   */
+  public String inputStayoverNextStatus(HousekeepingTask task) {
+    String currentStatus = task.getStatus();
+    String nextStatus;
+    if (HousekeepingTask.NOT_CLEANED.equals(currentStatus)) {
+      nextStatus = HousekeepingTask.CLEANING_IN_PROGRESS;
+    } else if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(currentStatus)) {
+      nextStatus = HousekeepingTask.CLEANED;
+    } else {
+      displayStayoverAlreadyCompleted();
+      return null;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Room", task.getRoomNo());
+    MessageUI.displayField("Booking",
+        task.getBookingId() == null ? "-" : task.getBookingId());
+    MessageUI.displayField("Current Status", currentStatus);
+    MessageUI.displayField("Next Status", nextStatus);
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  Update this room?");
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  [1] Yes");
+    MessageUI.displayMessage("  [0] Back");
+    MessageUI.displayBlankLine();
+    return MessageUI.readMenuChoice(scanner, 1, "go back") == 1 ? nextStatus : null;
+  }
+
+  /**
+   * Asks which status this existing task should move to.
+   *
+   * Only the steps this task type may take from where it is now are offered.
+   * The Task ID does not change. Inspection is the INSPECTED status of this
+   * task, not a new task. A READY_FOR_CHECK_IN task has no next status.
    *
    * @param task the task being updated
    * @return the chosen status, or null if cancelled or nothing is possible
    */
   public String inputNextStatus(HousekeepingTask task) {
     String currentStatus = task.getStatus();
-    String[] allowed = HousekeepingTask.allowedNextStatuses(
-        task.getTaskType(), currentStatus);
+    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(currentStatus)) {
+      displayTaskAlreadyCompleted();
+      return null;
+    }
+
+    String[] allowed = nextStatusesForUpdate(task.getTaskType(), currentStatus);
 
     if (allowed.length == 0) {
-      displayError("There is no valid next step from " + currentStatus + ".");
+      displayError("Invalid status transition.");
       return null;
     }
 
@@ -257,6 +394,31 @@ public class HousekeepingTaskLogUI {
     return null;
   }
 
+  /**
+   * Next statuses Update Task Status may offer.
+   *
+   * CLEANING_IN_PROGRESS is left out: starting a DIRTY task belongs to
+   * Take the next room on the cleaning queue.
+   */
+  private String[] nextStatusesForUpdate(String taskType, String currentStatus) {
+    String[] every = HousekeepingTask.allowedNextStatuses(taskType, currentStatus);
+    int count = 0;
+    for (int i = 0; i < every.length; i++) {
+      if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(every[i])) {
+        count++;
+      }
+    }
+    String[] allowed = new String[count];
+    int next = 0;
+    for (int i = 0; i < every.length; i++) {
+      if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(every[i])) {
+        allowed[next] = every[i];
+        next++;
+      }
+    }
+    return allowed;
+  }
+
   /** Explains what a status change means, so the choice is not just a name. */
   private String describeStatus(String status, String from, String taskType) {
     if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
@@ -271,7 +433,7 @@ public class HousekeepingTaskLogUI {
       case HousekeepingTask.CLEANING_IN_PROGRESS:
         return status + "  (start cleaning)";
       case HousekeepingTask.INSPECTED:
-        return status + "  (cleaning finished, awaiting sign-off)";
+        return status + "  (this task - cleaning finished, awaiting sign-off)";
       case HousekeepingTask.READY_FOR_CHECK_IN:
         return status + "  (inspection PASSED - room becomes sellable)";
       case HousekeepingTask.DIRTY:
@@ -335,14 +497,16 @@ public class HousekeepingTaskLogUI {
     String typeName = (type == null) ? room.getTypeId() : type.getTypeName();
     MessageUI.displayBlankLine();
     System.out.println("Room " + room.getRoomNo() + " - " + typeName);
-    System.out.println("Current Status: " + room.getHousekeepingStatus());
+    System.out.println("Current Status    : " + room.getHousekeepingStatus());
+    System.out.println("Occupancy Status  : " + room.getOccupancyStatus());
   }
 
   /**
    * Asks which task type to raise from the types this room may take.
    *
-   * STAYOVER_CLEAN is never in the list. 0 returns to room selection.
-   * Invalid input is given Try Again or Exit rather than being retried silently.
+   * CHECKOUT_CLEAN, INSPECTION and STAYOVER_CLEAN are never in the list. 0
+   * returns to room selection. Invalid input is given Try Again or Exit
+   * rather than being retried silently.
    *
    * @param available the types already filtered for this room
    * @return the chosen type, or null if cancelled or Exit
@@ -483,6 +647,26 @@ public class HousekeepingTaskLogUI {
     System.out.println("  [ERROR] " + message);
   }
 
+  /**
+   * Tells the user a DIRTY cleaning task must be started from the queue.
+   */
+  public void displayMustStartFromQueue() {
+    System.out.println("  [!] This task is waiting in the cleaning queue.");
+    System.out.println("      Please start the task from the Cleaning Queue first.");
+  }
+
+  /**
+   * Tells the user a finished task cannot be updated again.
+   */
+  public void displayTaskAlreadyCompleted() {
+    System.out.println("  [!] This task is already completed and cannot be updated.");
+  }
+
+  /** Tells the user this stayover room is already CLEANED. */
+  public void displayStayoverAlreadyCompleted() {
+    System.out.println("  [OK] This Stayover Cleaning is already completed.");
+  }
+
   // Displays a success message on the Housekeeping screen.
   public void displaySuccess(String message) {
     MessageUI.displaySuccess(message);
@@ -516,7 +700,11 @@ public class HousekeepingTaskLogUI {
           + "  (this is what sets the lane)");
     }
     if (task.getBookingId() != null) {
-      MessageUI.displayField("Raised by check-out of", task.getBookingId());
+      if (task.isStayoverService()) {
+        MessageUI.displayField("Booking ID", task.getBookingId());
+      } else {
+        MessageUI.displayField("Raised by check-out of", task.getBookingId());
+      }
     }
 
     MessageUI.displayField("Assigned to",
@@ -542,10 +730,11 @@ public class HousekeepingTaskLogUI {
   /**
    * Shows one task as a labelled details block for View & Search.
    *
-   * Only existing HousekeepingTask fields are printed. Missing dates show "-".
+   * Existing HousekeepingTask fields are printed first. The status-log rows
+   * already stored for this Task ID are then listed underneath.
    *
    * @param task the task to show
-   * @param data used to look up the room type
+   * @param data used to look up the room type and status history
    */
   public void displayTaskDetails(HousekeepingTask task, ResortData data) {
     Room room = data.findRoom(task.getRoomNo());
@@ -576,6 +765,37 @@ public class HousekeepingTaskLogUI {
     }
     if (task.getRemark() != null && !task.getRemark().isBlank()) {
       MessageUI.displayField("Remark", task.getRemark());
+    }
+    MessageUI.displayThinRule();
+    displayTaskStatusHistory(task.getTaskId(), data);
+  }
+
+  /**
+   * Lists the existing RoomStatusLog rows for one Task ID, oldest first.
+   *
+   * Uses a filtered copy of the shared status-log List so stored history is
+   * not changed. A missing FROM status is shown as "-".
+   */
+  private void displayTaskStatusHistory(String taskId, ResortData data) {
+    ListInterface<RoomStatusLog> logs = data.getStatusLogList().filter(
+        log -> taskId.equals(log.getTaskId()));
+    logs.sort(Comparator.comparing(RoomStatusLog::getChangedAt,
+        Comparator.nullsLast(Comparator.naturalOrder())));
+
+    displaySectionHeading("STATUS HISTORY");
+    if (logs.isEmpty()) {
+      MessageUI.displayMessage("  No status history available.");
+      return;
+    }
+
+    MessageUI.displayTableHeading(String.format("  %-7s %-24s %s",
+        "LOG", "FROM", "TO"));
+    for (int i = 1; i <= logs.getNumberOfEntries(); i++) {
+      RoomStatusLog log = logs.getEntry(i);
+      System.out.printf("  %-7s %-24s %s%n",
+          log.getLogId(),
+          log.getFromStatus() == null ? "-" : log.getFromStatus(),
+          log.getToStatus() == null ? "-" : log.getToStatus());
     }
     MessageUI.displayThinRule();
   }
@@ -852,6 +1072,70 @@ public class HousekeepingTaskLogUI {
   }
 
   /**
+   * Shows today's stayover rooms from Booking data, without a date column.
+   *
+   * @param records eligible stayover-service records for today
+   * @param today the current date
+   */
+  public void displayTodayStayoverCleaning(ListInterface<HousekeepingTask> records,
+      LocalDate today) {
+    DateTimeFormatter format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    displaySectionHeading("TODAY'S STAYOVER CLEANING");
+    MessageUI.displayField("Date", today.format(format));
+    if (records.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  No eligible stayover rooms for today.");
+      return;
+    }
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-4s %-8s %-12s %s",
+        "NO", "ROOM ID", "BOOKING ID", "STATUS"));
+    for (int i = 1; i <= records.getNumberOfEntries(); i++) {
+      HousekeepingTask task = records.getEntry(i);
+      System.out.printf("  %-4d %-8s %-12s %s%n",
+          i, task.getRoomNo(),
+          task.getBookingId() == null ? "-" : task.getBookingId(),
+          task.getStatus());
+    }
+    MessageUI.displayThinRule();
+  }
+
+  /**
+   * Shows stayover records for Search & Monitor, including the stay date.
+   *
+   * @param records stayover-service records to list
+   * @param filterDate the date filter, or null for view all
+   */
+  public void displayStayoverCleaning(ListInterface<HousekeepingTask> records,
+      LocalDate filterDate) {
+    DateTimeFormatter format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    displaySectionHeading("STAYOVER CLEANING");
+    if (filterDate != null) {
+      MessageUI.displayField("Date filter", filterDate.format(format));
+    } else {
+      MessageUI.displayField("Date filter", "View all");
+    }
+    if (records.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  No stayover cleaning records found.");
+      return;
+    }
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-4s %-10s %-8s %-12s %s",
+        "NO", "DATE", "ROOM ID", "BOOKING ID", "STATUS"));
+    for (int i = 1; i <= records.getNumberOfEntries(); i++) {
+      HousekeepingTask task = records.getEntry(i);
+      String date = task.getCreatedAt() == null
+          ? "-" : task.getCreatedAt().toLocalDate().format(format);
+      System.out.printf("  %-4d %-10s %-8s %-12s %s%n",
+          i, date, task.getRoomNo(),
+          task.getBookingId() == null ? "-" : task.getBookingId(),
+          task.getStatus());
+    }
+    MessageUI.displayThinRule();
+  }
+
+  /**
    * Shows a room's cleaning history, oldest first.
    *
    * @param logs the status changes for that room
@@ -920,40 +1204,81 @@ public class HousekeepingTaskLogUI {
   }
 
   /**
-   * Lists the rooms before a task number is asked for.
+   * Lists rooms that the existing raise check marks as able to take a task.
    *
-   * The action column comes from the same open-task lookup the raise
-   * validation uses, so a room shown as able to take a task is one the
-   * validation will actually accept.
+   * Rooms with an open task, or that describeRaiseAction does not mark as
+   * "Can raise", are omitted. The returned list is in display order so the
+   * number typed later is the row number, not the room ID.
    *
    * @param rooms the rooms, taken from the shared room list
    * @param data used to look up each room's type and open task
+   * @return the eligible rooms in the order shown
    */
-  public void displayRoomsForNewTask(ListInterface<Room> rooms, ResortData data) {
-    if (rooms.isEmpty()) {
+  public ListInterface<Room> displayRoomsForNewTask(ListInterface<Room> rooms, ResortData data) {
+    ListInterface<Room> eligible = new ArrayList<>();
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      HousekeepingTask open = data.findOpenTaskForRoom(room.getRoomNo());
+      if ("Can raise".equals(describeRaiseAction(room, open))) {
+        eligible.add(room);
+      }
+    }
+
+    if (eligible.isEmpty()) {
       MessageUI.displayBlankLine();
-      MessageUI.displayMessage("  There are no rooms on file.");
-      return;
+      MessageUI.displayMessage("  No room can take a new task right now.");
+      return eligible;
     }
 
     MessageUI.displaySectionHeading("Rooms");
-    MessageUI.displayTableHeading(String.format("  %-6s %-18s %-22s %s",
-        "ROOM", "ROOM TYPE", "STATUS", "ACTION"));
+    MessageUI.displayTableHeading(String.format("  %-4s %-6s %-18s %s",
+        "NO", "ROOM", "ROOM TYPE", "ACTION"));
 
-    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
-      Room room = rooms.getEntry(i);
+    for (int i = 1; i <= eligible.getNumberOfEntries(); i++) {
+      Room room = eligible.getEntry(i);
       RoomType type = data.findRoomType(room.getTypeId());
-      HousekeepingTask open = data.findOpenTaskForRoom(room.getRoomNo());
-
-      System.out.printf("  %-6s %-18s %-22s %s%n",
+      System.out.printf("  %-4d %-6s %-18s %s%n",
+          i,
           room.getRoomNo(),
           (type == null) ? room.getTypeId() : type.getTypeName(),
-          room.getHousekeepingStatus(),
-          describeRaiseAction(room, open));
+          "Can raise");
     }
     MessageUI.displayThinRule();
-    MessageUI.displayMessage("  A room that already has an open task cannot take another one.");
     MessageUI.displayBlankLine();
+    return eligible;
+  }
+
+  /**
+   * Asks for a displayed row number and returns that room's ID.
+   *
+   * 0 cancels. A number that is not on the list is given Try Again or Exit.
+   *
+   * @param eligible the rooms just shown, 1-based in display order
+   * @return the selected room ID, or null if cancelled
+   */
+  public String inputRaiseRoomSelection(ListInterface<Room> eligible) {
+    while (true) {
+      System.out.print("  Room No. (0 to cancel): ");
+      String input = MessageUI.readLine(scanner);
+
+      if (MessageUI.isCancelKey(input)) {
+        return null;
+      }
+
+      try {
+        int picked = Integer.parseInt(input);
+        if (picked >= 1 && picked <= eligible.getNumberOfEntries()) {
+          return eligible.getEntry(picked).getRoomNo();
+        }
+      } catch (NumberFormatException notANumber) {
+        // fall through to invalid selection
+      }
+
+      System.out.println("  [!] Invalid selection.");
+      if (!confirmTryAgain()) {
+        return null;
+      }
+    }
   }
 
   /** Short note on whether a new task may be raised against a room. */
