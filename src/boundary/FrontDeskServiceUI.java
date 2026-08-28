@@ -10,7 +10,10 @@ import entity.Payment;
 import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomType;
+import entity.WalkInRegistration;
+import entity.RoomArrangement;
 import java.time.LocalDate;
+import java.util.function.Function;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -32,7 +35,7 @@ public class FrontDeskServiceUI {
         "Main Menu  >  Front-Desk Service",
         new String[] {
           "Bookings (create, edit, update, delete)",
-          "Rooms (availability, assign, expedite cleaning , manage)",
+          "Rooms (availability, assign, move, manage)",
           "Stay (check in, check out)",
           "Billing (payments, loyalty discount)",
           "Search & display",
@@ -50,10 +53,11 @@ public class FrontDeskServiceUI {
           "Edit / update a booking (dates or guest count)",
           "Cancel a booking",
           "Delete an unassigned booking",
-          "Mark a booking as no-show"
+          "Mark a booking as no-show",
+          "Booking records (view receipts)"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 5, "go back");
+    return MessageUI.readMenuChoice(scanner, 6, "go back");
   }
 
   public int getRoomMenuChoice() {
@@ -63,12 +67,11 @@ public class FrontDeskServiceUI {
           "Check room availability",
           "Assign a room to a pending booking",
           "Move a booking to another room",
-          "Request urgent cleaning for a waiting booking",
           "Room status board",
           "Manage rooms"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 6, "go back");
+    return MessageUI.readMenuChoice(scanner, 5, "go back");
   }
 
   public int getRoomManagementMenuChoice() {
@@ -182,8 +185,30 @@ public class FrontDeskServiceUI {
     return (guests == MessageUI.CANCELLED_INT) ? -1 : guests;
   }
 
+  /**
+   * Asks how many nights the stay runs for.
+   *
+   * @return the number of nights, or -1 if cancelled
+   */
+  public int inputNights() {
+    int nights = MessageUI.readInt(scanner, "Number of nights", 1, 30);
+    return (nights == MessageUI.CANCELLED_INT) ? -1 : nights;
+  }
+
   public double inputAmount(String prompt) {
     return MessageUI.readAmount(scanner, prompt);
+  }
+
+  /**
+   * Asks for an amount under wording the caller chooses.
+   *
+   * @param prompt what the amount is for
+   * @param note what to put in brackets, so a screen that has already said
+   *     what 0 does need not repeat it
+   * @return the amount, or MessageUI.CANCELLED_AMOUNT if cancelled
+   */
+  public double inputAmount(String prompt, String note) {
+    return MessageUI.readAmount(scanner, prompt, note);
   }
 
   /**
@@ -210,6 +235,461 @@ public class FrontDeskServiceUI {
     int picked = MessageUI.readInt(scanner, "Room type number", 1,
         types.getNumberOfEntries());
     return (picked == MessageUI.CANCELLED_INT) ? null : types.getEntry(picked).getTypeId();
+  }
+
+  /**
+   * Offers the ways a party could be housed when the type they asked for is
+   * gone, and lets the officer pick one.
+   *
+   * The capacity and the nightly price are both shown, because the guest is
+   * being asked to accept something other than what they came for and needs to
+   * see what it costs before they agree to it.
+   *
+   * @param options the arrangements that would house the party
+   * @param guests how many people are staying
+   * @param typeOf looks up a room's type, for its name
+   * @return the chosen arrangement, or null to cancel the booking instead
+   */
+  public RoomArrangement chooseArrangement(ListInterface<RoomArrangement> options,
+      int guests, Function<Room, RoomType> typeOf) {
+    MessageUI.displaySectionHeading("Other ways to house " + guests + " guest(s)");
+    MessageUI.displayTableHeading(String.format("  %-5s %-34s %-20s %5s %12s",
+        "NO", "ARRANGEMENT", "ROOMS", "SLEEPS", "RATE/NIGHT"));
+
+    for (int i = 1; i <= options.getNumberOfEntries(); i++) {
+      RoomArrangement option = options.getEntry(i);
+      System.out.printf("  [%d]   %-34s %-20s %5d %12.2f%n",
+          i, truncate(option.describe(typeOf), 34), truncate(option.roomNumbers(), 20),
+          option.getTotalCapacity(), option.getTotalRatePerNight());
+    }
+    MessageUI.displayThinRule();
+    MessageUI.displayMessage("  Each room becomes its own booking under the same guest.");
+    MessageUI.displayMessage("  Enter 0 to cancel the booking instead.");
+
+    int picked = MessageUI.readInt(scanner, "Arrangement number", 1,
+        options.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : options.getEntry(picked);
+  }
+
+  /**
+   * Lists the bookings that have a bill, as the records to pick a receipt from.
+   *
+   * The NO in the first column is what the officer types to open a receipt, so
+   * the table and the prompt under it are asking for the same thing.
+   *
+   * @param invoices one bill per row, in the order they are numbered
+   * @param data used to reach each bill's booking and guest
+   * @return true if anything was listed
+   */
+  public boolean displayBookingRecords(ListInterface<Invoice> invoices, ResortData data) {
+    if (invoices.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  There are no booking records yet.");
+      return false;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format(
+        "  %-5s %-9s %-20s %-16s %-11s %-11s %12s  %s",
+        "NO", "INVOICE", "GUEST", "IC / PASSPORT", "CHECK IN", "CHECK OUT",
+        "BILL (RM)", "STATUS"));
+
+    for (int i = 1; i <= invoices.getNumberOfEntries(); i++) {
+      Invoice invoice = invoices.getEntry(i);
+      Booking booking = data.findBooking(invoice.getBookingId());
+      Guest guest = (booking == null) ? null : data.findGuest(booking.getGuestId());
+
+      System.out.printf("  [%d]   %-9s %-20s %-16s %-11s %-11s %12.2f  %s%n",
+          i,
+          invoice.getInvoiceId(),
+          guest == null ? "-" : truncate(guest.getFullName(), 20),
+          guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
+          booking == null ? "-" : booking.getCheckInDate().toString(),
+          booking == null ? "-" : booking.getCheckOutDate().toString(),
+          invoice.getTotalAmount(),
+          invoice.getPaymentStatus());
+    }
+
+    MessageUI.displayThinRule();
+    System.out.printf("  %d record(s).%n", invoices.getNumberOfEntries());
+    return true;
+  }
+
+  /**
+   * Lists the bookings that may still be amended, and takes the one picked.
+   *
+   * The number in the first column is what the officer types, so the table and
+   * the prompt below it ask for the same thing. Long lists are paged, and the
+   * row numbers count from the top of the whole listing rather than the page,
+   * so a booking keeps the same number whichever page it is read from.
+   *
+   * @param bookings the bookings that can be changed, earliest arrival first
+   * @param data used to reach each booking's guest
+   * @return the chosen booking, or null if the officer quit
+   */
+  public Booking chooseBookingToAmend(ListInterface<Booking> bookings, ResortData data) {
+    return chooseBooking(bookings, data, "Number of the booking to edit", new String[] {
+      "No booking can be amended.",
+      "Only a stay that has not started yet can be changed,",
+      "so a booking arriving today or earlier is left alone."
+    });
+  }
+
+  /**
+   * Lists bookings with a pickable number in the first column, and returns the
+   * one chosen.
+   *
+   * @param bookings the bookings to offer
+   * @param data used to reach each booking's guest
+   * @param prompt what the number is being asked for
+   * @param emptyMessage what to say, line by line, when there is nothing to show
+   * @return the chosen booking, or null if the officer quit
+   */
+  public Booking chooseBooking(ListInterface<Booking> bookings, ResortData data,
+      String prompt, String[] emptyMessage) {
+    if (bookings.isEmpty()) {
+      MessageUI.displayBlankLine();
+      for (String line : emptyMessage) {
+        MessageUI.displayMessage("  " + line);
+      }
+      return null;
+    }
+
+    int total = bookings.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
+    int page = 1;
+
+    while (true) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayTableHeading(String.format(
+          "  %-5s %-8s %-20s %-16s %-6s %-6s %-11s %-11s %s",
+          "NO", "BOOKING", "GUEST", "IC / PASSPORT", "TYPE", "ROOM",
+          "CHECK IN", "CHECK OUT", "STATUS"));
+
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
+        Booking booking = bookings.getEntry(i);
+        Guest guest = data.findGuest(booking.getGuestId());
+
+        System.out.printf("  [%d]   %-8s %-20s %-16s %-6s %-6s %-11s %-11s %s%n",
+            i,
+            booking.getBookingId(),
+            guest == null ? "-" : truncate(guest.getFullName(), 20),
+            guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
+            booking.getTypeId(),
+            booking.getRoomNo() == null ? "-" : booking.getRoomNo(),
+            booking.getCheckInDate(), booking.getCheckOutDate(),
+            booking.getBookingStatus());
+      }
+
+      MessageUI.displayThinRule();
+
+      if (totalPages == 1) {
+        System.out.printf("  %d booking(s).%n", total);
+        int picked = MessageUI.readInt(scanner, prompt, 1, total);
+        return (picked == MessageUI.CANCELLED_INT) ? null : bookings.getEntry(picked);
+      }
+
+      System.out.printf("  Showing %d-%d of %d booking(s).%n", from, upTo, total);
+
+      // One prompt does both jobs. A row number is what the officer is really
+      // after, so a bare number always means a booking; paging is a letter, so
+      // the two can never be mistaken for each other.
+      while (true) {
+        System.out.printf("  %s (1-%d), [N]ext page, [P]revious, 0 to go back: ",
+            prompt, total);
+        String input = MessageUI.readLine(scanner, "0").trim().toLowerCase();
+
+        if (input.equals("0") || input.equals("q")) {
+          return null;
+        }
+        if (input.isEmpty() || input.equals("n")) {
+          page = (page >= totalPages) ? 1 : page + 1;
+          break;
+        }
+        if (input.equals("p")) {
+          page = (page <= 1) ? totalPages : page - 1;
+          break;
+        }
+
+        try {
+          int picked = Integer.parseInt(input);
+          if (picked < 1 || picked > total) {
+            MessageUI.displayError("There is no booking " + picked
+                + " in that list. Enter 1 to " + total + ".");
+            continue;
+          }
+          return bookings.getEntry(picked);
+        } catch (NumberFormatException notANumber) {
+          MessageUI.displayError("Enter a booking number, N, P, or 0 to go back.");
+        }
+      }
+    }
+  }
+
+  /**
+   * Asks which part of a booking is being changed.
+   *
+   * @return the chosen option, or 0 to finish with this booking
+   */
+  public int getAmendFieldChoice(Booking booking) {
+    MessageUI.displayMenuScreen("EDIT BOOKING " + booking.getBookingId(), null,
+        "Main Menu  >  Front-Desk Service  >  Bookings  >  Edit",
+        new String[] {
+          "Check-in date",
+          "Number of nights (sets the check-out date)",
+          "Number of guests",
+          "Room type"
+        },
+        "Done - go back");
+    return MessageUI.readMenuChoice(scanner, 4, "finish editing");
+  }
+
+  /**
+   * Shows what a booking is about to become, next to what it is now.
+   *
+   * @param label what is changing
+   * @param before its current value
+   * @param after what it would become
+   */
+  public void displayProposedChange(String label, String before, String after) {
+    MessageUI.displaySectionHeading("Confirm the change");
+    MessageUI.displayField(label + " now", before);
+    MessageUI.displayField(label + " after", after);
+  }
+
+  /**
+   * Lists rooms that are unavailable only because they are already booked.
+   *
+   * The guest holding each room is deliberately not named: the officer needs
+   * to know the room is spoken for and when it frees up, not who has it. The
+   * dates shown are the clashing stay's, so it is clear how long the wait is.
+   *
+   * @param rooms the rooms already taken
+   * @param data used to find the stay occupying each one
+   * @param checkIn the first night that was asked for
+   * @param checkOut the morning the guest would have left
+   */
+  public void displayTakenRooms(ListInterface<Room> rooms, ResortData data,
+      LocalDate checkIn, LocalDate checkOut) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-6s %-18s %-10s %-25s %s",
+        "ROOM", "TYPE", "STATUS", "OCCUPIED", "FREE FROM"));
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      RoomType type = data.findRoomType(room.getTypeId());
+
+      // The stay standing in the way - the one whose dates overlap what was
+      // asked for. Its guest is not shown, only when the room comes back.
+      Booking clashing = null;
+      ListInterface<Booking> bookings = data.getBookingList();
+      for (int b = 1; b <= bookings.getNumberOfEntries(); b++) {
+        Booking booking = bookings.getEntry(b);
+        if (!room.getRoomNo().equals(booking.getRoomNo())) {
+          continue;
+        }
+        if (Booking.STATUS_CANCELLED.equals(booking.getBookingStatus())
+            || Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())
+            || Booking.STATUS_NO_SHOW.equals(booking.getBookingStatus())) {
+          continue;
+        }
+        if (booking.getCheckInDate().isBefore(checkOut)
+            && checkIn.isBefore(booking.getCheckOutDate())) {
+          clashing = booking;
+          break;
+        }
+      }
+
+      System.out.printf("  %-6s %-18s %-10s %-25s %s%n",
+          room.getRoomNo(),
+          truncate(type == null ? room.getTypeId() : type.getTypeName(), 18),
+          room.getOccupancyStatus(),
+          clashing == null ? "-"
+              : clashing.getCheckInDate() + " to " + clashing.getCheckOutDate(),
+          clashing == null ? "-" : clashing.getCheckOutDate().toString());
+    }
+
+    MessageUI.displayThinRule();
+    MessageUI.displayMessage("  These rooms are taken for the dates asked for.");
+  }
+
+  /**
+   * Asks how soon a room just vacated is wanted back.
+   *
+   * The officer at the desk is the only one who knows whether somebody is
+   * waiting for this room, so the lane is taken from them rather than worked
+   * out from the booking records.
+   *
+   * @param roomNo the room being handed to housekeeping
+   * @return 1 for urgent, 2 for the normal round, or -1 if cancelled
+   */
+  public int inputCleaningUrgency(String roomNo) {
+    MessageUI.displaySectionHeading("Housekeeping");
+    MessageUI.displayMessage("  Room " + roomNo + " goes to housekeeping to be cleaned.");
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("   [1]  Urgent - a guest is waiting for this room");
+    MessageUI.displayMessage("   [2]  Normal - clean it in the usual order");
+    MessageUI.displayThinRule();
+
+    int choice = MessageUI.readInt(scanner, "How soon is it needed", 1, 2);
+    return (choice == MessageUI.CANCELLED_INT) ? -1 : choice;
+  }
+
+  /**
+   * Lists the guests standing at the counter, and takes the one picked.
+   *
+   * Only registrations already called through from the walk-in queue appear:
+   * a booking is made from one of these or from nothing at all. The IC is
+   * shown against each so the officer can match the person in front of them
+   * to the row without having to type the document out.
+   *
+   * @param served the registrations currently IN_SERVICE
+   * @param data used to reach each registration's guest
+   * @return the chosen registration, or null if the officer quit
+   */
+  public WalkInRegistration chooseServedRegistration(
+      ListInterface<WalkInRegistration> served, ResortData data) {
+    if (served.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  Nobody is at the counter waiting to be booked.");
+      MessageUI.displayMessage("  Call a guest from Walk-In Registration first:");
+      MessageUI.displayMessage("  Walk-In Registration > Queue > Serve next guest.");
+      return null;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format(
+        "  %-5s %-7s %-20s %-16s %-16s %-6s %s",
+        "NO", "REG ID", "GUEST", "IC / PASSPORT", "REQUESTED", "NIGHTS", "CHECK IN"));
+
+    for (int i = 1; i <= served.getNumberOfEntries(); i++) {
+      WalkInRegistration reg = served.getEntry(i);
+      Guest guest = data.findGuest(reg.getGuestId());
+      RoomType type = data.findRoomType(reg.getRequestedTypeId());
+
+      System.out.printf("  [%d]   %-7s %-20s %-16s %-16s %-6d %s%n",
+          i,
+          reg.getRegId(),
+          guest == null ? "-" : truncate(guest.getFullName(), 20),
+          guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
+          truncate(type == null ? reg.getRequestedTypeId() : type.getTypeName(), 16),
+          reg.getRequestedNights(),
+          reg.getRequestedCheckInDate() == null ? "-"
+              : reg.getRequestedCheckInDate().toString());
+    }
+
+    MessageUI.displayThinRule();
+    System.out.printf("  %d guest(s) at the counter.%n", served.getNumberOfEntries());
+
+    int picked = MessageUI.readInt(scanner, "Number of the guest to book", 1,
+        served.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : served.getEntry(picked);
+  }
+
+  /** Wipes the screen, so nothing of the last action is left behind. */
+  public void clearScreen() {
+    MessageUI.clearScreen();
+  }
+
+  /**
+   * The receipt handed to the guest once their stay is paid for.
+   *
+   * Printed as a document rather than as another status line: it is what the
+   * guest takes away, so it names them, the room and the nights, and shows
+   * what was tendered and what came back as change.
+   *
+   * @param booking the booking now paid for
+   * @param invoice its settled bill
+   * @param payments every payment taken against it
+   * @param guestName who is paying
+   * @param changeDue anything handed back
+   */
+  public void displayReceipt(Booking booking, Invoice invoice,
+      ListInterface<Payment> payments, String guestName, double changeDue) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayBoxTop();
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxCentred("TARUMT RESORT MANAGEMENT SYSTEM");
+    MessageUI.displayBoxCentred("OFFICIAL RECEIPT");
+    MessageUI.displayBoxBlank();
+    MessageUI.displayBoxDivider();
+    MessageUI.displayBoxLine("  Receipt for : " + invoice.getInvoiceId());
+    MessageUI.displayBoxLine("  Issued      : " + java.time.LocalDateTime.now()
+        .format(java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy, HH:mm")));
+    MessageUI.displayBoxBottom();
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Guest", guestName);
+    MessageUI.displayField("Booking", booking.getBookingId()
+        + "   (confirmation " + booking.getConfirmationNumber() + ")");
+    MessageUI.displayField("Room", booking.getRoomNo() == null
+        ? "-" : booking.getRoomNo());
+    MessageUI.displayField("Stay", booking.getCheckInDate() + " to "
+        + booking.getCheckOutDate() + "  (" + booking.getNumberOfNights()
+        + " night(s))");
+
+    MessageUI.displaySectionHeading("Charges");
+    System.out.printf("  %-28s   RM%10.2f%n", "Room charge", invoice.getRoomCharge());
+    System.out.printf("  %-28s   RM%10.2f%n", "Service charge (10%)",
+        invoice.getServiceCharge());
+    System.out.printf("  %-28s   RM%10.2f%n", "SST (6%)", invoice.getTaxAmount());
+    if (invoice.getDiscountAmount() > 0) {
+      System.out.printf("  %-28s  -RM%10.2f%n", "Loyalty discount",
+          invoice.getDiscountAmount());
+    }
+    MessageUI.displayThinRule();
+    System.out.printf("  %-28s   RM%10.2f%n", "TOTAL", invoice.getTotalAmount());
+
+    if (payments != null && !payments.isEmpty()) {
+      MessageUI.displaySectionHeading("Paid by");
+      for (int i = 1; i <= payments.getNumberOfEntries(); i++) {
+        Payment payment = payments.getEntry(i);
+        System.out.printf("  %-28s   RM%10.2f%s%n",
+            payment.getMethod(), payment.getAmount(),
+            (payment.getReference() == null || payment.getReference().isBlank())
+                ? "" : "   ref " + payment.getReference());
+      }
+    }
+
+    MessageUI.displayThinRule();
+
+    // The guest's own arithmetic: what they handed over, what the stay cost,
+    // and what came back. Without the tendered line the change appears from
+    // nowhere, because the invoice only ever records the amount owed.
+    if (changeDue > 0) {
+      System.out.printf("  %-28s   RM%10.2f%n", "CASH TENDERED",
+          invoice.getAmountPaid() + changeDue);
+      System.out.printf("  %-28s  -RM%10.2f%n", "Less: total bill",
+          invoice.getAmountPaid());
+      MessageUI.displayThinRule();
+      System.out.printf("  %-28s   RM%10.2f%n", "CHANGE GIVEN", changeDue);
+      MessageUI.displayBlankLine();
+    }
+
+    System.out.printf("  %-28s   RM%10.2f%n", "AMOUNT PAID", invoice.getAmountPaid());
+    System.out.printf("  %-28s   %s%n", "Status", invoice.getPaymentStatus());
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayRule();
+    MessageUI.displayMessage("  Thank you for staying with TARUMT Resort.");
+    MessageUI.displayRule();
+  }
+
+  /** Thanks a guest whose booking could not be met, and apologises for it. */
+  public void displayBookingCancelled(String guestName) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayRule();
+    MessageUI.displayMessage("  We are sorry, " + guestName + ".");
+    MessageUI.displayMessage("");
+    MessageUI.displayMessage("  We could not house your party for those dates, and your");
+    MessageUI.displayMessage("  booking has been cancelled. Nothing has been charged.");
+    MessageUI.displayMessage("");
+    MessageUI.displayMessage("  Thank you for considering TARUMT Resort. We hope to");
+    MessageUI.displayMessage("  welcome you another time.");
+    MessageUI.displayRule();
   }
 
   public String inputPaymentMethod() {

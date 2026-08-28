@@ -546,7 +546,18 @@ public class ResortData {
     if (icPassportNo == null || icPassportNo.isBlank()) {
       return null;
     }
-    return guestList.search(guest -> icPassportNo.equalsIgnoreCase(guest.getIcPassportNo()));
+
+    // Dashes and spaces are punctuation, not part of the number: an IC typed
+    // as 970818-14-5266 and one stored as 970818145266 are the same document,
+    // so both sides are stripped before they are compared.
+    final String wanted = normaliseIc(icPassportNo);
+    return guestList.search(
+        guest -> wanted.equalsIgnoreCase(normaliseIc(guest.getIcPassportNo())));
+  }
+
+  /** An IC or passport number reduced to just its letters and digits. */
+  private static String normaliseIc(String icPassportNo) {
+    return (icPassportNo == null) ? "" : icPassportNo.replace("-", "").replace(" ", "");
   }
 
   /** The membership held by a guest, or null if they are not a member. */

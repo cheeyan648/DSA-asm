@@ -64,7 +64,7 @@ public class OperationalDataInitializer {
     registrations.add(new WalkInRegistration("WR0003", "G0007",
         now.minusMinutes(44), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 1));
     registrations.add(new WalkInRegistration("WR0004", "G0005",
-        now.minusMinutes(29), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 4));
+        now.minusMinutes(29), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 4));
 
     WalkInRegistration wr5 = new WalkInRegistration("WR0005", "G0003",
         now.minusMinutes(21), WalkInRegistration.PRIORITY_URGENT,
@@ -77,7 +77,7 @@ public class OperationalDataInitializer {
     registrations.add(wr5);
 
     WalkInRegistration wr6 = new WalkInRegistration("WR0006", "G0002",
-        now.minusMinutes(140), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2);
+        now.minusMinutes(140), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2);
     wr6.setStatus(WalkInRegistration.STATUS_CANCELLED);
     wr6.setServedBy("ST002");
     registrations.add(wr6);
@@ -106,7 +106,7 @@ public class OperationalDataInitializer {
         now.minusMinutes(258), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 3));
 
     WalkInRegistration wr10 = new WalkInRegistration("WR0010", "G0007",
-        now.minusMinutes(240), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2);
+        now.minusMinutes(240), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2);
     wr10.setStatus(WalkInRegistration.STATUS_NO_SHOW);
     wr10.setCalledAt(now.minusMinutes(210));
     wr10.setServedBy("ST001");
@@ -123,7 +123,7 @@ public class OperationalDataInitializer {
     registrations.add(wr11);
 
     registrations.add(new WalkInRegistration("WR0012", "G0006",
-        now.minusMinutes(198), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 4));
+        now.minusMinutes(198), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 4));
 
     WalkInRegistration wr13 = new WalkInRegistration("WR0013", "G0002",
         now.minusMinutes(180), WalkInRegistration.PRIORITY_NORMAL, null, "RT02", 2);
@@ -142,7 +142,7 @@ public class OperationalDataInitializer {
     registrations.add(wr14);
 
     registrations.add(new WalkInRegistration("WR0015", "G0003",
-        now.minusMinutes(150), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 1));
+        now.minusMinutes(150), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 1));
 
     WalkInRegistration wr16 = new WalkInRegistration("WR0016", "G0005",
         now.minusMinutes(120), WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 3);
@@ -164,7 +164,7 @@ public class OperationalDataInitializer {
     registrations.add(wr17);
 
     registrations.add(new WalkInRegistration("WR0018", "G0004",
-        now.minusMinutes(80), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2));
+        now.minusMinutes(80), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2));
 
     // The day's earlier arrivals, all finished with. They take the listing
     // past a single page, so the paging controls have something to work on
@@ -177,7 +177,7 @@ public class OperationalDataInitializer {
         WalkInRegistration.PRIORITY_URGENT, "Medical or emergency situation",
         "RT02", 3, "ST002", "BK0018");
     addFinished(registrations, "WR0022", "G0005", now.minusMinutes(277),
-        WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2, "ST001", "BK0019");
+        WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2, "ST001", "BK0019");
     addFinished(registrations, "WR0023", "G0006", now.minusMinutes(268),
         WalkInRegistration.PRIORITY_NORMAL, null, "RT01", 1, "ST002", "BK0020");
     addFinished(registrations, "WR0024", "G0007", now.minusMinutes(260),
@@ -191,7 +191,7 @@ public class OperationalDataInitializer {
     // Two guests who gave up waiting, and two who were called but never came
     // forward - so every status appears somewhere in the listing.
     WalkInRegistration wr27 = new WalkInRegistration("WR0027", "G0002",
-        now.minusMinutes(236), WalkInRegistration.PRIORITY_NORMAL, null, "RT05", 2);
+        now.minusMinutes(236), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2);
     wr27.setStatus(WalkInRegistration.STATUS_CANCELLED);
     wr27.setServedBy("ST002");
     registrations.add(wr27);
@@ -203,7 +203,7 @@ public class OperationalDataInitializer {
     registrations.add(wr28);
 
     WalkInRegistration wr29 = new WalkInRegistration("WR0029", "G0003",
-        now.minusMinutes(219), WalkInRegistration.PRIORITY_NORMAL, null, "RT04", 2);
+        now.minusMinutes(219), WalkInRegistration.PRIORITY_NORMAL, null, "RT03", 2);
     wr29.setStatus(WalkInRegistration.STATUS_NO_SHOW);
     wr29.setCalledAt(now.minusMinutes(205));
     wr29.setServedBy("ST002");
@@ -258,23 +258,23 @@ public class OperationalDataInitializer {
     bk1.setBookingStatus(Booking.STATUS_CHECKED_OUT);
     bookings.add(bk1);
 
-    Booking bk2 = new Booking("BK0002", "G0002", "RT03",
+    Booking bk2 = new Booking("BK0002", "G0002", "RT02",
         today.minusDays(1), today.plusDays(2), 2, Booking.PRIORITY_NORMAL,
         Booking.SOURCE_ONLINE, null, 234.00, now.minusDays(5), "ST001");
     bk2.setRoomNo("2001");
     bk2.setBookingStatus(Booking.STATUS_CHECKED_IN);
     bookings.add(bk2);
 
-    Booking bk3 = new Booking("BK0003", "G0003", "RT03",
+    Booking bk3 = new Booking("BK0003", "G0003", "RT02",
         today.minusDays(4), today.minusDays(1), 3, Booking.PRIORITY_NORMAL,
         Booking.SOURCE_PHONE, null, 260.00, now.minusDays(8), "ST002");
     bk3.setRoomNo("2002");
     bk3.setBookingStatus(Booking.STATUS_CHECKED_OUT);
     bookings.add(bk3);
 
-    Booking bk4 = new Booking("BK0004", "G0004", "RT02",
+    Booking bk4 = new Booking("BK0004", "G0004", "RT01",
         today, today.plusDays(3), 2, Booking.PRIORITY_NORMAL,
-        Booking.SOURCE_WALK_IN, "WR0001", 180.00, now.minusMinutes(82), "ST001");
+        Booking.SOURCE_WALK_IN, "WR0001", 150.00, now.minusMinutes(82), "ST001");
     bk4.setRoomNo("1004");
     bk4.setBookingStatus(Booking.STATUS_CONFIRMED);
     bookings.add(bk4);
@@ -286,19 +286,19 @@ public class OperationalDataInitializer {
     bk5.setBookingStatus(Booking.STATUS_CHECKED_IN);
     bookings.add(bk5);
 
-    Booking bk6 = new Booking("BK0006", "G0005", "RT04",
+    Booking bk6 = new Booking("BK0006", "G0005", "RT03",
         today.plusDays(7), today.plusDays(11), 4, Booking.PRIORITY_NORMAL,
         Booking.SOURCE_CORPORATE, null, 399.00, now.minusMinutes(30), "ST002");
     bookings.add(bk6);
 
     // Urgent and still waiting on room 1003 to be cleaned - the case that
     // shows the whole priority chain in flight.
-    Booking bk7 = new Booking("BK0007", "G0003", "RT02",
+    Booking bk7 = new Booking("BK0007", "G0003", "RT01",
         today, today.plusDays(2), 2, Booking.PRIORITY_URGENT,
-        Booking.SOURCE_WALK_IN, "WR0005", 180.00, now.minusMinutes(18), "ST001");
+        Booking.SOURCE_WALK_IN, "WR0005", 150.00, now.minusMinutes(18), "ST001");
     bookings.add(bk7);
 
-    // Two more urgent stays waiting on rooms 1007 and 1008, so those
+    // Two more urgent stays waiting on rooms 1005 and 3004, so those
     // housekeeping jobs sit in the URGENT lane for the demo.
     Booking bk8 = new Booking("BK0008", "G0001", "RT01",
         today, today.plusDays(1), 1, Booking.PRIORITY_URGENT,
@@ -357,17 +357,22 @@ public class OperationalDataInitializer {
 
     Invoice inv2 = new Invoice("INV0002", "BK0002", 702.00, now.minusDays(1));
     inv2.setDiscountAmount(50.00);
-    inv2.setAmountPaid(400.00);
+    inv2.setAmountPaid(inv2.getTotalAmount());
     invoices.add(inv2);
 
     Invoice inv3 = new Invoice("INV0003", "BK0003", 780.00, now.minusDays(1));
     inv3.setAmountPaid(inv3.getTotalAmount());
     invoices.add(inv3);
 
-    invoices.add(new Invoice("INV0004", "BK0004", 540.00, now.minusMinutes(82)));
+    // Every seeded bill is settled: a room is only ever given to a guest who
+    // has paid for it, so a half-paid sample would describe a state the
+    // system no longer lets anyone reach.
+    Invoice inv4 = new Invoice("INV0004", "BK0004", 540.00, now.minusMinutes(82));
+    inv4.setAmountPaid(inv4.getTotalAmount());
+    invoices.add(inv4);
 
     Invoice inv5 = new Invoice("INV0005", "BK0005", 300.00, now.minusMinutes(58));
-    inv5.setAmountPaid(150.00);
+    inv5.setAmountPaid(inv5.getTotalAmount());
     invoices.add(inv5);
 
     return invoices;
@@ -383,11 +388,13 @@ public class OperationalDataInitializer {
         "APPR-884213", now.minusDays(2).withHour(15).withMinute(2), "ST002"));
     payments.add(new Payment("PY0002", "INV0001", 149.80, Payment.CASH,
         null, now.minusHours(3), "ST001"));
-    payments.add(new Payment("PY0003", "INV0002", 400.00, Payment.EWALLET,
+    payments.add(new Payment("PY0003", "INV0002", 768.53, Payment.EWALLET,
         "TNG-5590231", now.minusDays(1).withHour(14).withMinute(10), "ST001"));
     payments.add(new Payment("PY0004", "INV0003", 909.48, Payment.BANK_TRANSFER,
         "MBB-77102934", now.minusDays(1).withHour(12).withMinute(5), "ST002"));
-    payments.add(new Payment("PY0005", "INV0005", 150.00, Payment.CASH,
+    payments.add(new Payment("PY0005", "INV0004", 629.64, Payment.CARD,
+        "APPR-551907", now.minusMinutes(82), "ST001"));
+    payments.add(new Payment("PY0006", "INV0005", 349.80, Payment.CASH,
         null, now.minusMinutes(58), "ST001"));
 
     return payments;
@@ -453,7 +460,7 @@ public class OperationalDataInitializer {
     hk6.setCompletedAt(now.minusMinutes(65));
     tasks.add(hk6);
 
-    HousekeepingTask hk7 = new HousekeepingTask("HK0007", "3001",
+    HousekeepingTask hk7 = new HousekeepingTask("HK0007", "3005",
         HousekeepingTask.TYPE_MAINTENANCE, null, now.minusDays(6));
     hk7.setStatus(HousekeepingTask.BLOCKED);
     hk7.setAssignedTo("ST004");
@@ -498,17 +505,17 @@ public class OperationalDataInitializer {
     addCompletedCleaning(tasks, "HK0026", "2003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 0, 8, 0), 29, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
 
-    tasks.add(new HousekeepingTask("HK0027", "1006", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+    tasks.add(new HousekeepingTask("HK0027", "1004", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
         null, now.minusHours(2)));
 
-    HousekeepingTask hk28 = new HousekeepingTask("HK0028", "1007",
+    HousekeepingTask hk28 = new HousekeepingTask("HK0028", "1005",
         HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusHours(1));
     hk28.setPriority(HousekeepingTask.PRIORITY_URGENT);
     hk28.setReservedForBookingId("BK0008");
     hk28.setRemark("Expedited - BK0008 is waiting on this room");
     tasks.add(hk28);
 
-    HousekeepingTask hk29 = new HousekeepingTask("HK0029", "1008",
+    HousekeepingTask hk29 = new HousekeepingTask("HK0029", "3004",
         HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusMinutes(50));
     hk29.setPriority(HousekeepingTask.PRIORITY_URGENT);
     hk29.setReservedForBookingId("BK0009");
@@ -519,21 +526,21 @@ public class OperationalDataInitializer {
         at(now, 2, 7, 0), 44, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
     addCompletedCleaning(tasks, "HK0031", "2005", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 5, 12, 0), 38, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
-    addCompletedCleaning(tasks, "HK0032", "2006", HousekeepingTask.TYPE_DEEP_CLEAN,
+    addCompletedCleaning(tasks, "HK0032", "3002", HousekeepingTask.TYPE_DEEP_CLEAN,
         at(now, 12, 13, 15), 52, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
-    addCompletedCleaning(tasks, "HK0033", "2006", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+    addCompletedCleaning(tasks, "HK0033", "3002", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
         at(now, 1, 17, 0), 41, "ST004", 0, HousekeepingTask.PRIORITY_URGENT);
     addCompletedCleaning(tasks, "HK0034", "1003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 3, 8, 45), 31, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
-    addCompletedCleaning(tasks, "HK0035", "1006", HousekeepingTask.TYPE_DEEP_CLEAN,
+    addCompletedCleaning(tasks, "HK0035", "1004", HousekeepingTask.TYPE_DEEP_CLEAN,
         at(now, 20, 18, 0), 46, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
     addCompletedCleaning(tasks, "HK0036", "3001", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
         at(now, 15, 7, 30), 70, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
     addCompletedCleaning(tasks, "HK0037", "2005", HousekeepingTask.TYPE_DEEP_CLEAN,
         at(now, 30, 11, 20), 58, "ST004", 1, HousekeepingTask.PRIORITY_NORMAL);
-    addCompletedCleaning(tasks, "HK0038", "1008", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+    addCompletedCleaning(tasks, "HK0038", "3004", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 4, 12, 30), 34, "ST003", 0, HousekeepingTask.PRIORITY_URGENT);
-    addCompletedCleaning(tasks, "HK0039", "2006", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+    addCompletedCleaning(tasks, "HK0039", "3002", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 6, 19, 20), 36, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
 
     HousekeepingTask hk40 = new HousekeepingTask("HK0040", "2005",
@@ -614,7 +621,7 @@ public class OperationalDataInitializer {
     logs.add(new RoomStatusLog("HL0007", "HK0004", "2004",
         HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.INSPECTED,
         now.minusHours(3), "ST003", false, "Ready for sign-off"));
-    logs.add(new RoomStatusLog("HL0008", "HK0007", "3001",
+    logs.add(new RoomStatusLog("HL0008", "HK0007", "3005",
         HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.BLOCKED,
         now.minusDays(6).plusHours(1), "ST004", false, "Part not in stock"));
 
@@ -647,26 +654,26 @@ public class OperationalDataInitializer {
     appendCompletedHistory(logs, "HK0025", "1005", at(now, 0, 19, 0), 36, "ST003", 0);
     appendCompletedHistory(logs, "HK0026", "2003", at(now, 0, 8, 0), 29, "ST004", 0);
 
-    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0027", "1006", null,
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0027", "1004", null,
         HousekeepingTask.DIRTY, now.minusHours(2), "ST001", false,
         "Raised on check-out"));
-    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0028", "1007", null,
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0028", "1005", null,
         HousekeepingTask.DIRTY, now.minusHours(1), "ST002", false,
         "Raised for waiting booking BK0008"));
-    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0029", "1008", null,
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0029", "3004", null,
         HousekeepingTask.DIRTY, now.minusMinutes(50), "ST001", false,
         "Raised for waiting booking BK0009"));
 
     appendCompletedHistory(logs, "HK0030", "2005", at(now, 2, 7, 0), 44, "ST003", 0);
     appendCompletedHistory(logs, "HK0031", "2005", at(now, 5, 12, 0), 38, "ST004", 0);
-    appendCompletedHistory(logs, "HK0032", "2006", at(now, 12, 13, 15), 52, "ST003", 0);
-    appendCompletedHistory(logs, "HK0033", "2006", at(now, 1, 17, 0), 41, "ST004", 0);
+    appendCompletedHistory(logs, "HK0032", "3002", at(now, 12, 13, 15), 52, "ST003", 0);
+    appendCompletedHistory(logs, "HK0033", "3002", at(now, 1, 17, 0), 41, "ST004", 0);
     appendCompletedHistory(logs, "HK0034", "1003", at(now, 3, 8, 45), 31, "ST003", 0);
-    appendCompletedHistory(logs, "HK0035", "1006", at(now, 20, 18, 0), 46, "ST004", 0);
+    appendCompletedHistory(logs, "HK0035", "1004", at(now, 20, 18, 0), 46, "ST004", 0);
     appendCompletedHistory(logs, "HK0036", "3001", at(now, 15, 7, 30), 70, "ST003", 0);
     appendCompletedHistory(logs, "HK0037", "2005", at(now, 30, 11, 20), 58, "ST004", 1);
-    appendCompletedHistory(logs, "HK0038", "1008", at(now, 4, 12, 30), 34, "ST003", 0);
-    appendCompletedHistory(logs, "HK0039", "2006", at(now, 6, 19, 20), 36, "ST004", 0);
+    appendCompletedHistory(logs, "HK0038", "3004", at(now, 4, 12, 30), 34, "ST003", 0);
+    appendCompletedHistory(logs, "HK0039", "3002", at(now, 6, 19, 20), 36, "ST004", 0);
 
     appendCompletedHistory(logs, "HK0040", "2005", at(now, 3, 9, 15), 22, "ST003", 1);
     logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0041", "2005", null,

@@ -124,6 +124,18 @@ public class LoyaltyRewardsUI {
     return MessageUI.isCancelled(id) ? null : id;
   }
 
+  /**
+   * Asks for a row number from a listing already on screen.
+   *
+   * @param maximum how many rows there are
+   * @param prompt what the number is being asked for
+   * @return the 1-based position, or -1 if the officer went back
+   */
+  public int inputListPosition(int maximum, String prompt) {
+    int picked = MessageUI.readInt(scanner, prompt, 1, maximum);
+    return (picked == MessageUI.CANCELLED_INT) ? -1 : picked;
+  }
+
   public int inputPointsAdjustment() {
     MessageUI.displayMessage("");
     MessageUI.displayMessage("  Enter a positive number to add points, negative to take away.");
@@ -477,6 +489,132 @@ public class LoyaltyRewardsUI {
    * @param emptyMessage what to say when there is nothing to show
    * @return true if anything was shown
    */
+  /**
+   * Lists the members and takes the one picked by its row number.
+   *
+   * The officer should not have to know a member ID before they can act on a
+   * member, so the table comes first and the number in its first column is
+   * what they type. Long lists are paged, and the numbers count from the top
+   * of the whole listing rather than the page, so a member keeps the same
+   * number whichever page they are read from.
+   *
+   * @param members the members to offer
+   * @param data used to reach each member's guest record
+   * @param prompt what the number is being asked for
+   * @param emptyMessage what to say when there is nothing to show
+   * @return the chosen member, or null if the officer quit
+   */
+  public Member chooseMember(ListInterface<Member> members, ResortData data,
+      String prompt, String emptyMessage) {
+    if (members.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  " + emptyMessage);
+      return null;
+    }
+
+    int total = members.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
+    int page = 1;
+
+    while (true) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayTableHeading(String.format(
+          "  %-5s %-7s %-22s %-9s %9s %11s  %s",
+          "NO", "MEMBER", "GUEST", "TIER", "BALANCE", "LIFETIME", "EXPIRES"));
+
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
+        Member member = members.getEntry(i);
+        Guest guest = data.findGuest(member.getGuestId());
+
+        System.out.printf("  [%d]   %-7s %-22s %-9s %9d %11d  %s%n",
+            i, member.getMemberId(),
+            guest == null ? "-" : truncate(guest.getFullName(), 22),
+            member.getTier(), member.getPointsBalance(),
+            member.getLifetimePoints(), member.getPointsExpiryDate());
+      }
+
+      MessageUI.displayThinRule();
+
+      if (totalPages == 1) {
+        System.out.printf("  %d member(s).%n", total);
+        int picked = MessageUI.readInt(scanner, prompt, 1, total);
+        return (picked == MessageUI.CANCELLED_INT) ? null : members.getEntry(picked);
+      }
+
+      System.out.printf("  Showing %d-%d of %d member(s).%n", from, upTo, total);
+
+      // One prompt does both jobs: a bare number is always a member, and
+      // paging is a letter, so the two can never be mistaken for each other.
+      while (true) {
+        System.out.printf("  %s (1-%d), [N]ext page, [P]revious, 0 to go back: ",
+            prompt, total);
+        String input = MessageUI.readLine(scanner, "0").trim().toLowerCase();
+
+        if (input.equals("0") || input.equals("q")) {
+          return null;
+        }
+        if (input.isEmpty() || input.equals("n")) {
+          page = (page >= totalPages) ? 1 : page + 1;
+          break;
+        }
+        if (input.equals("p")) {
+          page = (page <= 1) ? totalPages : page - 1;
+          break;
+        }
+
+        try {
+          int picked = Integer.parseInt(input);
+          if (picked < 1 || picked > total) {
+            MessageUI.displayError("There is no member " + picked
+                + " in that list. Enter 1 to " + total + ".");
+            continue;
+          }
+          return members.getEntry(picked);
+        } catch (NumberFormatException notANumber) {
+          MessageUI.displayError("Enter a member number, N, P, or 0 to go back.");
+        }
+      }
+    }
+  }
+
+  /**
+   * Lists the reward catalogue and takes the one picked by its row number.
+   *
+   * @param rewards the rewards to offer
+   * @param prompt what the number is being asked for
+   * @param emptyMessage what to say when the catalogue is empty
+   * @return the chosen reward, or null if the officer quit
+   */
+  public Reward chooseReward(ListInterface<Reward> rewards, String prompt,
+      String emptyMessage) {
+    if (rewards.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  " + emptyMessage);
+      return null;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-5s %-8s %-28s %-10s %8s %8s  %s",
+        "NO", "REWARD", "NAME", "CATEGORY", "POINTS", "STOCK", "ACTIVE"));
+
+    for (int i = 1; i <= rewards.getNumberOfEntries(); i++) {
+      Reward reward = rewards.getEntry(i);
+      System.out.printf("  [%d]   %-8s %-28s %-10s %8d %8d  %s%n",
+          i, reward.getRewardId(), truncate(reward.getRewardName(), 28),
+          truncate(reward.getCategory(), 10), reward.getPointsRequired(),
+          reward.getStockQuantity(), reward.isActive() ? "Yes" : "No");
+    }
+
+    MessageUI.displayThinRule();
+    System.out.printf("  %d reward(s).%n", rewards.getNumberOfEntries());
+
+    int picked = MessageUI.readInt(scanner, prompt, 1, rewards.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : rewards.getEntry(picked);
+  }
+
   public boolean displayMemberList(ListInterface<Member> members, ResortData data,
       String emptyMessage) {
     if (members.isEmpty()) {

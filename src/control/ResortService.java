@@ -13,6 +13,7 @@ import entity.PointTransaction;
 import entity.Redemption;
 import entity.Reward;
 import entity.Room;
+import entity.RoomArrangement;
 import entity.RoomAssignment;
 import entity.RoomStatusLog;
 import entity.RoomType;
@@ -188,6 +189,108 @@ public class ResortService {
     return cleanable;
   }
 
+  /** The most rooms a single party may be split across. */
+  public static final int MAX_ROOMS_PER_PARTY = 3;
+
+  /**
+   * Ways of housing a party when no single room of their type will do.
+   *
+   * Rather than turning a party away because the type they asked for is gone,
+   * the rooms that ARE free are combined until they hold everybody: six guests
+   * become three Standard Twins, or a Deluxe King and a Standard Twin. Only
+   * arrangements where every room is needed are returned - offering four twins
+   * to a party of six would waste a room somebody else could have - and they
+   * come back cheapest first, so the guest is offered the best price.
+   *
+   * @param guests how many people are staying
+   * @param checkIn the first night
+   * @param checkOut the morning they leave
+   * @return the arrangements that would house them, cheapest first
+   */
+  public ListInterface<RoomArrangement> findRoomArrangements(int guests,
+      LocalDate checkIn, LocalDate checkOut) {
+    ListInterface<RoomArrangement> found = new ArrayList<>();
+    if (guests < 1) {
+      return found;
+    }
+
+    // Every room that is free and clean for the dates, whatever its type. A
+    // room still waiting on housekeeping is not offered: cleaning work is
+    // raised and ordered at check-out, not asked for from here.
+    ListInterface<Room> free = findAvailableRooms(null, checkIn, checkOut);
+
+    if (free.isEmpty()) {
+      return found;
+    }
+
+    buildArrangements(free, guests, 1, new RoomArrangement(), found);
+    found.sort(Comparator.comparingDouble(RoomArrangement::getTotalRatePerNight));
+    return found;
+  }
+
+  /**
+   * Walks the free rooms, growing one arrangement at a time.
+   *
+   * Rooms are only ever added in increasing position, so each combination is
+   * reached once rather than once per ordering. A branch stops as soon as it
+   * houses the party, because adding another room to an arrangement that
+   * already fits could only make it wasteful.
+   */
+  private void buildArrangements(ListInterface<Room> free, int guests, int from,
+      RoomArrangement sofar, ListInterface<RoomArrangement> found) {
+    if (sofar.getRoomCount() >= MAX_ROOMS_PER_PARTY) {
+      return;
+    }
+
+    for (int i = from; i <= free.getNumberOfEntries(); i++) {
+      Room room = free.getEntry(i);
+      RoomType type = data.findRoomType(room.getTypeId());
+
+      RoomArrangement extended = copyOfArrangement(sofar);
+      extended.add(room, type);
+
+      if (extended.holds(guests)) {
+        // Same-type rooms are interchangeable, so keep only the first
+        // arrangement of any given shape rather than one per room number.
+        if (extended.isMinimalFor(guests, this::typeOfRoom)
+            && !hasSameShape(found, extended)) {
+          found.add(extended);
+        }
+        continue;
+      }
+
+      buildArrangements(free, guests, i + 1, extended, found);
+    }
+  }
+
+  private RoomArrangement copyOfArrangement(RoomArrangement source) {
+    RoomArrangement copy = new RoomArrangement();
+    ListInterface<Room> rooms = source.getRooms();
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+      copy.add(room, data.findRoomType(room.getTypeId()));
+    }
+    return copy;
+  }
+
+  private RoomType typeOfRoom(Room room) {
+    return (room == null) ? null : data.findRoomType(room.getTypeId());
+  }
+
+  /** Whether an equivalent arrangement - same types, same counts - is already listed. */
+  private boolean hasSameShape(ListInterface<RoomArrangement> found,
+      RoomArrangement candidate) {
+    // Compared on the sorted key rather than the written description, so a
+    // twin-then-king arrangement is recognised as the king-then-twin one.
+    String shape = candidate.shapeKey(this::typeOfRoom);
+    for (int i = 1; i <= found.getNumberOfEntries(); i++) {
+      if (shape.equals(found.getEntry(i).shapeKey(this::typeOfRoom))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // ==================================================================
   // FLOW A - walk-in becomes a booking
   // ==================================================================
@@ -204,6 +307,17 @@ public class ResortService {
    * @return the registration now being served
    */
   public ServiceResult<WalkInRegistration> serveNextGuest(String staffId) {
+    // Only one guest is at the counter at a time. If the last one called has
+    // not finished - their booking was never made, or the officer walked away
+    // mid-transaction - they keep the desk rather than being dropped for the
+    // next in line. Nobody is served past an unfinished guest.
+    WalkInRegistration atCounter = findGuestAtCounter();
+    if (atCounter != null) {
+      return ServiceResult.fail(guestNameOf(atCounter.getGuestId())
+          + " (" + atCounter.getRegId() + ") is still at the counter with no"
+          + " booking made. Finish or cancel their registration first.");
+    }
+
     WalkInRegistration next = data.getWaitingList().next();
     if (next == null) {
       return ServiceResult.fail("No guests are waiting.");
@@ -215,6 +329,20 @@ public class ResortService {
 
     return ServiceResult.ok("Now serving " + guestNameOf(next.getGuestId())
         + " (" + next.getRegId() + ").", next);
+  }
+
+  /**
+   * The guest currently at the counter, if anyone is.
+   *
+   * A registration is IN_SERVICE from the moment it is called until a booking
+   * is made from it, so one sitting in that state is a guest whose business is
+   * still unfinished - whatever interrupted it.
+   *
+   * @return the registration being served, or null if the counter is free
+   */
+  public WalkInRegistration findGuestAtCounter() {
+    return data.getRegistrationList().search(
+        reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
   }
 
   /**
@@ -355,122 +483,21 @@ public class ResortService {
         + ". Invoice " + invoice.getInvoiceId() + " raised.", booking);
   }
 
-  /**
-   * Asks housekeeping to clean a room out of turn for a waiting booking.
-   *
-   * Taken when an urgent guest needs a room and none is ready. Rather than
-   * turning them away, the room closest to ready is picked and its cleaning
-   * task is marked as reserved for this booking - which is what moves the task
-   * into the urgent lane. The booking waits as PENDING until the room is done.
-   *
-   * @param bookingId the booking waiting for a room
-   * @param staffId the officer making the request
-   * @return the task now expedited
-   */
-  public ServiceResult<HousekeepingTask> requestUrgentCleaning(String bookingId,
-      String staffId) {
-    Booking booking = data.findBooking(bookingId);
-    if (booking == null) {
-      return ServiceResult.fail("Booking " + bookingId + " was not found.");
-    }
-
-    ListInterface<Room> cleanable = findCleanableRooms(booking.getTypeId(),
-        booking.getCheckInDate(), booking.getCheckOutDate());
-    if (cleanable.isEmpty()) {
-      return ServiceResult.fail("No room of that type can be made ready for those dates.");
-    }
-
-    // Prefer a room that can actually enter the cleaning queue. INSPECTED is
-    // still listed by findCleanableRooms (closest to ready), but it is not a
-    // new cleaning job and must not be treated as one.
-    Room target = firstRoomAt(cleanable, Room.DIRTY);
-    if (target == null) {
-      target = firstRoomAt(cleanable, Room.CLEANING_IN_PROGRESS);
-    }
-    if (target == null) {
-      target = firstRoomAt(cleanable, Room.INSPECTED);
-    }
-    if (target == null || target.isOutOfService()
-        || Room.BLOCKED.equals(target.getHousekeepingStatus())) {
-      return ServiceResult.fail("No room of that type can be cleaned for those dates.");
-    }
-    if (Room.READY_FOR_CHECK_IN.equals(target.getHousekeepingStatus())) {
-      return ServiceResult.fail("Room " + target.getRoomNo()
-          + " is already ready and does not need cleaning.");
-    }
-
-    HousekeepingTask task = data.findOpenTaskForRoom(target.getRoomNo());
-
-    if (Room.INSPECTED.equals(target.getHousekeepingStatus())) {
-      if (task == null) {
-        return ServiceResult.fail("Room " + target.getRoomNo()
-            + " is already inspected and has no open job to queue.");
-      }
-      task.setReservedForBookingId(bookingId);
-      task.setRemark("Reserved - " + bookingId
-          + " is waiting on inspection sign-off");
-      data.saveHousekeeping();
-      return ServiceResult.ok("Room " + target.getRoomNo()
-          + " is already inspected. Complete the existing sign-off to "
-          + "READY_FOR_CHECK_IN for " + bookingId
-          + ". It was not added to the cleaning queue.", task);
-    }
-
-    if (Room.CLEANING_IN_PROGRESS.equals(target.getHousekeepingStatus())) {
-      if (task == null) {
-        return ServiceResult.fail("Room " + target.getRoomNo()
-            + " is already being cleaned and has no open task to reserve.");
-      }
-      task.setReservedForBookingId(bookingId);
-      task.setRemark("Expedited - " + bookingId + " is waiting on this room");
-      refreshTaskPriority(task);
-      enqueueIfNeedsCleaning(task);
-      data.saveHousekeeping();
-      return ServiceResult.ok("Room " + target.getRoomNo()
-          + " is already being cleaned for " + bookingId + " (task "
-          + task.getTaskId() + "). A second cleaning job was not raised.", task);
-    }
-
-    // DIRTY: raise a cleaning task only when the room has none, then put it
-    // in the urgent lane once, from the booking waiting on it.
-    if (task == null) {
-      task = new HousekeepingTask(data.nextTaskId(), target.getRoomNo(),
-          HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, LocalDateTime.now());
-      data.getTaskList().add(task);
-      logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
-          "Raised for waiting booking " + bookingId);
-    }
-
-    task.setReservedForBookingId(bookingId);
-    task.setRemark("Expedited - " + bookingId + " is waiting on this room");
-    refreshTaskPriority(task);
-    enqueueIfNeedsCleaning(task);
-
-    data.saveHousekeeping();
-
-    return ServiceResult.ok("Room " + target.getRoomNo() + " is being cleaned for "
-        + bookingId + " (task " + task.getTaskId() + ", "
-        + task.getPriority() + " lane).", task);
-  }
-
-  // Returns the first room in the list that currently has the given housekeeping status.
-  private Room firstRoomAt(ListInterface<Room> rooms, String housekeepingStatus) {
-    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
-      Room room = rooms.getEntry(i);
-      if (housekeepingStatus.equals(room.getHousekeepingStatus())) {
-        return room;
-      }
-    }
-    return null;
-  }
 
   /**
-   * Sets a task's lane from the booking waiting on its room.
+   * Sets a task's lane from whether a booking is waiting on its room.
    *
-   * Priority is never typed in - it is read from whether a booking is waiting
-   * and whether that booking is itself urgent. If the waiting booking is
-   * cancelled the task falls back to the normal lane, but the cleaning still
-   * goes ahead, because the room is dirty either way.
+   * Priority is never typed in, and it is not inherited from how the guest
+   * joined the walk-in queue: urgency at the door decides who is served first
+   * at the counter, not what housekeeping cleans first. What matters here is
+   * only whether somebody is waiting to move in. A room with a live booking
+   * against it is cleaned ahead of the rest, whether that guest walked in as
+   * a normal or an urgent case, because either way they cannot check in until
+   * it is done. Everything else is cleaned in housekeeping's own order.
+   *
+   * If the waiting booking is cancelled the task falls back to the normal
+   * lane, but the cleaning still goes ahead, because the room is dirty either
+   * way.
    */
   public void refreshTaskPriority(HousekeepingTask task) {
     String reservedFor = task.getReservedForBookingId();
@@ -478,7 +505,7 @@ public class ResortService {
 
     if (reservedFor != null) {
       Booking waiting = data.findBooking(reservedFor);
-      if (waiting != null && waiting.isUrgent()
+      if (waiting != null
           && !Booking.STATUS_CANCELLED.equals(waiting.getBookingStatus())) {
         updated = HousekeepingTask.PRIORITY_URGENT;
       }
@@ -751,6 +778,18 @@ public class ResortService {
           + booking.getCheckInDate() + ".");
     }
 
+    // The stay is paid for before the key is handed over. Collecting at the
+    // counter is the only point where the guest is certain to still be there.
+    Invoice invoice = data.findInvoiceByBooking(bookingId);
+    if (invoice == null) {
+      return ServiceResult.fail("This booking has no invoice to settle.");
+    }
+    if (!invoice.isSettled()) {
+      return ServiceResult.fail(String.format(
+          "RM%.2f is still outstanding on invoice %s. Settle the bill before check-in.",
+          invoice.getOutstandingBalance(), invoice.getInvoiceId()));
+    }
+
     booking.setBookingStatus(Booking.STATUS_CHECKED_IN);
     room.setOccupancyStatus(Room.OCCUPIED);
 
@@ -774,6 +813,23 @@ public class ResortService {
    * @return a description of everything that happened
    */
   public ServiceResult<Booking> checkOut(String bookingId, String staffId) {
+    return checkOut(bookingId, staffId, false);
+  }
+
+  /**
+   * Ends a stay and says how soon the room is wanted back.
+   *
+   * Checkout is the one moment the front desk hands work to housekeeping, so
+   * it is also where the urgency is set: the officer knows whether somebody is
+   * waiting for this room, and nothing else in the system does.
+   *
+   * @param bookingId the stay ending
+   * @param staffId the officer closing it
+   * @param urgentCleaning whether the room is wanted back ahead of the round
+   * @return the closed booking
+   */
+  public ServiceResult<Booking> checkOut(String bookingId, String staffId,
+      boolean urgentCleaning) {
     Booking booking = data.findBooking(bookingId);
     if (booking == null) {
       return ServiceResult.fail("Booking " + bookingId + " was not found.");
@@ -804,7 +860,8 @@ public class ResortService {
     outcome.append(guestNameOf(booking.getGuestId()))
         .append(" checked out of room ").append(booking.getRoomNo()).append(".");
 
-    HousekeepingTask task = releaseRoomForCleaning(booking.getRoomNo(), bookingId, staffId);
+    HousekeepingTask task = releaseRoomForCleaning(booking.getRoomNo(), bookingId,
+        staffId, urgentCleaning);
     if (task != null) {
       outcome.append(" Cleaning task ").append(task.getTaskId())
           .append(" raised (").append(task.getPriority()).append(" lane).");
@@ -830,6 +887,17 @@ public class ResortService {
    */
   private HousekeepingTask releaseRoomForCleaning(String roomNo, String bookingId,
       String staffId) {
+    return releaseRoomForCleaning(roomNo, bookingId, staffId, false);
+  }
+
+  /**
+   * Hands a room back to housekeeping, in the lane the officer asked for.
+   *
+   * @param urgentCleaning whether the room is wanted back ahead of the round
+   * @return the cleaning task raised, or null if the room was unknown
+   */
+  private HousekeepingTask releaseRoomForCleaning(String roomNo, String bookingId,
+      String staffId, boolean urgentCleaning) {
     Room room = data.findRoom(roomNo);
     if (room == null) {
       return null;
@@ -840,21 +908,20 @@ public class ResortService {
 
     HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
         HousekeepingTask.TYPE_CHECKOUT_CLEAN, bookingId, LocalDateTime.now());
-    task.setRemark("Auto-raised on check-out");
 
-    // Somebody may already be waiting on this room.
-    Booking waiting = data.getBookingList().search(
-        b -> Booking.STATUS_PENDING.equals(b.getBookingStatus())
-            && roomNo.equals(b.getRoomNo()));
-    if (waiting != null) {
-      task.setReservedForBookingId(waiting.getBookingId());
-    }
+    // The officer at the desk decides the lane. They are the only one who
+    // knows whether anybody is waiting on this room, so the answer is taken
+    // from them rather than guessed at from the booking records.
+    task.setPriority(urgentCleaning
+        ? HousekeepingTask.PRIORITY_URGENT : HousekeepingTask.PRIORITY_NORMAL);
+    task.setRemark(urgentCleaning
+        ? "Raised on check-out - wanted back urgently"
+        : "Raised on check-out");
 
     data.getTaskList().add(task);
-    refreshTaskPriority(task);
     enqueueIfNeedsCleaning(task);
     logStatusChange(task, null, HousekeepingTask.DIRTY, staffId, false,
-        "Raised on check-out");
+        task.getRemark());
 
     return task;
   }
@@ -881,6 +948,15 @@ public class ResortService {
     if (amount > invoice.getOutstandingBalance() + 0.005) {
       return ServiceResult.fail(String.format(
           "That is more than the RM%.2f outstanding.", invoice.getOutstandingBalance()));
+    }
+
+    // A bill is settled in full or not at all: a room is only ever given to a
+    // guest who has paid for the stay, so a part payment would leave a booking
+    // in a state the rest of the system does not allow.
+    if (amount + 0.005 < invoice.getOutstandingBalance()) {
+      return ServiceResult.fail(String.format(
+          "The full RM%.2f is due - a bill cannot be part paid.",
+          invoice.getOutstandingBalance()));
     }
     if (Payment.requiresReference(method) && (reference == null || reference.isBlank())) {
       return ServiceResult.fail("A reference is required for a " + method + " payment.");

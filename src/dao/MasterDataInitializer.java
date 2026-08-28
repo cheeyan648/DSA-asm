@@ -44,16 +44,16 @@ public class MasterDataInitializer {
   public ListInterface<RoomType> initializeRoomTypes() {
     ListInterface<RoomType> types = new ArrayList<>();
 
+    // Three types, five rooms each. The capacities step 2 - 4 - 6 rather than
+    // clustering, so a party that cannot be housed in one type has a genuine
+    // choice of smaller rooms to be split across: six guests fit one Family
+    // Suite, or three Standard Twins, or a Deluxe King and a Standard Twin.
     types.add(new RoomType("RT01", "Standard Twin", 2, 150.00, 30,
         "Two single beds, garden view"));
-    types.add(new RoomType("RT02", "Standard Queen", 2, 180.00, 30,
-        "One queen bed, garden view"));
-    types.add(new RoomType("RT03", "Deluxe King", 3, 260.00, 45,
+    types.add(new RoomType("RT02", "Deluxe King", 4, 260.00, 45,
         "King bed with balcony, sea view"));
-    types.add(new RoomType("RT04", "Family Suite", 5, 420.00, 60,
+    types.add(new RoomType("RT03", "Family Suite", 6, 480.00, 60,
         "Two bedrooms, living area"));
-    types.add(new RoomType("RT05", "Executive Villa", 6, 780.00, 90,
-        "Private pool, butler service"));
 
     return types;
   }
@@ -71,39 +71,44 @@ public class MasterDataInitializer {
     ListInterface<Room> rooms = new ArrayList<>();
     LocalDateTime now = LocalDateTime.now();
 
+    // --- Standard Twin, floor 10 ---------------------------------
     // Just checked out of, so empty but not yet cleaned - task HK0001 is
     // waiting against it.
     rooms.add(new Room("1001", "RT01", 10, Room.VACANT, Room.DIRTY,
         false, now.minusDays(1).withHour(10).withMinute(20), ""));
     rooms.add(new Room("1002", "RT01", 10, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
         false, now.withHour(9).withMinute(5), ""));
-    rooms.add(new Room("1003", "RT02", 10, Room.VACANT, Room.CLEANING_IN_PROGRESS,
+    rooms.add(new Room("1003", "RT01", 10, Room.VACANT, Room.CLEANING_IN_PROGRESS,
         false, now.minusDays(1).withHour(11).withMinute(40), "Expedited for urgent booking"));
-    rooms.add(new Room("1004", "RT02", 10, Room.RESERVED, Room.READY_FOR_CHECK_IN,
-        false, now.withHour(8).withMinute(30), "Held for walk-in booking"));
-    rooms.add(new Room("1005", "RT03", 10, Room.VACANT, Room.READY_FOR_CHECK_IN,
+    rooms.add(new Room("1004", "RT01", 10, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(9).withMinute(50), ""));
-    rooms.add(new Room("1006", "RT01", 10, Room.VACANT, Room.DIRTY,
-        false, now.minusDays(1).withHour(8).withMinute(40), "Waiting for checkout clean"));
-    rooms.add(new Room("1007", "RT01", 10, Room.VACANT, Room.DIRTY,
+    rooms.add(new Room("1005", "RT01", 10, Room.VACANT, Room.DIRTY,
         false, now.minusDays(1).withHour(9).withMinute(10), "Urgent booking waiting"));
-    rooms.add(new Room("1008", "RT01", 10, Room.VACANT, Room.DIRTY,
-        false, now.minusDays(1).withHour(9).withMinute(50), "Urgent booking waiting"));
+
+    // --- Deluxe King, floor 20 -----------------------------------
     // A room with a guest in it was cleaned before they arrived, so it is
     // occupied AND ready - the two statuses describe different things.
-    rooms.add(new Room("2001", "RT03", 20, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
+    rooms.add(new Room("2001", "RT02", 20, Room.OCCUPIED, Room.READY_FOR_CHECK_IN,
         false, now.withHour(7).withMinute(15), ""));
-    rooms.add(new Room("2002", "RT03", 20, Room.VACANT, Room.CLEANING_IN_PROGRESS,
+    rooms.add(new Room("2002", "RT02", 20, Room.VACANT, Room.CLEANING_IN_PROGRESS,
         false, now.minusDays(2).withHour(14).withMinute(0), ""));
-    rooms.add(new Room("2003", "RT04", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+    rooms.add(new Room("2003", "RT02", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(10).withMinute(10), ""));
-    rooms.add(new Room("2004", "RT04", 20, Room.VACANT, Room.INSPECTED,
+    rooms.add(new Room("2004", "RT02", 20, Room.VACANT, Room.INSPECTED,
         false, now.withHour(10).withMinute(45), "Awaiting supervisor sign-off"));
-    rooms.add(new Room("2005", "RT04", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+    rooms.add(new Room("2005", "RT02", 20, Room.RESERVED, Room.READY_FOR_CHECK_IN,
+        false, now.withHour(8).withMinute(30), "Held for walk-in booking"));
+
+    // --- Family Suite, floor 30 ----------------------------------
+    rooms.add(new Room("3001", "RT03", 30, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(11).withMinute(20), ""));
-    rooms.add(new Room("2006", "RT03", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+    rooms.add(new Room("3002", "RT03", 30, Room.VACANT, Room.READY_FOR_CHECK_IN,
         false, now.withHour(12).withMinute(5), ""));
-    rooms.add(new Room("3001", "RT05", 30, Room.VACANT, Room.BLOCKED,
+    rooms.add(new Room("3003", "RT03", 30, Room.VACANT, Room.CLEANING_IN_PROGRESS,
+        false, now.minusDays(2).withHour(14).withMinute(0), ""));
+    rooms.add(new Room("3004", "RT03", 30, Room.VACANT, Room.DIRTY,
+        false, now.minusDays(1).withHour(9).withMinute(50), "Waiting for checkout clean"));
+    rooms.add(new Room("3005", "RT03", 30, Room.VACANT, Room.BLOCKED,
         true, now.minusDays(6).withHour(16).withMinute(0), "Aircon compressor replacement"));
 
     return rooms;

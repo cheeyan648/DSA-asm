@@ -452,10 +452,21 @@ public class WalkInRegistrationUI {
    * @param guestName who it is for
    * @param typeName the room type they asked for
    */
-  public void displayRegistration(WalkInRegistration reg, String guestName, String typeName) {
+  public void displayRegistration(WalkInRegistration reg, Guest guest, String typeName) {
     MessageUI.displayBlankLine();
     MessageUI.displayField("Registration ID", reg.getRegId());
-    MessageUI.displayField("Guest", guestName + " (" + reg.getGuestId() + ")");
+    MessageUI.displayField("Guest", (guest == null ? "-" : guest.getFullName())
+        + " (" + reg.getGuestId() + ")");
+
+    // The document is what the front desk looks the guest up by when they
+    // reach the counter, so it belongs on the card the officer is reading.
+    MessageUI.displayField("IC / Passport",
+        (guest == null || guest.getIcPassportNo() == null) ? "-" : guest.getIcPassportNo());
+    if (guest != null && guest.getContactNumber() != null
+        && !guest.getContactNumber().isBlank()) {
+      MessageUI.displayField("Contact", guest.getContactNumber());
+    }
+
     MessageUI.displayField("Priority", reg.getPriority());
     if (reg.isUrgent()) {
       MessageUI.displayField("Urgency reason", reg.getUrgencyReason());
@@ -524,9 +535,12 @@ public class WalkInRegistrationUI {
       }
 
       MessageUI.displayBlankLine();
+      // The document is carried on every row: it is what the front desk types
+      // to turn an IN_SERVICE registration into a booking, so it should be
+      // readable straight off whichever listing the officer is looking at.
       MessageUI.displayTableHeading(String.format(
-          "  %-4s %-7s %-22s %-8s %-5s %-11s %-16s %s",
-          "NO", "REG ID", "GUEST", "PRIORITY", "TYPE", "STATUS",
+          "  %-4s %-7s %-18s %-16s %-8s %-5s %-11s %-16s %s",
+          "NO", "REG ID", "GUEST", "IC / PASSPORT", "PRIORITY", "TYPE", "STATUS",
           "QUEUED", "LEFT QUEUE"));
 
       int from = MessageUI.firstRowOnPage(page);
@@ -536,12 +550,13 @@ public class WalkInRegistrationUI {
         WalkInRegistration reg = list.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
+        String document = (guest == null) ? "-" : guest.getIcPassportNo();
 
         // Both ends of the wait are shown: when they joined the queue, and
         // when they left it. A guest still waiting has no second stamp yet.
-        System.out.printf("  %-4d %-7s %-22s %-8s %-5s %-11s %-16s %s%n",
-            i, reg.getRegId(), truncate(name, 22), reg.getPriority(),
-            reg.getRequestedTypeId(), reg.getStatus(),
+        System.out.printf("  %-4d %-7s %-18s %-16s %-8s %-5s %-11s %-16s %s%n",
+            i, reg.getRegId(), truncate(name, 18), truncate(document, 16),
+            reg.getPriority(), reg.getRequestedTypeId(), reg.getStatus(),
             reg.getFormattedQueuedAt(), reg.getFormattedServedAt());
       }
 
@@ -601,8 +616,10 @@ public class WalkInRegistrationUI {
           urgentCount, normalCount, total);
       MessageUI.displayBlankLine();
 
-      MessageUI.displayTableHeading(String.format("  %-4s %-7s %-24s %-8s %-8s %-7s %s",
-          "POS", "REG ID", "GUEST", "PRIORITY", "ARRIVED", "WAITED", "AHEAD"));
+      MessageUI.displayTableHeading(String.format(
+          "  %-4s %-7s %-20s %-16s %-8s %-8s %-7s %s",
+          "POS", "REG ID", "GUEST", "IC / PASSPORT", "PRIORITY", "ARRIVED",
+          "WAITED", "AHEAD"));
 
       // POS counts from the front of the whole queue, not from the top of the
       // page, because it is the number the officer types to act on a guest.
@@ -613,10 +630,11 @@ public class WalkInRegistrationUI {
         WalkInRegistration reg = serviceOrder.getEntry(i);
         Guest guest = data.findGuest(reg.getGuestId());
         String name = (guest == null) ? "-" : guest.getFullName();
+        String document = (guest == null) ? "-" : guest.getIcPassportNo();
 
-        System.out.printf("  %-4d %-7s %-24s %-8s %-8s %-7s %d%n",
-            i, reg.getRegId(), truncate(name, 24), reg.getPriority(),
-            shortTime(reg), reg.getFormattedWaitingTime(), i - 1);
+        System.out.printf("  %-4d %-7s %-20s %-16s %-8s %-8s %-7s %d%n",
+            i, reg.getRegId(), truncate(name, 20), truncate(document, 16),
+            reg.getPriority(), shortTime(reg), reg.getFormattedWaitingTime(), i - 1);
       }
 
       MessageUI.displayThinRule();
