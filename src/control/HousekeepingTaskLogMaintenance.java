@@ -7,7 +7,7 @@ import entity.Room;
 import entity.RoomStatusLog;
 import entity.RoomType;
 import java.time.LocalDateTime;
-import java.util.Comparator;
+import utility.MessageUI;
 
 /**
  * Housekeeping Task Log - whether a room may be given to anybody.
@@ -94,26 +94,20 @@ public class HousekeepingTaskLogMaintenance {
     } while (choice != 0);
   }
 
-  // Shows the search-and-monitor menu for tasks, room history and the status board.
+  // Shows the search-and-monitor menu for task records, filters and the status board.
   private void runSearchMenu() {
     int choice;
     do {
       choice = ui.getSearchMenuChoice();
       switch (choice) {
         case 1:
-          searchByTaskId();
+          viewAndSearchTaskRecords();
           break;
         case 2:
-          displayRoomHistory();
-          break;
-        case 3:
           filterByStatus();
           break;
-        case 4:
+        case 3:
           displayRoomBoard();
-          break;
-        case 5:
-          displayWholeLog();
           break;
         default:
           break;
@@ -151,43 +145,53 @@ public class HousekeepingTaskLogMaintenance {
    * work has been queued.
    */
   private void takeNextRoom() {
-    ui.startAction("TAKE THE NEXT ROOM");
+    while (true) {
+      ui.startAction("TAKE THE NEXT ROOM");
 
-    HousekeepingTask next = data.getCleaningQueue().peekNext();
-    if (next == null) {
-      ui.displayError("The cleaning queue is empty.");
-      ui.pause();
-      return;
-    }
+      HousekeepingTask next = data.getCleaningQueue().peekNext();
+      if (next == null) {
+        ui.displayError("No cleaning task is currently waiting in the queue.");
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
 
-    ui.displayMessage("  Next room to clean:");
-    ui.displayTask(next, data);
+      ui.displayMessage("  Next room to clean:");
+      ui.displayTask(next, data);
 
-    if (next.isUrgent() && next.getReservedForBookingId() != null) {
+      if (next.isUrgent() && next.getReservedForBookingId() != null) {
+        ui.displayMessage("");
+        ui.displayMessage("  This room is in the URGENT lane because booking "
+            + next.getReservedForBookingId() + " is waiting on it.");
+      }
       ui.displayMessage("");
-      ui.displayMessage("  This room is in the URGENT lane because booking "
-          + next.getReservedForBookingId() + " is waiting on it.");
-    }
-    ui.displayMessage("");
 
-    if (!ui.confirm("Start cleaning this room?")) {
-      ui.displayMessage("  Cancelled - the room is still in the queue.");
-      ui.pause();
-      return;
-    }
+      if (!ui.confirm("Start cleaning this room?")) {
+        ui.displayMessage("  Cancelled - the room is still in the queue.");
+        ui.pause();
+        return;
+      }
 
-    ServiceResult<HousekeepingTask> result = service.updateTaskStatus(
-        next.getTaskId(), HousekeepingTask.CLEANING_IN_PROGRESS, staffId, null);
+      ServiceResult<HousekeepingTask> result = service.updateTaskStatus(
+          next.getTaskId(), HousekeepingTask.CLEANING_IN_PROGRESS, staffId, null);
 
-    if (result.isSuccess()) {
+      if (result.isFailure()) {
+        ui.displayError(result.getMessage());
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
+
       ui.displaySuccess(result.getMessage());
       ui.displayMessage("  Assigned to " + staffId + ".");
       ui.displayMessage("  Rooms still waiting: "
           + data.getCleaningQueue().getNumberOfEntries());
-    } else {
-      ui.displayError(result.getMessage());
+      if (!ui.confirmDoAnother("Do you want to take another room?")) {
+        return;
+      }
     }
-    ui.pause();
   }
 
   /** Shows what is waiting to be cleaned, in the order it will be taken. */
@@ -202,58 +206,92 @@ public class HousekeepingTaskLogMaintenance {
    * Raises a cleaning task by hand.
    *
    * Most tasks are raised automatically when a guest checks out. This covers
-   * the rest - a deep clean, a stayover service, a maintenance job.
+   * the rest - a deep clean, an inspection, or a maintenance job.
+   * STAYOVER_CLEAN is not offered here.
    */
   private void raiseNewTask() {
-    ui.startAction("RAISE A NEW TASK");
-
     while (true) {
-      String roomNo = null;
-      Room room = null;
-      while (room == null) {
-        roomNo = ui.inputRoomNo();
-        if (roomNo == null) {
-          return;
-        }
+      if (!raiseOneNewTask()) {
+        return;
+      }
+      if (!ui.confirmDoAnother("Do you want to raise another task?")) {
+        return;
+      }
+    }
+  }
 
-        // The room table is checked first, so a mistyped number is reported
-        // rather than creating a task against a room that does not exist.
-        room = data.findRoom(roomNo);
-        if (room == null) {
-          ui.displayError("Room not found.");
-          if (!ui.confirmEnterAgain()) {
-            return;
-          }
-        }
+  /**
+   * Collects one Raise New Task attempt.
+   *
+   * After a valid room is chosen, only the task types that room may take
+   * are offered. Returns true after a task is created so the caller can
+   * ask whether to raise another. Returns false when the user cancels.
+   */
+  private boolean raiseOneNewTask() {
+    while (true) {
+      ui.startAction("RAISE A NEW TASK");
+      // Shown before the prompt so the number typed is an informed choice
+      // rather than a guess at which rooms exist and which are already busy.
+      ui.displayRoomsForNewTask(data.getRoomList(), data);
+
+      String roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return false;
       }
 
-      String taskType = ui.inputTaskType();
+      // The room table is checked first, so a mistyped number is reported
+      // rather than creating a task against a room that does not exist.
+      Room room = data.findRoom(roomNo);
+      if (room == null) {
+        ui.displayError("Room not found.");
+        if (!ui.confirmTryAgain()) {
+          return false;
+        }
+        continue;
+      }
+
+      HousekeepingTask openForRoom = data.findOpenTaskForRoom(roomNo);
+      String[] types = availableRaiseTaskTypes(room, openForRoom);
+      if (types.length == 0) {
+        if (openForRoom != null) {
+          ui.displayError("Room " + roomNo + " already has an open task ("
+              + openForRoom.getTaskId() + ", " + openForRoom.getStatus() + ").");
+        } else {
+          ui.displayError("No task type can be raised for this room.");
+        }
+        if (!ui.confirmSelectAnotherRoom()) {
+          return false;
+        }
+        continue;
+      }
+
+      ui.clearScreen();
+      ui.displaySelectedRoomForNewTask(room, data);
+      String taskType = ui.inputTaskType(types);
       if (taskType == null) {
-        ui.displayMessage("  Cancelled.");
-        ui.pause();
-        return;
+        continue;
       }
 
       if (HousekeepingTask.TYPE_INSPECTION.equals(taskType)) {
         String housekeepingStatus = room.getHousekeepingStatus();
         if (HousekeepingTask.DIRTY.equals(housekeepingStatus)) {
           ui.displayError("This room has not been cleaned yet.");
-          if (!ui.confirmEnterAgain()) {
-            return;
+          if (!ui.confirmSelectAnotherRoom()) {
+            return false;
           }
           continue;
         }
         if (HousekeepingTask.READY_FOR_CHECK_IN.equals(housekeepingStatus)) {
           ui.displayError("This room is already ready for check-in.");
-          if (!ui.confirmEnterAgain()) {
-            return;
+          if (!ui.confirmSelectAnotherRoom()) {
+            return false;
           }
           continue;
         }
         if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(housekeepingStatus)) {
           ui.displayError("This room is not ready for inspection.");
-          if (!ui.confirmEnterAgain()) {
-            return;
+          if (!ui.confirmSelectAnotherRoom()) {
+            return false;
           }
           continue;
         }
@@ -262,8 +300,18 @@ public class HousekeepingTaskLogMaintenance {
         if (open != null) {
           ui.displayError("Room " + roomNo + " already has an open task ("
               + open.getTaskId() + ", " + open.getStatus() + ").");
-          ui.pause();
-          return;
+          if (!ui.confirmSelectAnotherRoom()) {
+            return false;
+          }
+          continue;
+        }
+        if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)
+            && Room.OCCUPIED.equals(room.getOccupancyStatus())) {
+          ui.displayError("Room " + roomNo + " has a guest in it and cannot be blocked.");
+          if (!ui.confirmSelectAnotherRoom()) {
+            return false;
+          }
+          continue;
         }
       }
 
@@ -271,7 +319,7 @@ public class HousekeepingTaskLogMaintenance {
       if (remark == null) {
         ui.displayMessage("  Cancelled.");
         ui.pause();
-        return;
+        return false;
       }
 
       HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), roomNo,
@@ -287,11 +335,6 @@ public class HousekeepingTaskLogMaintenance {
       } else if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
         // Records BLOCKED and matches the existing Room out-of-service flag.
         // Front Desk still returns the room to service.
-        if (Room.OCCUPIED.equals(room.getOccupancyStatus())) {
-          ui.displayError("Room " + roomNo + " has a guest in it and cannot be blocked.");
-          ui.pause();
-          return;
-        }
         toStatus = HousekeepingTask.BLOCKED;
         task.setStatus(toStatus);
         room.setHousekeepingStatus(Room.BLOCKED);
@@ -311,11 +354,53 @@ public class HousekeepingTaskLogMaintenance {
       data.saveHousekeeping();
       data.saveMasters();
 
-      ui.displaySuccess("Task " + task.getTaskId() + " raised for room " + roomNo + ".");
+      ui.displaySuccess("Task " + task.getTaskId() + " created successfully.");
       ui.displayTask(task, data);
-      ui.pause();
-      return;
+      return true;
     }
+  }
+
+  /**
+   * The task types Raise New Task may offer for this room.
+   *
+   * Cleaning types need a free room (no open task). Inspection is only
+   * offered when the room is already CLEANING_IN_PROGRESS. Maintenance is
+   * offered when there is no open task and no guest in the room.
+   */
+  private String[] availableRaiseTaskTypes(Room room, HousekeepingTask open) {
+    boolean canInspect = HousekeepingTask.CLEANING_IN_PROGRESS.equals(
+        room.getHousekeepingStatus());
+    boolean canClean = (open == null);
+    boolean canMaintain = canClean
+        && !Room.OCCUPIED.equals(room.getOccupancyStatus());
+
+    int count = 0;
+    if (canClean) {
+      count += 2;
+    }
+    if (canInspect) {
+      count++;
+    }
+    if (canMaintain) {
+      count++;
+    }
+
+    String[] types = new String[count];
+    int next = 0;
+    if (canClean) {
+      types[next] = HousekeepingTask.TYPE_CHECKOUT_CLEAN;
+      next++;
+      types[next] = HousekeepingTask.TYPE_DEEP_CLEAN;
+      next++;
+    }
+    if (canInspect) {
+      types[next] = HousekeepingTask.TYPE_INSPECTION;
+      next++;
+    }
+    if (canMaintain) {
+      types[next] = HousekeepingTask.TYPE_MAINTENANCE;
+    }
+    return types;
   }
 
   // ==================================================================
@@ -330,81 +415,97 @@ public class HousekeepingTaskLogMaintenance {
    * control back to the front desk.
    */
   private void updateTaskStatus() {
-    ui.startAction("UPDATE A TASK'S STATUS");
+    while (true) {
+      ui.startAction("UPDATE A TASK'S STATUS");
 
-    ListInterface<HousekeepingTask> open = data.getTaskList().filter(
-        HousekeepingTask::isActiveWork);
+      ListInterface<HousekeepingTask> open = data.getTaskList().filter(
+          HousekeepingTask::isActiveWork);
 
-    if (!ui.displayTaskList(open, "There is no open task to update.")) {
-      ui.pause();
-      return;
-    }
+      if (open.isEmpty()) {
+        ui.displayError("There is no open task to update.");
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
 
-    HousekeepingTask task = null;
-    String taskId = null;
-    while (task == null) {
-      taskId = ui.inputTaskId();
-      if (taskId == null) {
+      ui.displayTaskList(open, "There is no open task to update.");
+
+      HousekeepingTask task = null;
+      String taskId = null;
+      while (task == null) {
+        taskId = ui.inputTaskId();
+        if (taskId == null) {
+          return;
+        }
+
+        task = data.findTask(taskId);
+        if (task == null) {
+          ui.displayError("Task ID not found.");
+          if (!ui.confirmTryAgain()) {
+            return;
+          }
+          ui.startAction("UPDATE A TASK'S STATUS");
+          ui.displayTaskList(open, "There is no open task to update.");
+        }
+      }
+
+      ui.startAction("UPDATE A TASK'S STATUS");
+      ui.displayTask(task, data);
+
+      String nextStatus = ui.inputNextStatus(task);
+      if (nextStatus == null) {
+        ui.displayMessage("  Update cancelled.");
+        ui.pause();
         return;
       }
 
-      task = data.findTask(taskId);
-      if (task == null) {
-        ui.displayError("Task ID not found.");
-        if (!ui.confirmEnterAgain()) {
+      // Blocking a room stops work on it, so the reason has to be recorded.
+      String remark = null;
+      if (HousekeepingTask.BLOCKED.equals(nextStatus)) {
+        remark = ui.inputRemark(true);
+        if (remark == null) {
+          ui.displayMessage("  Update cancelled - a blocked room needs a reason.");
+          ui.pause();
+          return;
+        }
+      } else if (HousekeepingTask.DIRTY.equals(nextStatus)
+          && HousekeepingTask.INSPECTED.equals(task.getStatus())) {
+        remark = ui.inputRemark(true);
+        if (remark == null) {
+          ui.displayMessage("  Update cancelled - a failed inspection needs a reason.");
+          ui.pause();
           return;
         }
       }
-    }
 
-    ui.displayTask(task, data);
+      String fromStatus = task.getStatus();
+      ServiceResult<HousekeepingTask> result =
+          service.updateTaskStatus(taskId, nextStatus, staffId, remark);
 
-    String nextStatus = ui.inputNextStatus(task);
-    if (nextStatus == null) {
-      ui.displayMessage("  Update cancelled.");
-      ui.pause();
-      return;
-    }
+      if (result.isFailure()) {
+        ui.displayError(result.getMessage());
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
 
-    // Blocking a room stops work on it, so the reason has to be recorded.
-    String remark = null;
-    if (HousekeepingTask.BLOCKED.equals(nextStatus)) {
-      remark = ui.inputRemark(true);
-      if (remark == null) {
-        ui.displayMessage("  Update cancelled - a blocked room needs a reason.");
-        ui.pause();
+      ui.displaySuccess("Task " + taskId + " status updated successfully.");
+      ui.displayMessage("  " + result.getMessage());
+
+      if (HousekeepingTask.DIRTY.equals(nextStatus)
+          && HousekeepingTask.INSPECTED.equals(fromStatus)) {
+        ui.displayMessage("  The room stays DIRTY. A new cleaning task is queued.");
+        if (task.getInspectionFailCount() > 0) {
+          ui.displayMessage("  Failed inspections for this task: "
+              + task.getInspectionFailCount());
+        }
+      }
+      if (!ui.confirmDoAnother("Do you want to update another task?")) {
         return;
       }
-    } else if (HousekeepingTask.DIRTY.equals(nextStatus)
-        && HousekeepingTask.INSPECTED.equals(task.getStatus())) {
-      remark = ui.inputRemark(true);
-      if (remark == null) {
-        ui.displayMessage("  Update cancelled - a failed inspection needs a reason.");
-        ui.pause();
-        return;
-      }
     }
-
-    ServiceResult<HousekeepingTask> result =
-        service.updateTaskStatus(taskId, nextStatus, staffId, remark);
-
-    if (result.isFailure()) {
-      ui.displayError(result.getMessage());
-      ui.pause();
-      return;
-    }
-
-    ui.displaySuccess(result.getMessage());
-
-    if (HousekeepingTask.DIRTY.equals(nextStatus)
-        && HousekeepingTask.INSPECTED.equals(task.getStatus())) {
-      ui.displayMessage("  The room stays DIRTY. A new cleaning task is queued.");
-      if (task.getInspectionFailCount() > 0) {
-        ui.displayMessage("  Failed inspections for this task: "
-            + task.getInspectionFailCount());
-      }
-    }
-    ui.pause();
   }
 
   /**
@@ -415,140 +516,243 @@ public class HousekeepingTaskLogMaintenance {
    * after both remain explainable.
    */
   private void rollbackLastUpdate() {
-    ui.startAction("ROLL BACK THE LAST STATUS UPDATE");
+    while (true) {
+      ui.startAction("ROLL BACK THE LAST STATUS UPDATE");
 
-    if (data.getStatusRollbackStack().isEmpty()) {
-      ui.displayError("There is no status update to roll back.");
-      ui.pause();
-      return;
-    }
+      if (data.getStatusRollbackStack().isEmpty()) {
+        ui.displayError("No status change is available for rollback.");
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
 
-    RoomStatusLog latest = data.getStatusRollbackStack().peek();
+      RoomStatusLog latest = data.getStatusRollbackStack().peek();
 
-    // Shown before it happens, the same way every other irreversible action is.
-    ui.displayMessage("  This status update will be undone:");
-    ui.displayMessage("");
-    utility.MessageUI.displayField("Log ID", latest.getLogId());
-    utility.MessageUI.displayField("Task", latest.getTaskId());
-    utility.MessageUI.displayField("Room", latest.getRoomNo());
-    utility.MessageUI.displayField("Change",
-        latest.getFromStatus() + "  ->  " + latest.getToStatus());
-    utility.MessageUI.displayField("Made by", latest.getChangedBy());
-    utility.MessageUI.displayField("Made at", String.valueOf(latest.getChangedAt()));
-    ui.displayMessage("");
-    ui.displayMessage("  The room will go back to " + latest.getFromStatus() + ".");
-    ui.displayMessage("  The original entry is kept - a rollback row is added beside it.");
-    ui.displayMessage("");
+      // Shown before it happens, the same way every other irreversible action is.
+      ui.displayMessage("  This status update will be undone:");
+      ui.displayMessage("");
+      utility.MessageUI.displayField("Log ID", latest.getLogId());
+      utility.MessageUI.displayField("Task", latest.getTaskId());
+      utility.MessageUI.displayField("Room", latest.getRoomNo());
+      utility.MessageUI.displayField("Change",
+          latest.getFromStatus() + "  ->  " + latest.getToStatus());
+      utility.MessageUI.displayField("Made by", latest.getChangedBy());
+      utility.MessageUI.displayField("Made at", String.valueOf(latest.getChangedAt()));
+      ui.displayMessage("");
+      ui.displayMessage("  The room will go back to " + latest.getFromStatus() + ".");
+      ui.displayMessage("  The original entry is kept - a rollback row is added beside it.");
+      ui.displayMessage("");
 
-    if (!ui.confirm("Roll this update back?")) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
+      if (!ui.confirm("Roll this update back?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        return;
+      }
 
-    ServiceResult<HousekeepingTask> result = service.rollbackLastStatusChange(staffId);
+      ServiceResult<HousekeepingTask> result = service.rollbackLastStatusChange(staffId);
 
-    if (result.isSuccess()) {
-      ui.displaySuccess(result.getMessage());
+      if (result.isFailure()) {
+        ui.displayError(result.getMessage());
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
+
+      ui.displaySuccess("Last status change was rolled back.");
       ui.displayTask(result.getValue(), data);
-    } else {
-      ui.displayError(result.getMessage());
+      if (!ui.confirmDoAnother("Do you want to rollback another status change?")) {
+        return;
+      }
     }
-    ui.pause();
   }
 
   // ==================================================================
   // SEARCH AND MONITOR
   // ==================================================================
 
-  // Searches the task list using the List ADT and displays the matching task.
-  private void searchByTaskId() {
-    ui.startAction("SEARCH BY TASK ID");
+  /**
+   * Shows the task list a page at a time, then searches by Task ID or room.
+   *
+   * Pagination (Next, Previous, jump, Search, 0) is offered on every page.
+   * Pressing S prints SEARCH under the current page without clearing.
+   * A match then clears and jumps to the page that holds that task.
+   */
+  private void viewAndSearchTaskRecords() {
+    ListInterface<HousekeepingTask> tasks = data.getTaskList();
+    int page = 1;
 
-    HousekeepingTask task = null;
-    String taskId = null;
-    while (task == null) {
-      taskId = ui.inputTaskId();
-      if (taskId == null) {
+    while (true) {
+      ui.startAction("VIEW & SEARCH TASK RECORDS");
+
+      if (tasks.isEmpty()) {
+        ui.displayError("No matching tasks found.");
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
+
+      int totalPages = MessageUI.pageCount(tasks.getNumberOfEntries());
+      if (page > totalPages) {
+        page = totalPages;
+      }
+
+      ui.displaySearchRecordsPage(tasks, page);
+      int command = ui.readSearchBrowseCommand(page, totalPages);
+
+      if (command == HousekeepingTaskLogUI.SEARCH_BROWSE_QUIT) {
         return;
       }
 
-      final String idToFind = taskId;
-      task = data.getTaskList().search(entry -> idToFind.equals(entry.getTaskId()));
-      if (task == null) {
-        ui.displayError("Task ID not found.");
-        if (!ui.confirmSearchAgain()) {
-          return;
-        }
+      if (command == HousekeepingTaskLogUI.SEARCH_BROWSE_SEARCH) {
+        page = searchFromCurrentBrowse(tasks, page);
+        continue;
       }
+
+      page = command;
+    }
+  }
+
+  /**
+   * Prints SEARCH under the current page, then jumps if a match is found.
+   *
+   * Lookup uses the complete task list. The screen is not cleared until a
+   * match is found. 0 at the prompt returns to the same records page.
+   *
+   * @param tasks every housekeeping task
+   * @param currentPage the page shown before Search was chosen
+   * @return the records page to show next
+   */
+  private int searchFromCurrentBrowse(ListInterface<HousekeepingTask> tasks,
+      int currentPage) {
+    ui.startSearchSection();
+    String query = ui.inputTaskIdOrRoomNo();
+    if (query == null) {
+      return currentPage;
     }
 
-    ui.displayTask(task, data);
-
-    final String id = taskId;
-    ListInterface<RoomStatusLog> logs = data.getStatusLogList().filter(
-        log -> id.equals(log.getTaskId()));
-
-    if (!logs.isEmpty()) {
-      ui.displayRoomHistory(logs, task.getRoomNo(), task.getStatus());
+    if (query.startsWith("HK")) {
+      HousekeepingTask found = findTaskById(query);
+      if (found == null) {
+        retrySearchAfterNotFound();
+        return currentPage;
+      }
+      int page = pageContaining(tasks, found);
+      showFoundTaskOnPage(tasks, found, page);
+      return page;
     }
+
+    Room room = data.findRoom(query);
+    if (room != null) {
+      ListInterface<HousekeepingTask> forRoom = data.getTaskList().filter(
+          task -> query.equals(task.getRoomNo()));
+      if (forRoom.isEmpty()) {
+        retrySearchAfterNotFound();
+        return currentPage;
+      }
+      int page = pageContaining(tasks, forRoom.getEntry(1));
+      showFoundRoomOnPage(tasks, query, forRoom, page);
+      return page;
+    }
+
+    HousekeepingTask asTask = findTaskById("HK" + query);
+    if (asTask == null) {
+      retrySearchAfterNotFound();
+      return currentPage;
+    }
+    int page = pageContaining(tasks, asTask);
+    showFoundTaskOnPage(tasks, asTask, page);
+    return page;
+  }
+
+  /**
+   * Shows not-found on the same screen, then waits for Try Again or Exit.
+   *
+   * Does not clear first, so the records and the error stay readable.
+   */
+  private void retrySearchAfterNotFound() {
+    ui.displayError("No matching Task ID or Room number found.");
+    ui.confirmTryAgain();
+  }
+
+  /**
+   * Works out which records page holds a task, using its 1-based List position.
+   */
+  private int pageContaining(ListInterface<HousekeepingTask> tasks,
+      HousekeepingTask task) {
+    int position = tasks.getPosition(task);
+    if (position < 1) {
+      return 1;
+    }
+    return ((position - 1) / MessageUI.PAGE_SIZE) + 1;
+  }
+
+  /** Clears, jumps to the page that holds the task, then offers details. */
+  private void showFoundTaskOnPage(ListInterface<HousekeepingTask> tasks,
+      HousekeepingTask found, int page) {
+    ui.startAction("VIEW & SEARCH TASK RECORDS");
+    ui.displaySearchRecordsPage(tasks, page);
+    ui.displayFound(found.getTaskId());
+    if (!ui.confirmOption("View details")) {
+      return;
+    }
+    ui.startAction("VIEW & SEARCH TASK RECORDS");
+    ui.displayTaskDetails(found, data);
     ui.pause();
   }
 
   /**
-   * Shows everything that has happened to one room.
-   *
-   * The history is separate from the room's current status: the log is what
-   * happened, and the room record is what is true now.
+   * Clears, jumps to the page of the room's first task, then uses the
+   * existing room-history selection.
    */
-  private void displayRoomHistory() {
-    ui.startAction("A ROOM'S CLEANING HISTORY");
-
-    String roomNo = null;
-    Room room = null;
-    while (room == null) {
-      roomNo = ui.inputRoomNo();
-      if (roomNo == null) {
-        return;
-      }
-
-      room = data.findRoom(roomNo);
-      if (room == null) {
-        ui.displayError("Room not found.");
-        if (!ui.confirmEnterAgain()) {
-          return;
-        }
-      }
+  private void showFoundRoomOnPage(ListInterface<HousekeepingTask> tasks,
+      String roomNo, ListInterface<HousekeepingTask> forRoom, int page) {
+    ui.startAction("VIEW & SEARCH TASK RECORDS");
+    ui.displaySearchRecordsPage(tasks, page);
+    ui.displayFound("Room " + roomNo + " found.");
+    ui.displayRoomTaskHistory(forRoom, roomNo);
+    HousekeepingTask chosen = ui.selectTaskFromList(forRoom, roomNo);
+    if (chosen == null) {
+      return;
     }
-
-    final String number = roomNo;
-    ListInterface<RoomStatusLog> logs = data.getStatusLogList().filter(
-        log -> number.equals(log.getRoomNo()));
-    logs.sort(Comparator.comparing(RoomStatusLog::getChangedAt));
-
-    ui.displayRoomHistory(logs, roomNo, room.getHousekeepingStatus());
-
-    ListInterface<HousekeepingTask> tasks = data.getTaskList().filter(
-        task -> number.equals(task.getRoomNo()));
-    ui.displaySectionHeading("Tasks raised for room " + roomNo);
-    ui.displayTaskList(tasks, "No task has been raised for this room.");
+    ui.startAction("VIEW & SEARCH TASK RECORDS");
+    ui.displayTaskDetails(chosen, data);
     ui.pause();
+  }
+
+  /** Finds one task by its HK ID using the List ADT search. */
+  private HousekeepingTask findTaskById(String taskId) {
+    return data.getTaskList().search(task -> taskId.equals(task.getTaskId()));
   }
 
   // Filters the task list by housekeeping status using the List ADT.
   private void filterByStatus() {
-    ui.startAction("FILTER TASKS BY STATUS");
+    while (true) {
+      ui.startAction("FILTER TASKS BY STATUS");
 
-    String status = ui.inputStatusFilter();
-    if (status == null) {
-      return;
+      String status = ui.inputStatusFilter();
+      if (status == null) {
+        return;
+      }
+
+      ListInterface<HousekeepingTask> matches = data.getTaskList().filter(
+          task -> status.equals(task.getStatus()));
+
+      if (matches.isEmpty()) {
+        ui.displayError("No matching tasks found.");
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
+
+      ui.displayTaskList(matches, "No task is " + status + ".");
+      if (!ui.confirmDoAnother("Do you want to filter again?")) {
+        return;
+      }
     }
-
-    ListInterface<HousekeepingTask> matches = data.getTaskList().filter(
-        task -> status.equals(task.getStatus()));
-
-    ui.displayTaskList(matches, "No task is " + status + ".");
-    ui.pause();
   }
 
   /** The board the front desk relies on - both statuses, side by side. */
@@ -564,21 +768,18 @@ public class HousekeepingTaskLogMaintenance {
     ui.pause();
   }
 
-  // Displays every housekeeping task in the log.
-  private void displayWholeLog() {
-    ui.startAction("THE WHOLE TASK LOG");
-
-    ListInterface<HousekeepingTask> tasks = data.getTaskList();
-    ui.displayTaskList(tasks, "The task log is empty.");
-    ui.pause();
-  }
-
   // ==================================================================
   // REPORTS
   // ==================================================================
 
-  // Shows how efficiently housekeeping is completing cleaning tasks.
+  /**
+   * Shows how efficiently housekeeping is completing cleaning tasks.
+   *
+   * Ends with ENTER or 0, then returns to the reports menu. The report is
+   * not offered again.
+   */
   private void cleaningPerformanceReport() {
+    ui.clearScreen();
     ui.displayReportHeader("CLEANING PERFORMANCE REPORT");
 
     ListInterface<HousekeepingTask> tasks = data.getTaskList().filter(
@@ -740,8 +941,14 @@ public class HousekeepingTaskLogMaintenance {
     return total / tasks.getNumberOfEntries();
   }
 
-  /** Which rooms take the most work, and how often cleaning has to be redone. */
+  /**
+   * Which rooms take the most work, and how often cleaning has to be redone.
+   *
+   * Ends with ENTER or 0, then returns to the reports menu. The report is
+   * not offered again.
+   */
   private void workloadAnalysisReport() {
+    ui.clearScreen();
     ui.displayReportHeader("ROOM & WORKLOAD ANALYSIS REPORT");
 
     ui.displaySectionHeading("Room status overview");
