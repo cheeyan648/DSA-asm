@@ -18,7 +18,7 @@ import utility.MessageUI;
 /**
  * Every screen and prompt for Front-Desk Service.
  *
- * @author Lim Yong Le
+ * @author Yong Le
  */
 public class FrontDeskServiceUI {
 
@@ -176,6 +176,17 @@ public class FrontDeskServiceUI {
 
   public LocalDate inputDate(String prompt) {
     return MessageUI.readDate(scanner, prompt);
+  }
+
+  /**
+   * Asks how many nights the guest wants to stay.
+   * The check-out date is calculated automatically.
+   *
+   * @return number of nights, or -1 if cancelled
+   */
+  public int inputNights() {
+    int nights = MessageUI.readInt(scanner, "Number of nights", 1, 30);
+    return (nights == MessageUI.CANCELLED_INT) ? -1 : nights;
   }
 
   public int inputGuestCount(int maximum) {
@@ -353,6 +364,10 @@ public class FrontDeskServiceUI {
 
   public void displayMessage(String message) {
     MessageUI.displayMessage(message);
+  }
+
+  public void displayField(String label, String value) {
+    MessageUI.displayField(label, value);
   }
 
   public void displayError(String message) {
@@ -621,6 +636,21 @@ public class FrontDeskServiceUI {
     MessageUI.displayBlankLine();
     MessageUI.displayField("Nights requested",
         reg.getRequestedNights() + " night(s)");
+    MessageUI.displayField("Check-in", checkIn.format(dayFormat));
+    MessageUI.displayField("Check-out", checkOut.format(dayFormat));
+    MessageUI.displayBlankLine();
+  }
+
+  /**
+   * Displays a stay whose check-out date was calculated automatically.
+   */
+  public void displayCalculatedStay(java.time.LocalDate checkIn,
+      java.time.LocalDate checkOut, int nights) {
+    java.time.format.DateTimeFormatter dayFormat =
+        java.time.format.DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy");
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Number of nights", nights + " night(s)");
     MessageUI.displayField("Check-in", checkIn.format(dayFormat));
     MessageUI.displayField("Check-out", checkOut.format(dayFormat));
     MessageUI.displayBlankLine();
