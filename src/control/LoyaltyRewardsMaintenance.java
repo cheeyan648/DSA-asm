@@ -667,24 +667,40 @@ public class LoyaltyRewardsMaintenance {
     ui.pause();
   }
 
+  /**
+   * Asks for a reward ID and finds it, re-asking until one names a reward.
+   *
+   * @return the reward, or null if the user typed 0 to quit
+   */
+  private Reward promptForReward() {
+    while (true) {
+      String rewardId = ui.inputRewardId();
+      if (rewardId == null) {
+        return null;
+      }
+
+      Reward reward = data.findReward(rewardId);
+      if (reward != null) {
+        return reward;
+      }
+
+      ui.displayError("Reward " + rewardId
+          + " was not found. Enter another ID, or 0 to go back.");
+    }
+  }
+
   /** Prompts for a reward ID and removes it from the catalogue. */
   private void deleteRewardMenu() {
     ui.startAction("DELETE A REWARD");
     ui.displayRewardCatalogue(data.getRewardList(), null);
 
-    String rewardId = ui.inputRewardId();
-    if (rewardId == null) {
+    Reward reward = promptForReward();
+    if (reward == null) {
       ui.displayMessage("  Delete reward cancelled.");
       ui.pause();
       return;
     }
-
-    Reward reward = data.findReward(rewardId);
-    if (reward == null) {
-      ui.displayError("Reward " + rewardId + " was not found.");
-      ui.pause();
-      return;
-    }
+    String rewardId = reward.getRewardId();
 
     if (hasPendingRedemptionFor(rewardId)) {
       ui.displayError("Reward " + rewardId + " cannot be deleted while a "
@@ -715,16 +731,9 @@ public class LoyaltyRewardsMaintenance {
     ui.startAction("RESTOCK A REWARD");
     ui.displayRewardCatalogue(data.getRewardList(), null);
 
-    String rewardId = ui.inputRewardId();
-    if (rewardId == null) {
-      ui.displayMessage("  Restock cancelled.");
-      ui.pause();
-      return;
-    }
-
-    Reward reward = data.findReward(rewardId);
+    Reward reward = promptForReward();
     if (reward == null) {
-      ui.displayError("Reward " + rewardId + " was not found.");
+      ui.displayMessage("  Restock cancelled.");
       ui.pause();
       return;
     }
@@ -741,8 +750,8 @@ public class LoyaltyRewardsMaintenance {
       return;
     }
 
-    if (restockReward(rewardId, amount)) {
-      ui.displaySuccess("Restocked " + rewardId + " - " + reward.getRewardName()
+    if (restockReward(reward.getRewardId(), amount)) {
+      ui.displaySuccess("Restocked " + reward.getRewardId() + " - " + reward.getRewardName()
           + " by " + amount + ". New quantity: " + reward.getStockQuantity() + ".");
     } else {
       ui.displayError("Restock failed.");
@@ -1293,20 +1302,29 @@ public class LoyaltyRewardsMaintenance {
   // HELPERS
   // ==================================================================
 
-  /** Asks for a member ID and finds them, reporting a bad ID. */
+  /**
+   * Asks for a member ID and finds them.
+   *
+   * An ID that names no member is re-asked rather than ending the action, so a
+   * typo costs one line instead of sending the user back to the menu.
+   *
+   * @return the member, or null if the user typed 0 to quit
+   */
   private Member promptForMember() {
-    String memberId = ui.inputMemberId();
-    if (memberId == null) {
-      return null;
-    }
+    while (true) {
+      String memberId = ui.inputMemberId();
+      if (memberId == null) {
+        return null;
+      }
 
-    Member member = data.findMember(memberId);
-    if (member == null) {
-      ui.displayError("No member with ID " + memberId + ".");
-      ui.pause();
-      return null;
+      Member member = data.findMember(memberId);
+      if (member != null) {
+        return member;
+      }
+
+      ui.displayError("No member with ID " + memberId
+          + ". Enter another ID, or 0 to go back.");
     }
-    return member;
   }
 
   private ListInterface<Member> copyOf(ListInterface<Member> source) {

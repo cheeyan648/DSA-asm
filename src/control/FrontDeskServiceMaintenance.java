@@ -222,16 +222,19 @@ public class FrontDeskServiceMaintenance {
     }
 
     ui.displayMessage("");
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
-    }
-
-    Room room = data.findRoom(roomNo);
-    if (room == null) {
-      ui.displayError("There is no room " + roomNo + ".");
-      ui.pause();
-      return;
+    String roomNo;
+    Room room;
+    while (true) {
+      roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return;
+      }
+      room = data.findRoom(roomNo);
+      if (room != null) {
+        break;
+      }
+      ui.displayError("There is no room " + roomNo
+          + ". Enter another number, or 0 to go back.");
     }
 
     ui.displayRoom(room, data);
@@ -384,36 +387,47 @@ public class FrontDeskServiceMaintenance {
     ui.displayMessage("  The guest must have been called to the counter first.");
     ui.displayMessage("");
 
-    String icPassport = MessageUI.readIcPassport(MessageUI.scanner,
-        "Guest IC / Passport number");
-    if (MessageUI.isCancelled(icPassport)) {
-      ui.displayMessage("  Booking cancelled.");
-      ui.pause();
-      return;
-    }
+    // A number that finds no bookable guest is re-asked rather than ending the
+    // action, so the officer can try the passport after the IC without having
+    // to come back through the menu.
+    String icPassport;
+    Guest guest;
+    WalkInRegistration calledWalkIn;
+    while (true) {
+      icPassport = MessageUI.readIcPassport(MessageUI.scanner,
+          "Guest IC / Passport number");
+      if (MessageUI.isCancelled(icPassport)) {
+        ui.displayMessage("  Booking cancelled.");
+        ui.pause();
+        return;
+      }
 
-    Guest guest = data.findGuestByIc(icPassport);
-    if (guest == null) {
-      ui.displayError("No guest holds IC / Passport " + icPassport + ".");
-      ui.displayMessage("  Register them in Walk-In Registration first.");
-      ui.pause();
-      return;
-    }
+      guest = data.findGuestByIc(icPassport);
+      if (guest == null) {
+        ui.displayError("No guest holds IC / Passport " + icPassport + ".");
+        ui.displayMessage("  Register them in Walk-In Registration first,"
+            + " or enter another number. 0 goes back.");
+        continue;
+      }
 
-    // Only a guest who has been called to the counter can be booked. Anyone
-    // still WAITING has not reached the desk yet, so their turn has not come.
-    final String bookingGuestId = guest.getGuestId();
-    WalkInRegistration calledWalkIn = data.getRegistrationList().search(
-        reg -> bookingGuestId.equals(reg.getGuestId())
-            && WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
+      // Only a guest who has been called to the counter can be booked. Anyone
+      // still WAITING has not reached the desk yet, so their turn has not come.
+      final String bookingGuestId = guest.getGuestId();
+      calledWalkIn = data.getRegistrationList().search(
+          reg -> bookingGuestId.equals(reg.getGuestId())
+              && WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
 
-    if (calledWalkIn == null) {
-      ui.displayError(guest.getFullName()
-          + " has no walk-in registration waiting to be booked.");
-      ui.displayMessage("  Only a guest called to the counter (IN_SERVICE) can be booked.");
-      ui.displayMessage("  Register them, or call them from the queue, first.");
-      ui.pause();
-      return;
+      if (calledWalkIn == null) {
+        ui.displayError(guest.getFullName()
+            + " has no walk-in registration waiting to be booked.");
+        ui.displayMessage("  Only a guest called to the counter (IN_SERVICE)"
+            + " can be booked.");
+        ui.displayMessage("  Call them from the queue first, or enter another"
+            + " number. 0 goes back.");
+        continue;
+      }
+
+      break;
     }
 
     RoomType type = data.findRoomType(calledWalkIn.getRequestedTypeId());
@@ -1137,16 +1151,20 @@ public class FrontDeskServiceMaintenance {
     }
     ui.displayThinRule();
 
-    String invoiceId = ui.inputInvoiceId();
-    if (invoiceId == null) {
-      return;
-    }
+    Invoice invoice;
+    while (true) {
+      String invoiceId = ui.inputInvoiceId();
+      if (invoiceId == null) {
+        return;
+      }
 
-    Invoice invoice = data.findInvoice(invoiceId);
-    if (invoice == null) {
-      ui.displayError("No invoice with ID " + invoiceId + ".");
-      ui.pause();
-      return;
+      invoice = data.findInvoice(invoiceId);
+      if (invoice != null) {
+        break;
+      }
+
+      ui.displayError("No invoice with ID " + invoiceId
+          + ". Enter another number, or 0 to go back.");
     }
 
     takePaymentFor(invoice);
@@ -1255,21 +1273,26 @@ public class FrontDeskServiceMaintenance {
   /**
    * Finds a booking by ID, using the tree rather than scanning the list.
    *
-   * @return the booking, or null if it was not found or the user cancelled
+   * A number that names no booking is re-asked rather than ending the action,
+   * so a typo costs one line instead of sending the officer back to the menu.
+   *
+   * @return the booking, or null if the user typed 0 to quit
    */
   private Booking promptForBooking() {
-    String bookingId = ui.inputBookingId();
-    if (bookingId == null) {
-      return null;
-    }
+    while (true) {
+      String bookingId = ui.inputBookingId();
+      if (bookingId == null) {
+        return null;
+      }
 
-    Booking booking = data.findBooking(bookingId);
-    if (booking == null) {
-      ui.displayError("No booking with ID " + bookingId + ".");
-      ui.pause();
-      return null;
+      Booking booking = data.findBooking(bookingId);
+      if (booking != null) {
+        return booking;
+      }
+
+      ui.displayError("No booking with ID " + bookingId
+          + ". Enter another number, or 0 to go back.");
     }
-    return booking;
   }
 
   private void searchByBookingId() {
@@ -1371,19 +1394,22 @@ public class FrontDeskServiceMaintenance {
   private void searchByRoom() {
     ui.startAction("SEARCH BY ROOM NUMBER");
 
-    String roomNo = ui.inputRoomNo();
-    if (roomNo == null) {
-      return;
+    String roomNo;
+    while (true) {
+      roomNo = ui.inputRoomNo();
+      if (roomNo == null) {
+        return;
+      }
+      if (data.findRoom(roomNo) != null) {
+        break;
+      }
+      ui.displayError("Room " + roomNo
+          + " does not exist. Enter another number, or 0 to go back.");
     }
 
-    if (data.findRoom(roomNo) == null) {
-      ui.displayError("Room " + roomNo + " does not exist.");
-      ui.pause();
-      return;
-    }
-
+    final String searchRoomNo = roomNo;
     ListInterface<Booking> matches = data.getBookingList().filter(
-        booking -> roomNo.equals(booking.getRoomNo()));
+        booking -> searchRoomNo.equals(booking.getRoomNo()));
 
     ui.displayBookingList(matches, data, "Room " + roomNo + " has never been booked.");
     ui.pause();
