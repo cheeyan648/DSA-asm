@@ -6,6 +6,7 @@ import entity.HousekeepingTask;
 import entity.Room;
 import entity.RoomStatusLog;
 import entity.RoomType;
+import java.util.Comparator;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -217,21 +218,26 @@ public class HousekeepingTaskLogUI {
   }
 
   /**
-   * Asks which status a task should move to.
+   * Asks which status this existing task should move to.
    *
-   * Only the steps this task type may take from where it is now are offered,
-   * so an impossible move cannot be chosen in the first place.
+   * Only the steps this task type may take from where it is now are offered.
+   * The Task ID does not change. Inspection is the INSPECTED status of this
+   * task, not a new task. A READY_FOR_CHECK_IN task has no next status.
    *
    * @param task the task being updated
    * @return the chosen status, or null if cancelled or nothing is possible
    */
   public String inputNextStatus(HousekeepingTask task) {
     String currentStatus = task.getStatus();
-    String[] allowed = HousekeepingTask.allowedNextStatuses(
-        task.getTaskType(), currentStatus);
+    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(currentStatus)) {
+      displayTaskAlreadyCompleted();
+      return null;
+    }
+
+    String[] allowed = nextStatusesForUpdate(task.getTaskType(), currentStatus);
 
     if (allowed.length == 0) {
-      displayError("There is no valid next step from " + currentStatus + ".");
+      displayError("Invalid status transition.");
       return null;
     }
 
@@ -257,6 +263,31 @@ public class HousekeepingTaskLogUI {
     return null;
   }
 
+  /**
+   * Next statuses Update Task Status may offer.
+   *
+   * CLEANING_IN_PROGRESS is left out: starting a DIRTY task belongs to
+   * Take the next room on the cleaning queue.
+   */
+  private String[] nextStatusesForUpdate(String taskType, String currentStatus) {
+    String[] every = HousekeepingTask.allowedNextStatuses(taskType, currentStatus);
+    int count = 0;
+    for (int i = 0; i < every.length; i++) {
+      if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(every[i])) {
+        count++;
+      }
+    }
+    String[] allowed = new String[count];
+    int next = 0;
+    for (int i = 0; i < every.length; i++) {
+      if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(every[i])) {
+        allowed[next] = every[i];
+        next++;
+      }
+    }
+    return allowed;
+  }
+
   /** Explains what a status change means, so the choice is not just a name. */
   private String describeStatus(String status, String from, String taskType) {
     if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
@@ -271,7 +302,7 @@ public class HousekeepingTaskLogUI {
       case HousekeepingTask.CLEANING_IN_PROGRESS:
         return status + "  (start cleaning)";
       case HousekeepingTask.INSPECTED:
-        return status + "  (cleaning finished, awaiting sign-off)";
+        return status + "  (this task - cleaning finished, awaiting sign-off)";
       case HousekeepingTask.READY_FOR_CHECK_IN:
         return status + "  (inspection PASSED - room becomes sellable)";
       case HousekeepingTask.DIRTY:
@@ -341,8 +372,9 @@ public class HousekeepingTaskLogUI {
   /**
    * Asks which task type to raise from the types this room may take.
    *
-   * STAYOVER_CLEAN is never in the list. 0 returns to room selection.
-   * Invalid input is given Try Again or Exit rather than being retried silently.
+   * INSPECTION and STAYOVER_CLEAN are never in the list. 0 returns to room
+   * selection. Invalid input is given Try Again or Exit rather than being
+   * retried silently.
    *
    * @param available the types already filtered for this room
    * @return the chosen type, or null if cancelled or Exit
@@ -483,6 +515,21 @@ public class HousekeepingTaskLogUI {
     System.out.println("  [ERROR] " + message);
   }
 
+  /**
+   * Tells the user a DIRTY cleaning task must be started from the queue.
+   */
+  public void displayMustStartFromQueue() {
+    System.out.println("  [!] This task is waiting in the cleaning queue.");
+    System.out.println("      Please start the task from the Cleaning Queue first.");
+  }
+
+  /**
+   * Tells the user a finished task cannot be updated again.
+   */
+  public void displayTaskAlreadyCompleted() {
+    System.out.println("  [!] This task is already completed and cannot be updated.");
+  }
+
   // Displays a success message on the Housekeeping screen.
   public void displaySuccess(String message) {
     MessageUI.displaySuccess(message);
@@ -542,10 +589,11 @@ public class HousekeepingTaskLogUI {
   /**
    * Shows one task as a labelled details block for View & Search.
    *
-   * Only existing HousekeepingTask fields are printed. Missing dates show "-".
+   * Existing HousekeepingTask fields are printed first. The status-log rows
+   * already stored for this Task ID are then listed underneath.
    *
    * @param task the task to show
-   * @param data used to look up the room type
+   * @param data used to look up the room type and status history
    */
   public void displayTaskDetails(HousekeepingTask task, ResortData data) {
     Room room = data.findRoom(task.getRoomNo());
@@ -576,6 +624,37 @@ public class HousekeepingTaskLogUI {
     }
     if (task.getRemark() != null && !task.getRemark().isBlank()) {
       MessageUI.displayField("Remark", task.getRemark());
+    }
+    MessageUI.displayThinRule();
+    displayTaskStatusHistory(task.getTaskId(), data);
+  }
+
+  /**
+   * Lists the existing RoomStatusLog rows for one Task ID, oldest first.
+   *
+   * Uses a filtered copy of the shared status-log List so stored history is
+   * not changed. A missing FROM status is shown as "-".
+   */
+  private void displayTaskStatusHistory(String taskId, ResortData data) {
+    ListInterface<RoomStatusLog> logs = data.getStatusLogList().filter(
+        log -> taskId.equals(log.getTaskId()));
+    logs.sort(Comparator.comparing(RoomStatusLog::getChangedAt,
+        Comparator.nullsLast(Comparator.naturalOrder())));
+
+    displaySectionHeading("STATUS HISTORY");
+    if (logs.isEmpty()) {
+      MessageUI.displayMessage("  No status history available.");
+      return;
+    }
+
+    MessageUI.displayTableHeading(String.format("  %-7s %-24s %s",
+        "LOG", "FROM", "TO"));
+    for (int i = 1; i <= logs.getNumberOfEntries(); i++) {
+      RoomStatusLog log = logs.getEntry(i);
+      System.out.printf("  %-7s %-24s %s%n",
+          log.getLogId(),
+          log.getFromStatus() == null ? "-" : log.getFromStatus(),
+          log.getToStatus() == null ? "-" : log.getToStatus());
     }
     MessageUI.displayThinRule();
   }

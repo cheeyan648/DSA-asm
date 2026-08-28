@@ -138,11 +138,11 @@ public class HousekeepingTaskLogMaintenance {
   // ==================================================================
 
   /**
-   * Takes the next room off the queue and starts cleaning it.
+   * Takes the next room off the cleaning queue and starts cleaning it.
    *
-   * The urgent lane is emptied before the normal one, so a room somebody is
-   * waiting on is never left behind routine work - however long that routine
-   * work has been queued.
+   * This is the only Housekeeping action that moves a DIRTY cleaning task
+   * to CLEANING_IN_PROGRESS. The urgent lane is emptied before the normal
+   * one, so a room somebody is waiting on is never left behind routine work.
    */
   private void takeNextRoom() {
     while (true) {
@@ -203,11 +203,11 @@ public class HousekeepingTaskLogMaintenance {
   }
 
   /**
-   * Raises a cleaning task by hand.
+   * Raises a new housekeeping task by hand.
    *
-   * Most tasks are raised automatically when a guest checks out. This covers
-   * the rest - a deep clean, an inspection, or a maintenance job.
-   * STAYOVER_CLEAN is not offered here.
+   * A new Task ID is created here only. Inspection is not offered: it is a
+   * status of an existing cleaning task, updated under Update Task Status.
+   * STAYOVER_CLEAN is not offered.
    */
   private void raiseNewTask() {
     while (true) {
@@ -272,47 +272,13 @@ public class HousekeepingTaskLogMaintenance {
         continue;
       }
 
-      if (HousekeepingTask.TYPE_INSPECTION.equals(taskType)) {
-        String housekeepingStatus = room.getHousekeepingStatus();
-        if (HousekeepingTask.DIRTY.equals(housekeepingStatus)) {
-          ui.displayError("This room has not been cleaned yet.");
-          if (!ui.confirmSelectAnotherRoom()) {
-            return false;
-          }
-          continue;
+      if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)
+          && Room.OCCUPIED.equals(room.getOccupancyStatus())) {
+        ui.displayError("Room " + roomNo + " has a guest in it and cannot be blocked.");
+        if (!ui.confirmSelectAnotherRoom()) {
+          return false;
         }
-        if (HousekeepingTask.READY_FOR_CHECK_IN.equals(housekeepingStatus)) {
-          ui.displayError("This room is already ready for check-in.");
-          if (!ui.confirmSelectAnotherRoom()) {
-            return false;
-          }
-          continue;
-        }
-        if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(housekeepingStatus)) {
-          ui.displayError("This room is not ready for inspection.");
-          if (!ui.confirmSelectAnotherRoom()) {
-            return false;
-          }
-          continue;
-        }
-      } else {
-        HousekeepingTask open = data.findOpenTaskForRoom(roomNo);
-        if (open != null) {
-          ui.displayError("Room " + roomNo + " already has an open task ("
-              + open.getTaskId() + ", " + open.getStatus() + ").");
-          if (!ui.confirmSelectAnotherRoom()) {
-            return false;
-          }
-          continue;
-        }
-        if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)
-            && Room.OCCUPIED.equals(room.getOccupancyStatus())) {
-          ui.displayError("Room " + roomNo + " has a guest in it and cannot be blocked.");
-          if (!ui.confirmSelectAnotherRoom()) {
-            return false;
-          }
-          continue;
-        }
+        continue;
       }
 
       String remark = ui.inputRemark(false);
@@ -327,12 +293,7 @@ public class HousekeepingTaskLogMaintenance {
       task.setRemark(remark);
 
       String toStatus = HousekeepingTask.DIRTY;
-      if (HousekeepingTask.TYPE_INSPECTION.equals(taskType)) {
-        // Creating the job is not the inspection. The room is still being
-        // cleaned; INSPECTED is set later through the existing workflow.
-        toStatus = HousekeepingTask.CLEANING_IN_PROGRESS;
-        task.setStatus(toStatus);
-      } else if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
+      if (HousekeepingTask.TYPE_MAINTENANCE.equals(taskType)) {
         // Records BLOCKED and matches the existing Room out-of-service flag.
         // Front Desk still returns the room to service.
         toStatus = HousekeepingTask.BLOCKED;
@@ -363,42 +324,22 @@ public class HousekeepingTaskLogMaintenance {
   /**
    * The task types Raise New Task may offer for this room.
    *
-   * Cleaning types need a free room (no open task). Inspection is only
-   * offered when the room is already CLEANING_IN_PROGRESS. Maintenance is
-   * offered when there is no open task and no guest in the room.
+   * Only CHECKOUT_CLEAN, DEEP_CLEAN and MAINTENANCE can be raised by hand.
+   * INSPECTION is a status of an existing cleaning task, not a new task.
+   * STAYOVER_CLEAN is never offered.
    */
   private String[] availableRaiseTaskTypes(Room room, HousekeepingTask open) {
-    boolean canInspect = HousekeepingTask.CLEANING_IN_PROGRESS.equals(
-        room.getHousekeepingStatus());
-    boolean canClean = (open == null);
-    boolean canMaintain = canClean
-        && !Room.OCCUPIED.equals(room.getOccupancyStatus());
-
-    int count = 0;
-    if (canClean) {
-      count += 2;
-    }
-    if (canInspect) {
-      count++;
-    }
-    if (canMaintain) {
-      count++;
+    if (open != null) {
+      return new String[0];
     }
 
+    boolean canMaintain = !Room.OCCUPIED.equals(room.getOccupancyStatus());
+    int count = canMaintain ? 3 : 2;
     String[] types = new String[count];
-    int next = 0;
-    if (canClean) {
-      types[next] = HousekeepingTask.TYPE_CHECKOUT_CLEAN;
-      next++;
-      types[next] = HousekeepingTask.TYPE_DEEP_CLEAN;
-      next++;
-    }
-    if (canInspect) {
-      types[next] = HousekeepingTask.TYPE_INSPECTION;
-      next++;
-    }
+    types[0] = HousekeepingTask.TYPE_CHECKOUT_CLEAN;
+    types[1] = HousekeepingTask.TYPE_DEEP_CLEAN;
     if (canMaintain) {
-      types[next] = HousekeepingTask.TYPE_MAINTENANCE;
+      types[2] = HousekeepingTask.TYPE_MAINTENANCE;
     }
     return types;
   }
@@ -408,11 +349,11 @@ public class HousekeepingTaskLogMaintenance {
   // ==================================================================
 
   /**
-   * Moves a task along the cleaning workflow.
+   * Updates the status of an existing open task after cleaning has started.
    *
-   * Only the steps the workflow allows are offered, and reaching ready is what
-   * makes the room sellable again - which is the moment this module hands
-   * control back to the front desk.
+   * DIRTY cleaning tasks are not started here; they must be taken from the
+   * queue. Completed READY_FOR_CHECK_IN tasks are not offered. The Task ID
+   * and Task Type stay the same.
    */
   private void updateTaskStatus() {
     while (true) {
@@ -441,7 +382,29 @@ public class HousekeepingTaskLogMaintenance {
 
         task = data.findTask(taskId);
         if (task == null) {
-          ui.displayError("Task ID not found.");
+          ui.displayError("Task not found.");
+          if (!ui.confirmTryAgain()) {
+            return;
+          }
+          ui.startAction("UPDATE A TASK'S STATUS");
+          ui.displayTaskList(open, "There is no open task to update.");
+          continue;
+        }
+
+        if (!isUpdatableTask(task)) {
+          ui.displayTaskAlreadyCompleted();
+          task = null;
+          if (!ui.confirmTryAgain()) {
+            return;
+          }
+          ui.startAction("UPDATE A TASK'S STATUS");
+          ui.displayTaskList(open, "There is no open task to update.");
+          continue;
+        }
+
+        if (mustStartFromCleaningQueue(task)) {
+          ui.displayMustStartFromQueue();
+          task = null;
           if (!ui.confirmTryAgain()) {
             return;
           }
@@ -480,18 +443,31 @@ public class HousekeepingTaskLogMaintenance {
       }
 
       String fromStatus = task.getStatus();
-      ServiceResult<HousekeepingTask> result =
-          service.updateTaskStatus(taskId, nextStatus, staffId, remark);
-
-      if (result.isFailure()) {
-        ui.displayError(result.getMessage());
+      if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(nextStatus)
+          && mustStartFromCleaningQueue(task)) {
+        ui.displayMustStartFromQueue();
         if (!ui.confirmTryAgain()) {
           return;
         }
         continue;
       }
 
-      ui.displaySuccess("Task " + taskId + " status updated successfully.");
+      ServiceResult<HousekeepingTask> result =
+          service.updateTaskStatus(taskId, nextStatus, staffId, remark);
+
+      if (result.isFailure()) {
+        if (!HousekeepingTask.isValidTransition(task.getTaskType(), fromStatus, nextStatus)) {
+          ui.displayError("Invalid status transition.");
+        } else {
+          ui.displayError(result.getMessage());
+        }
+        if (!ui.confirmTryAgain()) {
+          return;
+        }
+        continue;
+      }
+
+      ui.displaySuccess("Task " + taskId + " updated successfully.");
       ui.displayMessage("  " + result.getMessage());
 
       if (HousekeepingTask.DIRTY.equals(nextStatus)
@@ -506,6 +482,25 @@ public class HousekeepingTaskLogMaintenance {
         return;
       }
     }
+  }
+
+  /**
+   * Whether Update Task Status may change this task.
+   *
+   * READY_FOR_CHECK_IN and superseded jobs are history. They can still be
+   * searched, but they are not updated again.
+   */
+  private boolean isUpdatableTask(HousekeepingTask task) {
+    return task != null && task.isActiveWork();
+  }
+
+  /**
+   * Whether this cleaning task is still waiting and must be started from
+   * the queue rather than Update Task Status.
+   */
+  private boolean mustStartFromCleaningQueue(HousekeepingTask task) {
+    return task != null && task.isCleaningType()
+        && HousekeepingTask.DIRTY.equals(task.getStatus());
   }
 
   /**
