@@ -379,6 +379,7 @@ public class FrontDeskServiceMaintenance {
   private void createBooking() {
     ui.startAction("CREATE A NEW BOOKING");
 
+    // 1. Find the guest by IC / Passport number.
     String icPassport = MessageUI.readIcPassport(MessageUI.scanner,
         "Guest IC / Passport number");
     if (MessageUI.isCancelled(icPassport)) {
@@ -388,6 +389,7 @@ public class FrontDeskServiceMaintenance {
     }
 
     Guest guest = data.findGuestByIc(icPassport);
+
     if (guest == null) {
       String name = MessageUI.readName(MessageUI.scanner, "Full name");
       if (MessageUI.isCancelled(name)) {
@@ -395,12 +397,14 @@ public class FrontDeskServiceMaintenance {
         ui.pause();
         return;
       }
+
       String contact = MessageUI.readPhone(MessageUI.scanner, "Contact number");
       if (MessageUI.isCancelled(contact)) {
         ui.displayMessage("  Booking cancelled.");
         ui.pause();
         return;
       }
+
       String email = MessageUI.readOptionalEmail(MessageUI.scanner, "Email");
       if (MessageUI.isCancelled(email)) {
         ui.displayMessage("  Booking cancelled.");
@@ -416,69 +420,146 @@ public class FrontDeskServiceMaintenance {
           + " (" + guest.getGuestId() + ").");
     }
 
-    String typeId = ui.inputRoomType(data.getRoomTypeList());
-    if (typeId == null) {
-      ui.displayMessage("  Booking cancelled.");
-      ui.pause();
-      return;
-    }
-    RoomType type = data.findRoomType(typeId);
-
-    // A guest sent over from the walk-in queue already said how many nights
-    // they wanted when they registered. Those dates are worked out and offered
-    // here rather than asked for again, so the answer they gave at the door is
-    // the answer the booking is made with.
+    // 2. IMPORTANT:
+    // Detect an active Walk-In BEFORE displaying/asking for room type.
     final String bookingGuestId = guest.getGuestId();
     WalkInRegistration calledWalkIn = data.getRegistrationList().search(
         reg -> bookingGuestId.equals(reg.getGuestId())
             && WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
 
-    LocalDate checkIn;
-    LocalDate checkOut;
-
+    // ===============================================================
+    // WALK-IN BOOKING FLOW
+    // ===============================================================
     if (calledWalkIn != null) {
-      checkIn = LocalDate.now();
-      checkOut = checkIn.plusDays(calledWalkIn.getRequestedNights());
+      String typeId = calledWalkIn.getRequestedTypeId();
+      RoomType type = data.findRoomType(typeId);
+
+      if (type == null) {
+        ui.displayError("The Walk-In requested room type " + typeId
+            + " was not found.");
+        ui.pause();
+        return;
+      }
+
+      int nights = calledWalkIn.getRequestedNights();
+      String priority = calledWalkIn.getPriority();
 
       ui.displayMessage("");
-      ui.displaySuccess("This guest was sent over from the walk-in queue ("
-          + calledWalkIn.getRegId() + ").");
-      ui.displayWalkInStay(calledWalkIn, checkIn, checkOut);
+      ui.displaySuccess("This guest was sent over from the walk-in queue.");
+      ui.displayMessage("");
 
-      if (!ui.confirm("Use these dates?")) {
-        checkIn = null;
-        checkOut = null;
+      ui.displayField("Guest",
+          guest.getFullName() + " (" + guest.getGuestId() + ")");
+      ui.displayField("Walk-In Registration", calledWalkIn.getRegId());
+      ui.displayField("Room type",
+          type.getTypeName() + " (" + type.getTypeId() + ")");
+      ui.displayField("Night request", String.valueOf(nights));
+      ui.displayField("Priority", priority);
+      ui.displayMessage("");
+
+      if (!ui.confirm("Use these details?")) {
+        ui.displayMessage("  Booking cancelled.");
+        ui.pause();
+        return;
       }
-    } else {
-      checkIn = null;
-      checkOut = null;
-    }
 
-    if (checkIn == null) {
-      checkIn = ui.inputDate("Check-in date");
+      // Walk-In already supplied room type, nights and priority.
+      // Front Desk only asks for the check-in date.
+      LocalDate checkIn = ui.inputDate("Check-in date");
       if (checkIn == null) {
         ui.displayMessage("  Booking cancelled.");
         ui.pause();
         return;
       }
+
       if (checkIn.isBefore(LocalDate.now())) {
         ui.displayError("The check-in date cannot be in the past.");
         ui.pause();
         return;
       }
 
-      checkOut = ui.inputDate("Check-out date");
-      if (checkOut == null) {
-        ui.displayMessage("  Booking cancelled.");
-        ui.pause();
-        return;
-      }
-      if (!checkOut.isAfter(checkIn)) {
-        ui.displayError("The check-out date must be after the check-in date.");
-        ui.pause();
-        return;
-      }
+      // LocalDate handles month/year boundaries automatically.
+      // Example: 28/08/2026 + 5 nights = 02/09/2026.
+      LocalDate checkOut = checkIn.plusDays(nights);
+
+      ui.displayMessage("");
+      ui.displayField("Check-in date", checkIn.toString());
+      ui.displayField("Check-out date", checkOut.toString());
+      ui.displayField("Total nights", String.valueOf(nights));
+      ui.displayMessage("");
+
+      Booking booking = new Booking(
+          data.nextBookingId(),
+          guest.getGuestId(),
+          typeId,
+          checkIn,
+          checkOut,
+          1,
+          priority,
+          Booking.SOURCE_WALK_IN,
+          calledWalkIn.getRegId(),
+          type.getBaseRatePerNight(),
+          LocalDateTime.now(),
+          staffId);
+
+      data.addBooking(booking);
+
+      // Complete the Walk-In -> Front Desk handover.
+      calledWalkIn.setStatus(WalkInRegistration.STATUS_BOOKED);
+      calledWalkIn.setBookingId(booking.getBookingId());
+      calledWalkIn.setBookedAt(LocalDateTime.now());
+      calledWalkIn.setServedBy(staffId);
+      calledWalkIn.setServedAt(LocalDateTime.now());
+
+      data.saveAll();
+
+      ui.displaySuccess("Walk-In booking " + booking.getBookingId()
+          + " created successfully.");
+      ui.displayBooking(booking, data);
+      ui.pause();
+      return;
     }
+
+    // ===============================================================
+    // NORMAL BOOKING FLOW
+    // ===============================================================
+    // Only a guest who is NOT in the Walk-In queue reaches this part.
+    String typeId = ui.inputRoomType(data.getRoomTypeList());
+    if (typeId == null) {
+      ui.displayMessage("  Booking cancelled.");
+      ui.pause();
+      return;
+    }
+
+    RoomType type = data.findRoomType(typeId);
+    if (type == null) {
+      ui.displayError("The selected room type was not found.");
+      ui.pause();
+      return;
+    }
+
+    LocalDate checkIn = ui.inputDate("Check-in date");
+    if (checkIn == null) {
+      ui.displayMessage("  Booking cancelled.");
+      ui.pause();
+      return;
+    }
+
+    if (checkIn.isBefore(LocalDate.now())) {
+      ui.displayError("The check-in date cannot be in the past.");
+      ui.pause();
+      return;
+    }
+
+    int nights = ui.inputNights();
+    if (nights < 0) {
+      ui.displayMessage("  Booking cancelled.");
+      ui.pause();
+      return;
+    }
+
+    // Automatically calculate checkout for normal bookings too.
+    LocalDate checkOut = checkIn.plusDays(nights);
 
     int guests = ui.inputGuestCount(type.getMaxOccupancy());
     if (guests < 0) {
@@ -494,9 +575,20 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
-    Booking booking = new Booking(data.nextBookingId(), guest.getGuestId(), typeId,
-        checkIn, checkOut, guests, Booking.PRIORITY_NORMAL, source, null,
-        type.getBaseRatePerNight(), LocalDateTime.now(), staffId);
+    Booking booking = new Booking(
+        data.nextBookingId(),
+        guest.getGuestId(),
+        typeId,
+        checkIn,
+        checkOut,
+        guests,
+        Booking.PRIORITY_NORMAL,
+        source,
+        null,
+        type.getBaseRatePerNight(),
+        LocalDateTime.now(),
+        staffId);
+
     data.addBooking(booking);
     data.saveFrontDesk();
 
@@ -510,6 +602,7 @@ public class FrontDeskServiceMaintenance {
     } else {
       ui.displayMessage("  The booking stays PENDING until a room is assigned.");
     }
+
     ui.pause();
   }
 
