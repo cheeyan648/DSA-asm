@@ -306,10 +306,12 @@ public class SystemTest {
         booking.getBookingStatus());
 
     // The urgent task is taken before any normal one, however long they have
-    // been queued.
+    // been queued. Other seeded urgent jobs may already be waiting.
     HousekeepingTask nextToClean = data.getCleaningQueue().peekNext();
-    runner.checkEquals("it is the next room a housekeeper will take",
-        task.getTaskId(), nextToClean.getTaskId());
+    runner.check("the next room a housekeeper will take is urgent",
+        nextToClean != null && nextToClean.isUrgent());
+    runner.check("the prepared task is waiting in the urgent lane",
+        data.getCleaningQueue().toServiceOrder().contains(task) && task.isUrgent());
 
     if (!HousekeepingTask.CLEANING_IN_PROGRESS.equals(task.getStatus())) {
       service.updateTaskStatus(task.getTaskId(),

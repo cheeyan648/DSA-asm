@@ -298,6 +298,18 @@ public class OperationalDataInitializer {
         Booking.SOURCE_WALK_IN, "WR0005", 180.00, now.minusMinutes(18), "ST001");
     bookings.add(bk7);
 
+    // Two more urgent stays waiting on rooms 1007 and 1008, so those
+    // housekeeping jobs sit in the URGENT lane for the demo.
+    Booking bk8 = new Booking("BK0008", "G0001", "RT01",
+        today, today.plusDays(1), 1, Booking.PRIORITY_URGENT,
+        Booking.SOURCE_PHONE, null, 150.00, now.minusHours(1), "ST002");
+    bookings.add(bk8);
+
+    Booking bk9 = new Booking("BK0009", "G0007", "RT01",
+        today, today.plusDays(2), 1, Booking.PRIORITY_URGENT,
+        Booking.SOURCE_PHONE, null, 150.00, now.minusMinutes(50), "ST001");
+    bookings.add(bk9);
+
     return bookings;
   }
 
@@ -386,7 +398,8 @@ public class OperationalDataInitializer {
    *
    * HK0003 is the one worth reading: it is urgent only because BK0007 is
    * waiting on that room, and it overtook HK0002 which was raised a day
-   * earlier but sits in the normal lane.
+   * earlier but sits in the normal lane. HK0028 and HK0029 are extra DIRTY
+   * jobs already in the URGENT lane for the same reason (BK0008, BK0009).
    */
   public ListInterface<HousekeepingTask> initializeTasks() {
     ListInterface<HousekeepingTask> tasks = new ArrayList<>();
@@ -485,6 +498,63 @@ public class OperationalDataInitializer {
     addCompletedCleaning(tasks, "HK0026", "2003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 0, 8, 0), 29, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
 
+    tasks.add(new HousekeepingTask("HK0027", "1006", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        null, now.minusHours(2)));
+
+    HousekeepingTask hk28 = new HousekeepingTask("HK0028", "1007",
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusHours(1));
+    hk28.setPriority(HousekeepingTask.PRIORITY_URGENT);
+    hk28.setReservedForBookingId("BK0008");
+    hk28.setRemark("Expedited - BK0008 is waiting on this room");
+    tasks.add(hk28);
+
+    HousekeepingTask hk29 = new HousekeepingTask("HK0029", "1008",
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusMinutes(50));
+    hk29.setPriority(HousekeepingTask.PRIORITY_URGENT);
+    hk29.setReservedForBookingId("BK0009");
+    hk29.setRemark("Expedited - BK0009 is waiting on this room");
+    tasks.add(hk29);
+
+    addCompletedCleaning(tasks, "HK0030", "2005", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 2, 7, 0), 44, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0031", "2005", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 5, 12, 0), 38, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0032", "2006", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 12, 13, 15), 52, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0033", "2006", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 1, 17, 0), 41, "ST004", 0, HousekeepingTask.PRIORITY_URGENT);
+    addCompletedCleaning(tasks, "HK0034", "1003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 3, 8, 45), 31, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0035", "1006", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 20, 18, 0), 46, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0036", "3001", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+        at(now, 15, 7, 30), 70, "ST003", 0, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0037", "2005", HousekeepingTask.TYPE_DEEP_CLEAN,
+        at(now, 30, 11, 20), 58, "ST004", 1, HousekeepingTask.PRIORITY_NORMAL);
+    addCompletedCleaning(tasks, "HK0038", "1008", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 4, 12, 30), 34, "ST003", 0, HousekeepingTask.PRIORITY_URGENT);
+    addCompletedCleaning(tasks, "HK0039", "2006", HousekeepingTask.TYPE_STAYOVER_CLEAN,
+        at(now, 6, 19, 20), 36, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
+
+    HousekeepingTask hk40 = new HousekeepingTask("HK0040", "2005",
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, at(now, 3, 9, 10));
+    hk40.setStatus(HousekeepingTask.READY_FOR_CHECK_IN);
+    hk40.setAssignedTo("ST003");
+    hk40.setStartedAt(at(now, 3, 9, 15));
+    hk40.setCompletedAt(at(now, 3, 9, 15).plusMinutes(22));
+    hk40.setInspectionFailCount(1);
+    hk40.setRemark("Superseded by HK0041: Inspection failed - clean it again");
+    tasks.add(hk40);
+
+    HousekeepingTask hk41 = new HousekeepingTask("HK0041", "2005",
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, at(now, 3, 9, 45));
+    hk41.setStatus(HousekeepingTask.READY_FOR_CHECK_IN);
+    hk41.setAssignedTo("ST004");
+    hk41.setStartedAt(at(now, 3, 9, 50));
+    hk41.setCompletedAt(at(now, 3, 9, 50).plusMinutes(28));
+    hk41.setRemark("Follow-on of HK0040: Inspection failed - clean it again");
+    tasks.add(hk41);
+
     HousekeepingTask hk24 = new HousekeepingTask("HK0024", "1003",
         HousekeepingTask.TYPE_INSPECTION, null, now.minusMinutes(10));
     hk24.setStatus(HousekeepingTask.CLEANING_IN_PROGRESS);
@@ -576,6 +646,41 @@ public class OperationalDataInitializer {
     appendCompletedHistory(logs, "HK0023", "2001", at(now, 40, 9, 0), 47, "ST004", 0);
     appendCompletedHistory(logs, "HK0025", "1005", at(now, 0, 19, 0), 36, "ST003", 0);
     appendCompletedHistory(logs, "HK0026", "2003", at(now, 0, 8, 0), 29, "ST004", 0);
+
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0027", "1006", null,
+        HousekeepingTask.DIRTY, now.minusHours(2), "ST001", false,
+        "Raised on check-out"));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0028", "1007", null,
+        HousekeepingTask.DIRTY, now.minusHours(1), "ST002", false,
+        "Raised for waiting booking BK0008"));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0029", "1008", null,
+        HousekeepingTask.DIRTY, now.minusMinutes(50), "ST001", false,
+        "Raised for waiting booking BK0009"));
+
+    appendCompletedHistory(logs, "HK0030", "2005", at(now, 2, 7, 0), 44, "ST003", 0);
+    appendCompletedHistory(logs, "HK0031", "2005", at(now, 5, 12, 0), 38, "ST004", 0);
+    appendCompletedHistory(logs, "HK0032", "2006", at(now, 12, 13, 15), 52, "ST003", 0);
+    appendCompletedHistory(logs, "HK0033", "2006", at(now, 1, 17, 0), 41, "ST004", 0);
+    appendCompletedHistory(logs, "HK0034", "1003", at(now, 3, 8, 45), 31, "ST003", 0);
+    appendCompletedHistory(logs, "HK0035", "1006", at(now, 20, 18, 0), 46, "ST004", 0);
+    appendCompletedHistory(logs, "HK0036", "3001", at(now, 15, 7, 30), 70, "ST003", 0);
+    appendCompletedHistory(logs, "HK0037", "2005", at(now, 30, 11, 20), 58, "ST004", 1);
+    appendCompletedHistory(logs, "HK0038", "1008", at(now, 4, 12, 30), 34, "ST003", 0);
+    appendCompletedHistory(logs, "HK0039", "2006", at(now, 6, 19, 20), 36, "ST004", 0);
+
+    appendCompletedHistory(logs, "HK0040", "2005", at(now, 3, 9, 15), 22, "ST003", 1);
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0041", "2005", null,
+        HousekeepingTask.DIRTY, at(now, 3, 9, 45), "ST005", false,
+        "Follow-on of HK0040: Inspection failed - clean it again"));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0041", "2005",
+        HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS,
+        at(now, 3, 9, 50), "ST004", false, "Re-clean"));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0041", "2005",
+        HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.INSPECTED,
+        at(now, 3, 10, 10), "ST004", false, ""));
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0041", "2005",
+        HousekeepingTask.INSPECTED, HousekeepingTask.READY_FOR_CHECK_IN,
+        at(now, 3, 9, 50).plusMinutes(28), "ST005", false, "Supervisor sign-off"));
 
     logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0024", "1003", null,
         HousekeepingTask.CLEANING_IN_PROGRESS, now.minusMinutes(10), "ST005", false,
