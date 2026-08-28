@@ -619,6 +619,9 @@ public class UnitTest {
     runner.check("dirty to cleaning is allowed",
         HousekeepingTask.isValidTransition(
             HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS));
+    runner.check("CHECKOUT_CLEAN dirty to cleaning is allowed",
+        HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+            HousekeepingTask.DIRTY, HousekeepingTask.CLEANING_IN_PROGRESS));
     runner.check("cleaning to inspected is allowed",
         HousekeepingTask.isValidTransition(
             HousekeepingTask.CLEANING_IN_PROGRESS, HousekeepingTask.INSPECTED));
@@ -634,6 +637,15 @@ public class UnitTest {
 
     // The refusals are the point: each of these would let a guest into a room
     // that has not actually been cleaned or checked.
+    runner.check("a dirty cleaning task cannot be blocked",
+        !HousekeepingTask.isValidTransition(
+            HousekeepingTask.DIRTY, HousekeepingTask.BLOCKED));
+    runner.check("CHECKOUT_CLEAN cannot go DIRTY to BLOCKED",
+        !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_CHECKOUT_CLEAN,
+            HousekeepingTask.DIRTY, HousekeepingTask.BLOCKED));
+    runner.check("DEEP_CLEAN cannot go DIRTY to BLOCKED",
+        !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_DEEP_CLEAN,
+            HousekeepingTask.DIRTY, HousekeepingTask.BLOCKED));
     runner.check("a room cannot be inspected without being cleaned",
         !HousekeepingTask.isValidTransition(
             HousekeepingTask.DIRTY, HousekeepingTask.INSPECTED));
@@ -717,6 +729,23 @@ public class UnitTest {
     runner.check("the UI does not offer CLEANING_IN_PROGRESS for MAINTENANCE",
         !offeredCleaning);
     runner.check("the UI does offer BLOCKED for MAINTENANCE", offeredBlocked);
+
+    String[] dirtyCleaningChoices = HousekeepingTask.allowedNextStatuses(
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, HousekeepingTask.DIRTY);
+    boolean dirtyOffersBlocked = false;
+    boolean dirtyOffersCleaning = false;
+    for (int i = 0; i < dirtyCleaningChoices.length; i++) {
+      if (HousekeepingTask.BLOCKED.equals(dirtyCleaningChoices[i])) {
+        dirtyOffersBlocked = true;
+      }
+      if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(dirtyCleaningChoices[i])) {
+        dirtyOffersCleaning = true;
+      }
+    }
+    runner.check("the UI does not offer BLOCKED from DIRTY cleaning",
+        !dirtyOffersBlocked);
+    runner.check("the UI does offer CLEANING_IN_PROGRESS from DIRTY cleaning",
+        dirtyOffersCleaning);
 
     runner.check("an inspection job is not started from the cleaning queue",
         !HousekeepingTask.isValidTransition(HousekeepingTask.TYPE_INSPECTION,

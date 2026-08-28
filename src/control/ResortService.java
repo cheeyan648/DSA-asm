@@ -1274,14 +1274,18 @@ public class ResortService {
     }
 
     task.setStatus(restoreTo);
-    room.setHousekeepingStatus(restoreTo);
+    if (!task.isStayoverService()) {
+      room.setHousekeepingStatus(restoreTo);
+    }
 
     if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(undoing)
-        && HousekeepingTask.DIRTY.equals(restoreTo)) {
+        && (HousekeepingTask.DIRTY.equals(restoreTo)
+            || HousekeepingTask.NOT_CLEANED.equals(restoreTo))) {
       task.setStartedAt(null);
       task.setAssignedTo(null);
     }
-    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(undoing)) {
+    if (HousekeepingTask.READY_FOR_CHECK_IN.equals(undoing)
+        || HousekeepingTask.CLEANED.equals(undoing)) {
       task.setCompletedAt(null);
     }
 
