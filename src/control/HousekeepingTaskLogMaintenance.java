@@ -1,11 +1,14 @@
 package control;
 
+import adt.ArrayList;
 import adt.ListInterface;
 import boundary.HousekeepingTaskLogUI;
+import entity.Booking;
 import entity.HousekeepingTask;
 import entity.Room;
 import entity.RoomStatusLog;
 import entity.RoomType;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import utility.MessageUI;
 
@@ -50,16 +53,16 @@ public class HousekeepingTaskLogMaintenance {
       choice = ui.getMenuChoice();
       switch (choice) {
         case 1:
-          runQueueMenu();
+          runOperationsMenu();
           break;
         case 2:
-          updateTaskStatus();
+          runUpdateMenu();
           break;
         case 3:
           rollbackLastUpdate();
           break;
         case 4:
-          runSearchMenu();
+          runSearchAndMonitorMenu();
           break;
         case 5:
           runReportMenu();
@@ -72,21 +75,57 @@ public class HousekeepingTaskLogMaintenance {
     data.saveHousekeeping();
   }
 
-  // Shows the cleaning-queue menu: take the next room, display the queue, or raise a task.
-  private void runQueueMenu() {
+  // Shows Housekeeping Operations: view queue, take next room, or raise a task.
+  private void runOperationsMenu() {
     int choice;
     do {
-      choice = ui.getQueueMenuChoice();
+      choice = ui.getOperationsMenuChoice();
       switch (choice) {
         case 1:
-          takeNextRoom();
-          break;
-        case 2:
           displayQueue();
           ui.pause();
           break;
+        case 2:
+          takeNextRoom();
+          break;
         case 3:
           raiseNewTask();
+          break;
+        default:
+          break;
+      }
+    } while (choice != 0);
+  }
+
+  // Shows Update Task Status: original normal cleaning, or today's stayover.
+  private void runUpdateMenu() {
+    int choice;
+    do {
+      choice = ui.getUpdateMenuChoice();
+      switch (choice) {
+        case 1:
+          updateTaskStatus();
+          break;
+        case 2:
+          updateStayoverToday();
+          break;
+        default:
+          break;
+      }
+    } while (choice != 0);
+  }
+
+  // Shows Search & Monitor: original normal search, or stayover monitor.
+  private void runSearchAndMonitorMenu() {
+    int choice;
+    do {
+      choice = ui.getSearchAndMonitorMenuChoice();
+      switch (choice) {
+        case 1:
+          runSearchMenu();
+          break;
+        case 2:
+          runStayoverCleaning();
           break;
         default:
           break;
@@ -202,12 +241,286 @@ public class HousekeepingTaskLogMaintenance {
         data.getCleaningQueue().getNormalCount());
   }
 
+  // ==================================================================
+  // STAYOVER CLEANING
+  // ==================================================================
+
+  // Runs Stayover monitor: view all or filter by date from real Booking data.
+  private void runStayoverCleaning() {
+    LocalDate filterDate = null;
+    int choice;
+    do {
+      ui.startAction("STAYOVER CLEANING MONITOR");
+      ListInterface<HousekeepingTask> records = (filterDate == null)
+          ? collectAllStayoverRecords()
+          : collectStayoverRecordsForDate(filterDate);
+      ui.displayStayoverCleaning(records, filterDate);
+
+      choice = ui.getStayoverMonitorChoice();
+      if (choice == 1) {
+        LocalDate date = ui.inputStayoverDate();
+        if (date != null) {
+          filterDate = date;
+        }
+      } else if (choice == 2) {
+        filterDate = null;
+      }
+    } while (choice != 0);
+  }
+
+  // Updates today's stayover rooms from real Booking data for the current date.
+  private void updateStayoverToday() {
+    while (true) {
+      ui.startAction("STAYOVER CLEANING");
+      LocalDate today = LocalDate.now();
+      ListInterface<HousekeepingTask> records = collectStayoverRecordsForDate(today);
+      ui.displayTodayStayoverCleaning(records, today);
+      if (records.isEmpty()) {
+        ui.pause();
+        return;
+      }
+      if (!updateStayoverFromList(records)) {
+        return;
+      }
+    }
+  }
+
+  // Updates a stayover record from the currently displayed Booking-based list.
+  private boolean updateStayoverFromList(ListInterface<HousekeepingTask> records) {
+    while (true) {
+      if (records.isEmpty()) {
+        ui.displayError("No stayover cleaning records to update.");
+        ui.pause();
+        return false;
+      }
+
+      HousekeepingTask task = ui.inputStayoverRecordSelection(records);
+      if (task == null) {
+        return false;
+      }
+
+      if (HousekeepingTask.CLEANED.equals(task.getStatus())) {
+        ui.displayStayoverAlreadyCompleted();
+        continue;
+      }
+
+      String nextStatus = ui.inputStayoverNextStatus(task);
+      if (nextStatus == null) {
+        return false;
+      }
+
+      applyStayoverStatusUpdate(task, nextStatus);
+      ui.displaySuccess("Stayover cleaning updated successfully.");
+      ui.displayTask(task, data);
+      if (!ui.confirmDoAnother("Do you want to update another stayover room?")) {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  /**
+   * Builds stayover records for every eligible stay date from Booking data.
+   *
+   * Reuses collectStayoverRecordsForDate so Room + Date duplicates are not
+   * created. Existing stayover-service rows are included if already stored.
+   */
+  private ListInterface<HousekeepingTask> collectAllStayoverRecords() {
+    ListInterface<HousekeepingTask> records = new ArrayList<>();
+    ListInterface<LocalDate> dates = collectStayoverDatesFromBookings();
+    for (int i = 1; i <= dates.getNumberOfEntries(); i++) {
+      ListInterface<HousekeepingTask> day = collectStayoverRecordsForDate(dates.getEntry(i));
+      for (int j = 1; j <= day.getNumberOfEntries(); j++) {
+        HousekeepingTask task = day.getEntry(j);
+        if (records.search(existing -> existing.getTaskId().equals(task.getTaskId()))
+            == null) {
+          records.add(task);
+        }
+      }
+    }
+
+    ListInterface<HousekeepingTask> stored = data.getTaskList().filter(
+        HousekeepingTask::isStayoverService);
+    for (int i = 1; i <= stored.getNumberOfEntries(); i++) {
+      HousekeepingTask task = stored.getEntry(i);
+      if (records.search(existing -> existing.getTaskId().equals(task.getTaskId()))
+          == null) {
+        records.add(task);
+      }
+    }
+
+    records.sort((left, right) -> {
+      LocalDate leftDate = left.getCreatedAt() == null
+          ? LocalDate.MIN : left.getCreatedAt().toLocalDate();
+      LocalDate rightDate = right.getCreatedAt() == null
+          ? LocalDate.MIN : right.getCreatedAt().toLocalDate();
+      int byDate = leftDate.compareTo(rightDate);
+      if (byDate != 0) {
+        return byDate;
+      }
+      return left.getRoomNo().compareTo(right.getRoomNo());
+    });
+    return records;
+  }
+
+  // Collects every in-house stay date from existing CHECKED_IN Booking records.
+  private ListInterface<LocalDate> collectStayoverDatesFromBookings() {
+    ListInterface<LocalDate> dates = new ArrayList<>();
+    ListInterface<Booking> bookings = data.getBookingList();
+    for (int i = 1; i <= bookings.getNumberOfEntries(); i++) {
+      Booking booking = bookings.getEntry(i);
+      if (!Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())) {
+        continue;
+      }
+      if (booking.getRoomNo() == null || booking.getRoomNo().isBlank()) {
+        continue;
+      }
+      LocalDate checkIn = booking.getCheckInDate();
+      LocalDate checkOut = booking.getCheckOutDate();
+      if (checkIn == null || checkOut == null) {
+        continue;
+      }
+      for (LocalDate date = checkIn; date.isBefore(checkOut); date = date.plusDays(1)) {
+        final LocalDate stayDate = date;
+        if (dates.search(existing -> existing.equals(stayDate)) == null) {
+          dates.add(stayDate);
+        }
+      }
+    }
+    dates.sort(LocalDate::compareTo);
+    return dates;
+  }
+
+  /**
+   * Builds the stayover list for a date from existing Booking records.
+   *
+   * Room ID, booking ID and stay dates come from Booking. A stayover-service
+   * record is created only when an eligible booking has none for that room
+   * and date.
+   */
+  private ListInterface<HousekeepingTask> collectStayoverRecordsForDate(LocalDate date) {
+    ListInterface<HousekeepingTask> records = new ArrayList<>();
+    boolean createdAny = false;
+    ListInterface<Booking> bookings = data.getBookingList();
+
+    for (int i = 1; i <= bookings.getNumberOfEntries(); i++) {
+      Booking booking = bookings.getEntry(i);
+      if (!isEligibleStayoverBooking(booking, date)) {
+        continue;
+      }
+
+      String roomNo = booking.getRoomNo();
+      if (findStayoverRecordInList(records, roomNo) != null) {
+        continue;
+      }
+
+      HousekeepingTask existing = findStayoverServiceForRoomDate(roomNo, date);
+      if (existing != null) {
+        if (existing.getBookingId() == null) {
+          existing.setBookingId(booking.getBookingId());
+        }
+        records.add(existing);
+      } else {
+        records.add(createStayoverRecord(booking, date));
+        createdAny = true;
+      }
+    }
+
+    records.sort((left, right) -> left.getRoomNo().compareTo(right.getRoomNo()));
+    if (createdAny) {
+      data.saveHousekeeping();
+    }
+    return records;
+  }
+
+  /**
+   * Whether this booking is an in-house stay on the selected date.
+   *
+   * Uses only existing Booking fields: room number, CHECKED_IN status,
+   * check-in date and check-out date. Checkout day is excluded because
+   * that room needs checkout cleaning, not stayover service.
+   */
+  private boolean isEligibleStayoverBooking(Booking booking, LocalDate date) {
+    if (booking == null || date == null) {
+      return false;
+    }
+    if (!Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())) {
+      return false;
+    }
+    String roomNo = booking.getRoomNo();
+    if (roomNo == null || roomNo.isBlank()) {
+      return false;
+    }
+    LocalDate checkIn = booking.getCheckInDate();
+    LocalDate checkOut = booking.getCheckOutDate();
+    if (checkIn == null || checkOut == null) {
+      return false;
+    }
+    return !date.isBefore(checkIn) && date.isBefore(checkOut);
+  }
+
+  // Finds the stayover-service record already stored for this room and date.
+  private HousekeepingTask findStayoverServiceForRoomDate(String roomNo, LocalDate date) {
+    return data.getTaskList().search(task ->
+        task.isStayoverService()
+            && roomNo.equals(task.getRoomNo())
+            && task.getCreatedAt() != null
+            && date.equals(task.getCreatedAt().toLocalDate()));
+  }
+
+  // Finds a stayover record in a displayed list by room ID, preferring one not yet cleaned.
+  private HousekeepingTask findStayoverRecordInList(ListInterface<HousekeepingTask> records,
+      String roomNo) {
+    HousekeepingTask open = records.search(task ->
+        roomNo.equals(task.getRoomNo())
+            && !HousekeepingTask.CLEANED.equals(task.getStatus()));
+    if (open != null) {
+      return open;
+    }
+    return records.search(task -> roomNo.equals(task.getRoomNo()));
+  }
+
+  // Creates one stayover-service record from an eligible Booking, without enqueueing it.
+  private HousekeepingTask createStayoverRecord(Booking booking, LocalDate date) {
+    HousekeepingTask task = new HousekeepingTask(data.nextTaskId(), booking.getRoomNo(),
+        HousekeepingTask.TYPE_STAYOVER_CLEAN, booking.getBookingId(), date.atStartOfDay());
+    task.setStatus(HousekeepingTask.NOT_CLEANED);
+    task.setRemark("Stayover service");
+    data.getTaskList().add(task);
+    data.getStatusLogList().add(new RoomStatusLog(data.nextStatusLogId(),
+        task.getTaskId(), task.getRoomNo(), null, HousekeepingTask.NOT_CLEANED,
+        LocalDateTime.now(), staffId, false, "Stayover service"));
+    return task;
+  }
+
+  // Moves a stayover-service record to the next stayover status and records history.
+  private void applyStayoverStatusUpdate(HousekeepingTask task, String toStatus) {
+    String fromStatus = task.getStatus();
+    LocalDateTime now = LocalDateTime.now();
+    task.setStatus(toStatus);
+
+    if (HousekeepingTask.CLEANING_IN_PROGRESS.equals(toStatus)) {
+      if (task.getStartedAt() == null) {
+        task.setStartedAt(now);
+      }
+      task.setAssignedTo(staffId);
+    }
+    if (HousekeepingTask.CLEANED.equals(toStatus)) {
+      task.setCompletedAt(now);
+    }
+
+    data.getStatusLogList().add(new RoomStatusLog(data.nextStatusLogId(),
+        task.getTaskId(), task.getRoomNo(), fromStatus, toStatus,
+        now, staffId, false, "Stayover service"));
+    data.saveHousekeeping();
+  }
+
   /**
    * Raises a new housekeeping task by hand.
    *
    * A new Task ID is created here only. Inspection is not offered: it is a
    * status of an existing cleaning task, updated under Update Task Status.
-   * STAYOVER_CLEAN is not offered.
+   * CHECKOUT_CLEAN and STAYOVER_CLEAN are not offered; those come from Booking.
    */
   private void raiseNewTask() {
     while (true) {
@@ -232,9 +545,13 @@ public class HousekeepingTaskLogMaintenance {
       ui.startAction("RAISE A NEW TASK");
       // Shown before the prompt so the number typed is an informed choice
       // rather than a guess at which rooms exist and which are already busy.
-      ui.displayRoomsForNewTask(data.getRoomList(), data);
+      ListInterface<Room> eligible = ui.displayRoomsForNewTask(data.getRoomList(), data);
+      if (eligible.isEmpty()) {
+        ui.pause();
+        return false;
+      }
 
-      String roomNo = ui.inputRoomNo();
+      String roomNo = ui.inputRaiseRoomSelection(eligible);
       if (roomNo == null) {
         return false;
       }
@@ -324,9 +641,9 @@ public class HousekeepingTaskLogMaintenance {
   /**
    * The task types Raise New Task may offer for this room.
    *
-   * Only CHECKOUT_CLEAN, DEEP_CLEAN and MAINTENANCE can be raised by hand.
-   * INSPECTION is a status of an existing cleaning task, not a new task.
-   * STAYOVER_CLEAN is never offered.
+   * Only DEEP_CLEAN and MAINTENANCE can be raised by hand. CHECKOUT_CLEAN
+   * is created by check-out, not here. INSPECTION is a status of an existing
+   * cleaning task, not a new task. STAYOVER_CLEAN is never offered.
    */
   private String[] availableRaiseTaskTypes(Room room, HousekeepingTask open) {
     if (open != null) {
@@ -334,12 +651,11 @@ public class HousekeepingTaskLogMaintenance {
     }
 
     boolean canMaintain = !Room.OCCUPIED.equals(room.getOccupancyStatus());
-    int count = canMaintain ? 3 : 2;
+    int count = canMaintain ? 2 : 1;
     String[] types = new String[count];
-    types[0] = HousekeepingTask.TYPE_CHECKOUT_CLEAN;
-    types[1] = HousekeepingTask.TYPE_DEEP_CLEAN;
+    types[0] = HousekeepingTask.TYPE_DEEP_CLEAN;
     if (canMaintain) {
-      types[2] = HousekeepingTask.TYPE_MAINTENANCE;
+      types[1] = HousekeepingTask.TYPE_MAINTENANCE;
     }
     return types;
   }
