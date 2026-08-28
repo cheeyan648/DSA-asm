@@ -5,6 +5,8 @@ import control.ResortData;
 import entity.Guest;
 import entity.RoomType;
 import entity.WalkInRegistration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Scanner;
 import utility.MessageUI;
 
@@ -191,6 +193,45 @@ public class WalkInRegistrationUI {
   public int inputNights() {
     int nights = MessageUI.readInt(scanner, "Number of nights", 1, 30);
     return (nights == MessageUI.CANCELLED_INT) ? -1 : nights;
+  }
+
+  /**
+   * Asks which day the guest wants to arrive.
+   *
+   * Re-asked rather than refused when a past date is given, so a mistyped year
+   * costs one line instead of the whole registration.
+   *
+   * @return the arrival date, or null if cancelled
+   */
+  public LocalDate inputCheckInDate() {
+    while (true) {
+      LocalDate checkIn = MessageUI.readDate(scanner, "Check-in date");
+      if (checkIn == null) {
+        return null;
+      }
+      if (checkIn.isBefore(LocalDate.now())) {
+        MessageUI.displayError("The check-in date cannot be in the past.");
+        continue;
+      }
+      return checkIn;
+    }
+  }
+
+  /**
+   * Shows the stay the guest asked for, with the departure date it works out
+   * to, so both are on screen before the registration is stored.
+   *
+   * @param checkIn the arrival date given
+   * @param nights how many nights were asked for
+   */
+  public void displayCalculatedStay(LocalDate checkIn, int nights) {
+    DateTimeFormatter dayFormat = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy");
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Nights requested", nights + " night(s)");
+    MessageUI.displayField("Check-in", checkIn.format(dayFormat));
+    MessageUI.displayField("Check-out", checkIn.plusDays(nights).format(dayFormat));
+    MessageUI.displayBlankLine();
   }
 
   /**
@@ -420,6 +461,10 @@ public class WalkInRegistrationUI {
       MessageUI.displayField("Urgency reason", reg.getUrgencyReason());
     }
     MessageUI.displayField("Requested", typeName + ", " + reg.getRequestedNights() + " night(s)");
+    if (reg.getRequestedCheckInDate() != null) {
+      MessageUI.displayField("Stay", reg.getRequestedCheckInDate() + " to "
+          + reg.getRequestedCheckOutDate());
+    }
     MessageUI.displayField("Arrived", reg.getFormattedArrivalTime());
     MessageUI.displayField("Joined queue", reg.getFormattedQueuedAt());
     if (reg.getServedAt() != null) {

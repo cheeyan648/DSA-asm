@@ -219,6 +219,17 @@ public class WalkInRegistrationMaintenance {
       return;
     }
 
+    LocalDate checkIn = ui.inputCheckInDate();
+    if (checkIn == null) {
+      ui.displayMessage("  Registration cancelled.");
+      ui.pause();
+      return;
+    }
+
+    // The departure date is never asked for - it follows from the nights, and
+    // is shown here so the officer confirms the stay the guest actually gets.
+    ui.displayCalculatedStay(checkIn, nights);
+
     String reason = null;
     if (urgent) {
       reason = ui.inputUrgencyReason();
@@ -232,7 +243,7 @@ public class WalkInRegistrationMaintenance {
     WalkInRegistration reg = new WalkInRegistration(data.nextRegistrationId(),
         guest.getGuestId(), LocalDateTime.now(),
         urgent ? WalkInRegistration.PRIORITY_URGENT : WalkInRegistration.PRIORITY_NORMAL,
-        reason, typeId, nights);
+        reason, typeId, nights, checkIn);
 
     // One registration, three ADTs: stored in the List, queued in the lane
     // its priority names, and pushed onto the Stack in case it is undone.

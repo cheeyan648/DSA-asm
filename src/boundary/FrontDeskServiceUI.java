@@ -10,7 +10,6 @@ import entity.Payment;
 import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomType;
-import entity.WalkInRegistration;
 import java.time.LocalDate;
 import java.util.Scanner;
 import utility.MessageUI;
@@ -178,17 +177,6 @@ public class FrontDeskServiceUI {
     return MessageUI.readDate(scanner, prompt);
   }
 
-  /**
-   * Asks how many nights the guest wants to stay.
-   * The check-out date is calculated automatically.
-   *
-   * @return number of nights, or -1 if cancelled
-   */
-  public int inputNights() {
-    int nights = MessageUI.readInt(scanner, "Number of nights", 1, 30);
-    return (nights == MessageUI.CANCELLED_INT) ? -1 : nights;
-  }
-
   public int inputGuestCount(int maximum) {
     int guests = MessageUI.readInt(scanner, "Number of guests", 1, maximum);
     return (guests == MessageUI.CANCELLED_INT) ? -1 : guests;
@@ -222,13 +210,6 @@ public class FrontDeskServiceUI {
     int picked = MessageUI.readInt(scanner, "Room type number", 1,
         types.getNumberOfEntries());
     return (picked == MessageUI.CANCELLED_INT) ? null : types.getEntry(picked).getTypeId();
-  }
-
-  public String inputBookingSource() {
-    String source = MessageUI.readChoice(scanner, "Booking source", new String[] {
-      Booking.SOURCE_ONLINE, Booking.SOURCE_PHONE, Booking.SOURCE_CORPORATE
-    });
-    return MessageUI.isCancelled(source) ? null : source;
   }
 
   public String inputPaymentMethod() {
@@ -618,31 +599,8 @@ public class FrontDeskServiceUI {
   // ==================================================================
 
   /**
-   * Shows the stay a walk-in guest asked for, and the dates it works out to.
-   *
-   * Printed before the officer is asked to accept them so the nights the guest
-   * gave at the door, and the check-in and check-out those imply, are both on
-   * screen at the moment the decision is made.
-   *
-   * @param reg the registration the guest was called from
-   * @param checkIn the arrival date those nights work out to
-   * @param checkOut the departure date those nights work out to
-   */
-  public void displayWalkInStay(WalkInRegistration reg, java.time.LocalDate checkIn,
-      java.time.LocalDate checkOut) {
-    java.time.format.DateTimeFormatter dayFormat =
-        java.time.format.DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy");
-
-    MessageUI.displayBlankLine();
-    MessageUI.displayField("Nights requested",
-        reg.getRequestedNights() + " night(s)");
-    MessageUI.displayField("Check-in", checkIn.format(dayFormat));
-    MessageUI.displayField("Check-out", checkOut.format(dayFormat));
-    MessageUI.displayBlankLine();
-  }
-
-  /**
-   * Displays a stay whose check-out date was calculated automatically.
+   * Shows a stay whose check-out date was worked out from the nights, so the
+   * dates are on screen at the moment the booking is accepted.
    */
   public void displayCalculatedStay(java.time.LocalDate checkIn,
       java.time.LocalDate checkOut, int nights) {
