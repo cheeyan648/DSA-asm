@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * needs its type to be priced, and every module records who did something by
  * pointing at a staff member.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class MasterDataInitializer {
 

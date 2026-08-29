@@ -15,7 +15,7 @@ import java.util.Objects;
  * processing time rather than at request time so the reason for a refusal is
  * recorded and can be reviewed.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class Redemption implements Serializable {
 

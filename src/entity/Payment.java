@@ -13,7 +13,7 @@ import java.util.Objects;
  * keeps its own method, reference and time, which is what makes the takings
  * auditable.
  *
- * @author Lim Yong Le
+ * @author Tew Yong Le
  */
 public class Payment implements Serializable {
 

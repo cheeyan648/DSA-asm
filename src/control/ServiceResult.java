@@ -10,7 +10,7 @@ package control;
  * which. Keeping the reason with the result also stops the control classes
  * from printing directly, which would put display work in the wrong layer.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class ServiceResult<T> {
 

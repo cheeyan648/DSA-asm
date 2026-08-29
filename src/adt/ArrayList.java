@@ -6,10 +6,10 @@ package adt;
  * course sample code by Frank M. Carrano.
  *
  * The additional operations (getPosition, removeEntry, sort, filter, search,
- * countIf) were added by Tan Chee Yan for the Walk-In Registration module.
+ * countIf) were added by Wong Chee Yan for the Walk-In Registration module.
  *
  * @author Frank M. Carrano (core operations)
- * @author Tan Chee Yan (added operations)
+ * @author Wong Chee Yan (added operations)
  * @version 2.0
  */
 

@@ -531,7 +531,7 @@ QUICK REFERENCE
 
 
 --------------------------------------------------------------------------------
-MODULE 1 - WALK-IN REGISTRATION & STANDARD BOOKING       (Tan Chee Yan)
+MODULE 1 - WALK-IN REGISTRATION & STANDARD BOOKING       (Wong Chee Yan)
 --------------------------------------------------------------------------------
 PURPOSE
   Manages guests who arrive with NO reservation. It is the front door of the
@@ -571,7 +571,7 @@ INTEGRATION ROLE (what changes)
 
 
 --------------------------------------------------------------------------------
-MODULE 2 - HOUSEKEEPING TASK LOG                          (Chong Zhi Ying)
+MODULE 2 - HOUSEKEEPING TASK LOG                          (Gan Zhi Ying)
 --------------------------------------------------------------------------------
 PURPOSE
   Tracks the cleaning state of every room. It is the GATEKEEPER of room
@@ -608,7 +608,7 @@ INTEGRATION ROLE (what changes)
 
 
 --------------------------------------------------------------------------------
-MODULE 3 - FRONT-DESK SERVICE                             (Lim Yong Le)
+MODULE 3 - FRONT-DESK SERVICE                             (Tew Yong Le)
 --------------------------------------------------------------------------------
 PURPOSE
   Creates and manages BOOKINGS and their BILLS. This is the commercial heart
@@ -646,7 +646,7 @@ INTEGRATION ROLE (what changes)
 
 
 --------------------------------------------------------------------------------
-MODULE 4 - LOYALTY & REWARDS                              (Ivan Wong)
+MODULE 4 - LOYALTY & REWARDS                              (Ivan Tan Yann Rong)
 --------------------------------------------------------------------------------
 PURPOSE
   Retains guests. Tracks points, tiers, reward redemptions and notifications.

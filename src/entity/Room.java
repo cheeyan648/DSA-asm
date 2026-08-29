@@ -13,7 +13,7 @@ import java.util.Objects;
  * agree - vacant AND ready. Collapsing them into one status field is what made
  * it possible, in the separate modules, to let a guest into a dirty room.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class Room implements Serializable {
 

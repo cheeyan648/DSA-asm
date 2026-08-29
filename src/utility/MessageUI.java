@@ -2,10 +2,6 @@ package utility;
 
 import java.util.Scanner;
 
-/**
- *
- * @author Kat Tan
- */
 public class MessageUI {
 
   /**

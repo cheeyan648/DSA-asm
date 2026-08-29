@@ -22,7 +22,7 @@ import java.io.ObjectOutputStream;
  * A missing file is not a failure either - it simply means the system has not
  * been run before, and the caller seeds the file from an initializer.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class GenericDAO<T> {
 

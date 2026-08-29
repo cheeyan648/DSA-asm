@@ -2,10 +2,6 @@ package adt;
 
 import java.io.Serializable;
 
-/**
- *
- * @author Kat Tan
- */
 public class ArrayStack<T> implements StackInterface<T>, Serializable {
 
   private T[] array;

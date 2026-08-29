@@ -13,7 +13,7 @@ import java.util.Objects;
  * adjustment writes a row here, which is what makes a balance explainable
  * rather than merely asserted.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class PointTransaction implements Serializable {
 

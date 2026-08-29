@@ -14,8 +14,6 @@ import java.util.Objects;
  * can promote their own work by hand. If the waiting booking is cancelled the
  * reservation is cleared and the task drops back to the normal lane; the
  * cleaning still goes ahead, because the room is dirty either way.
- *
- * @author Kat Tan
  */
 public class HousekeepingTask implements Serializable {
 

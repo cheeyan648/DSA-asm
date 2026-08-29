@@ -15,7 +15,7 @@ import utility.MessageUI;
 /**
  * Every screen and prompt for Loyalty & Rewards.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class LoyaltyRewardsUI {
 

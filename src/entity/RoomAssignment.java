@@ -12,7 +12,7 @@ import java.util.Objects;
  * and opens another, so the reason for every move survives. Booking.roomNo
  * always mirrors whichever row is still open.
  *
- * @author Lim Yong Le
+ * @author Tew Yong Le
  */
 public class RoomAssignment implements Serializable {
 

@@ -14,7 +14,7 @@ import java.io.Serializable;
  * This one class serves all three modules that need a waiting line: the
  * walk-in waiting list, the booking handling lanes and the cleaning queue.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class DualLaneQueue<T> implements DualLaneQueueInterface<T>, Serializable {
 

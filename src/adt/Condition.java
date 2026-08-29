@@ -9,7 +9,7 @@ package adt;
  * reusing a predefined Java functional interface) to keep the collection ADT
  * self-contained.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 @FunctionalInterface
 public interface Condition<T> {

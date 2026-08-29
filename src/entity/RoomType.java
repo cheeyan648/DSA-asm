@@ -10,7 +10,7 @@ import java.util.Objects;
  * in one place, and holding the standard clean time lets housekeeping estimate
  * its workload from the tasks outstanding.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class RoomType implements Serializable {
 

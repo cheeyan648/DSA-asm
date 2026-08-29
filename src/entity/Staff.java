@@ -7,7 +7,7 @@ import java.util.Objects;
  * One member of resort staff. Shared master - every module records who
  * performed an action by holding a staffId.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class Staff implements Serializable {
 

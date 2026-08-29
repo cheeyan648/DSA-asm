@@ -42,7 +42,7 @@ import java.util.Comparator;
  * from a settled bill - so no module has to reach into another's data.
  * Each module calls the operations it needs; none of them calls each other.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class ResortService {
 

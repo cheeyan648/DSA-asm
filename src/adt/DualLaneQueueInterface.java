@@ -8,7 +8,7 @@ package adt;
  * normal lane to the urgent lane - the only thing that decides a lane is the
  * priority given when the entry is enqueued.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public interface DualLaneQueueInterface<T> {
 

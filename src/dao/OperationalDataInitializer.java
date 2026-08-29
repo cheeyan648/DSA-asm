@@ -26,7 +26,7 @@ import java.time.LocalDateTime;
  * fixed clock times, so waiting times and "today" filters are realistic
  * whenever the system is demonstrated.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class OperationalDataInitializer {
 

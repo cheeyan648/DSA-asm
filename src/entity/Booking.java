@@ -18,7 +18,7 @@ import java.util.Objects;
  * and never re-decided here, so an urgency granted once at the door travels
  * unchanged through the desk and into housekeeping.
  *
- * @author Lim Yong Le
+ * @author Tew Yong Le
  */
 public class Booking implements Serializable {
 

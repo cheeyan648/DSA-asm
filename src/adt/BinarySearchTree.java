@@ -14,7 +14,7 @@ import java.io.Serializable;
  * Generalised from the module-specific BookingBST so the same structure serves
  * bookings, members and any other keyed entity.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class BinarySearchTree<K extends Comparable<K>, V>
     implements TreeInterface<K, V>, Serializable {

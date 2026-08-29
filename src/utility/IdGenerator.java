@@ -10,7 +10,7 @@ import adt.ListInterface;
  * anything was deleted, and two records sharing a primary key is the kind of
  * fault that is very hard to trace afterwards.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class IdGenerator {
 

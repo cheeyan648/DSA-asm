@@ -11,7 +11,7 @@ import java.io.Serializable;
  * it is rehashed into a larger array, which keeps the chains short and the
  * lookups close to constant time.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class HashMap<K, V> implements MapInterface<K, V>, Serializable {
 

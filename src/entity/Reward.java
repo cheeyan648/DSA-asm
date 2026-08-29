@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * An item in the rewards catalogue that points can be exchanged for.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class Reward implements Serializable {
 

@@ -7,7 +7,7 @@ package adt;
  * number, a guest by their ID - where scanning a list every time would be
  * wasteful.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public interface MapInterface<K, V> {
 

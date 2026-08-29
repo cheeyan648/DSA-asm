@@ -18,6 +18,25 @@ import utility.MessageUI;
  * Manages housekeeping tasks and room readiness.
  * Handles task processing, status updates, queue management, rollback,
  * and cleaning performance reports.
+ *
+ * COLLECTION ADTs USED
+ *   ListInterface<HousekeepingTask> / <RoomStatusLog> - every task ever
+ *       raised and the append-only history of status changes. filter() and
+ *       search() answer the lookups, sort() orders the listings, countIf()
+ *       builds the performance tallies.
+ *   DualLaneQueueInterface<HousekeepingTask> - the cleaning queue. The
+ *       urgent lane is drained before the normal one, so a room a guest is
+ *       waiting for is cleaned before the rest of the round.
+ *   StackInterface<RoomStatusLog> - the rollback stack. Last in, first out,
+ *       so an incorrect status update is undone newest first.
+ *
+ * INTERACTS WITH
+ *   Front-Desk Service. Receives at check-out: roomNo, bookingId and the
+ *   lane the officer chose (URGENT or NORMAL). Returns nothing directly -
+ *   the room reaches READY_FOR_CHECK_IN and the front desk may sell it
+ *   again, which is the only signal that passes back.
+ *
+ * @author Gan Zhi Ying
  */
 public class HousekeepingTaskLogMaintenance {
 

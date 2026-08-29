@@ -2,10 +2,6 @@ package adt;
 
 import java.io.Serializable;
 
-/**
- *
- * @author Kat Tan
- */
 public class ArrayQueue<T> implements QueueInterface<T>, Serializable {
 
   private T[] array;

@@ -22,7 +22,7 @@ import utility.MessageUI;
 /**
  * Every screen and prompt for Front-Desk Service.
  *
- * @author Yong Le
+ * @author Tew Yong Le
  */
 public class FrontDeskServiceUI {
 

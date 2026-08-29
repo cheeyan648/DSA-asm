@@ -16,7 +16,7 @@ import java.util.Objects;
  * are tracked separately: lifetimePoints only ever rises, while pointsBalance
  * goes up and down as points are earned and redeemed.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class Member implements Serializable {
 

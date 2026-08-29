@@ -12,7 +12,7 @@ import java.util.Objects;
  * time one is taken. The outstanding balance is derived rather than stored, so
  * it can never drift out of step with the two figures it comes from.
  *
- * @author Lim Yong Le
+ * @author Tew Yong Le
  */
 public class Invoice implements Serializable {
 

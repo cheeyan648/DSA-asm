@@ -17,7 +17,7 @@ import utility.MessageUI;
 /**
  * Every screen and prompt for the Housekeeping Task Log.
  *
- * @author Chong Zhi Ying
+ * @author Gan Zhi Ying
  */
 public class HousekeepingTaskLogUI {
 

@@ -7,7 +7,7 @@ package adt;
  * the ordering is a property of the structure, so a sorted listing costs
  * nothing beyond walking the tree.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public interface TreeInterface<K extends Comparable<K>, V> {
 

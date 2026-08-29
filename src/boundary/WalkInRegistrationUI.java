@@ -18,7 +18,7 @@ import utility.MessageUI;
  * Screens are drawn through MessageUI rather than with print statements of its
  * own, so this module looks identical to the other three.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class WalkInRegistrationUI {
 

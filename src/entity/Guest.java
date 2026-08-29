@@ -16,7 +16,7 @@ import java.util.Objects;
  * other way round, so there is one direction of reference and no way for the
  * two to disagree.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class Guest implements Serializable {
 

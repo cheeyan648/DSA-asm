@@ -21,8 +21,6 @@ import utility.MessageUI;
  * module built its own copy of the data in its own constructor, so a room the
  * front desk had just sold was still vacant as far as housekeeping knew, and a
  * guest served at the walk-in counter never became a booking.
- *
- * @author Kat Tan
  */
 public class TARUMTResortUI {
 

@@ -12,8 +12,6 @@ import java.util.Objects;
  * that have already been produced, because the analysis counts inspection
  * failures and re-cleaning from this history; adding leaves the trail intact
  * and still restores the room to the right status.
- *
- * @author Kat Tan
  */
 public class RoomStatusLog implements Serializable {
 

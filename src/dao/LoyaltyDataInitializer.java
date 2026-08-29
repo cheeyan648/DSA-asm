@@ -16,7 +16,7 @@ import java.time.LocalDate;
  * something to show, and the ledger rows add up to each member's balance so
  * the cached total and its history agree from the first run.
  *
- * @author Ivan Wong
+ * @author Ivan Tan Yann Rong
  */
 public class LoyaltyDataInitializer {
 

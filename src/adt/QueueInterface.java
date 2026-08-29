@@ -1,9 +1,5 @@
 package adt;
 
-/**
- *
- * @author Kat Tan
- */
 public interface QueueInterface<T> {
 
   /**

@@ -63,7 +63,7 @@ import utility.IdGenerator;
  *   DualLaneQueue  - the walk-in waiting list and the cleaning queue.
  *   StackInterface - the housekeeping rollback stack.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class ResortData {
 

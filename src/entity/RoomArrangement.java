@@ -17,7 +17,7 @@ import java.util.Objects;
  * of the same type are not interchangeable once one of them has been given to
  * somebody else.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class RoomArrangement {
 

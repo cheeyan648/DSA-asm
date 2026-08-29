@@ -21,7 +21,7 @@ import java.util.Objects;
  * becomes IN_SERVICE and calledAt is stamped, and they are no longer in any
  * queue. Nothing can be waiting and served at the same time.
  *
- * @author Tan Chee Yan
+ * @author Wong Chee Yan
  */
 public class WalkInRegistration implements Serializable {
 
