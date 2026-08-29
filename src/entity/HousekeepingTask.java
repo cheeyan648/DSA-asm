@@ -26,6 +26,8 @@ public class HousekeepingTask implements Serializable {
   public static final String INSPECTED = "INSPECTED";
   public static final String READY_FOR_CHECK_IN = "READY_FOR_CHECK_IN";
   public static final String BLOCKED = "BLOCKED";
+  public static final String NOT_CLEANED = "NOT_CLEANED";
+  public static final String CLEANED = "CLEANED";
 
   public static final String TYPE_CHECKOUT_CLEAN = "CHECKOUT_CLEAN";
   public static final String TYPE_STAYOVER_CLEAN = "STAYOVER_CLEAN";
@@ -195,23 +197,35 @@ public class HousekeepingTask implements Serializable {
     return PRIORITY_URGENT.equals(priority);
   }
 
-  /**
-   * Whether this task is actual room cleaning, not inspection or maintenance.
-   */
+  // Whether this task is actual room cleaning, not inspection or maintenance.
   public boolean isCleaningType() {
     return TYPE_CHECKOUT_CLEAN.equals(taskType)
         || TYPE_STAYOVER_CLEAN.equals(taskType)
         || TYPE_DEEP_CLEAN.equals(taskType);
   }
 
-  /** Whether this task is a maintenance job rather than cleaning. */
+  // Whether this task is a maintenance job rather than cleaning.
   public boolean isMaintenanceType() {
     return TYPE_MAINTENANCE.equals(taskType);
   }
 
-  /** Whether this task is a supervisor inspection job. */
+  // Whether this task is a supervisor inspection job.
   public boolean isInspectionType() {
     return TYPE_INSPECTION.equals(taskType);
+  }
+
+  /**
+   * Whether this is a daily stayover-service record, not a regular
+   * STAYOVER_CLEAN pipeline job.
+   */
+  public boolean isStayoverService() {
+    if (!TYPE_STAYOVER_CLEAN.equals(taskType)) {
+      return false;
+    }
+    if (NOT_CLEANED.equals(status) || CLEANED.equals(status)) {
+      return true;
+    }
+    return remark != null && remark.startsWith("Stayover service");
   }
 
   /**
@@ -231,21 +245,20 @@ public class HousekeepingTask implements Serializable {
   }
 
   /**
-   * Whether this task is still live work, not finished history.
+   * Whether this task is still live regular housekeeping work.
    *
-   * Ready jobs are done. A superseded job has already handed off to a new
-   * cleaning task, so it must not occupy the room's open-task slot or the
-   * cleaning queue.
+   * Ready jobs, superseded jobs and daily stayover-service records are not
+   * updated through Update Task Status.
    */
   public boolean isActiveWork() {
-    return !READY_FOR_CHECK_IN.equals(status) && !isSuperseded()
-        && completedAt == null;
+    return !isStayoverService() && !READY_FOR_CHECK_IN.equals(status)
+        && !isSuperseded() && completedAt == null;
   }
 
   /** Whether this task still needs to be picked up by a housekeeper. */
   public boolean isPendingCleaning() {
-    return isCleaningType() && DIRTY.equals(status) && completedAt == null
-        && !isSuperseded();
+    return !isStayoverService() && isCleaningType() && DIRTY.equals(status)
+        && completedAt == null && !isSuperseded();
   }
 
   /**
@@ -256,9 +269,9 @@ public class HousekeepingTask implements Serializable {
    * outstanding cleaning.
    */
   public boolean isOutstandingCleaning() {
-    return isPendingCleaning()
+    return !isStayoverService() && (isPendingCleaning()
         || (isCleaningType() && CLEANING_IN_PROGRESS.equals(status)
-            && completedAt == null && !isSuperseded());
+            && completedAt == null && !isSuperseded()));
   }
 
   /**
@@ -279,9 +292,9 @@ public class HousekeepingTask implements Serializable {
    * The pipeline runs dirty, cleaning, inspected, ready, and a failed
    * inspection sends the room back to dirty to be done again. Anything else is
    * refused: a room cannot be inspected without being cleaned, cannot skip
-   * inspection to reach ready, and cannot move backwards. A room can be
-   * blocked from any state and returns to DIRTY or CLEANING_IN_PROGRESS, not
-   * to INSPECTED or READY.
+   * inspection to reach ready, and cannot move backwards. A dirty cleaning
+   * task cannot jump to BLOCKED; that status is for maintenance. A blocked
+   * room returns to DIRTY or CLEANING_IN_PROGRESS, not to INSPECTED or READY.
    *
    * @param from the status the room is at now
    * @param to the status being requested
@@ -294,9 +307,11 @@ public class HousekeepingTask implements Serializable {
   /**
    * Whether a status change is allowed for this kind of task.
    *
-   * Cleaning follows the usual pipeline. Maintenance never starts cleaning:
-   * it can only be blocked or resolved back to DIRTY, after which a separate
-   * cleaning task is raised. Inspection is sign-off work, not queue work.
+   * Cleaning follows the usual pipeline. Daily stayover service uses
+   * NOT_CLEANED, CLEANING_IN_PROGRESS and CLEANED. Maintenance never starts
+   * cleaning: it can only be blocked or resolved back to DIRTY, after which a
+   * separate cleaning task is raised. Inspection is sign-off work, not queue
+   * work.
    *
    * @param taskType cleaning, inspection or maintenance, or null for cleaning
    * @param from the status the task is at now
@@ -306,6 +321,14 @@ public class HousekeepingTask implements Serializable {
   public static boolean isValidTransition(String taskType, String from, String to) {
     if (from == null || to == null || from.equals(to)) {
       return false;
+    }
+    if (TYPE_STAYOVER_CLEAN.equals(taskType)
+        && (NOT_CLEANED.equals(from) || CLEANED.equals(from)
+            || NOT_CLEANED.equals(to) || CLEANED.equals(to))) {
+      if (NOT_CLEANED.equals(from) && CLEANING_IN_PROGRESS.equals(to)) {
+        return true;
+      }
+      return CLEANING_IN_PROGRESS.equals(from) && CLEANED.equals(to);
     }
     if (TYPE_MAINTENANCE.equals(taskType)) {
       if (CLEANING_IN_PROGRESS.equals(to) || INSPECTED.equals(to)
@@ -321,7 +344,8 @@ public class HousekeepingTask implements Serializable {
       return false;
     }
     if (BLOCKED.equals(to)) {
-      return true;
+      // BLOCKED is for maintenance, not a step off a DIRTY cleaning task.
+      return !DIRTY.equals(from);
     }
     if (BLOCKED.equals(from)) {
       return DIRTY.equals(to) || CLEANING_IN_PROGRESS.equals(to);
@@ -370,6 +394,9 @@ public class HousekeepingTask implements Serializable {
     }
     if (DIRTY.equals(from) && CLEANING_IN_PROGRESS.equals(to)) {
       return "MAINTENANCE is not a cleaning task.";
+    }
+    if (DIRTY.equals(from) && BLOCKED.equals(to)) {
+      return "BLOCKED is for maintenance, not a normal cleaning step.";
     }
     if (DIRTY.equals(from) && INSPECTED.equals(to)) {
       return "Cannot inspect a room that has not been cleaned.";
