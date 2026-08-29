@@ -113,14 +113,12 @@ public class TARUMTResortUI {
         "Bookings, rooms and the money");
     MessageUI.displaySubsystemOption(4, "Loyalty & Rewards",
         "Points, tiers and redemptions");
-    MessageUI.displaySubsystemOption(5, "Resort Overview",
-        "Everything happening right now, across all four");
 
     MessageUI.displayMenuOption(0, "Quit the system");
     MessageUI.displayBoxBlank();
     MessageUI.displayBoxBottom();
 
-    return MessageUI.readMenuChoice(scanner, 5, "exit");
+    return MessageUI.readMenuChoice(scanner, 4, "exit");
   }
 
   /**
@@ -374,9 +372,6 @@ public class TARUMTResortUI {
           break;
         case 4:
           loyalty.run();
-          break;
-        case 5:
-          displayOverview();
           break;
         default:
           break;

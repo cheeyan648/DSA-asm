@@ -1,0 +1,1183 @@
+TARUMT RESORT MANAGEMENT SYSTEM
+TEST REPORT
+Generated: 29 August 2026, 14:45
+
+
+############################################################################
+#  TARUMT RESORT MANAGEMENT SYSTEM - FULL TEST RUN
+############################################################################
+
+============================================================================
+  UNIT TESTS - individual ADTs and entities
+============================================================================
+
+  ArrayList
+  -----------------------------
+    [PASS]  a new list is empty
+    [PASS]  a new list has no entries
+    [PASS]  three entries after three adds
+    [PASS]  positions are 1-based
+    [PASS]  the last entry is at getNumberOfEntries()
+    [PASS]  position 0 returns null
+    [PASS]  a position past the end returns null
+    [PASS]  inserting shifts the rest up
+    [PASS]  beta moved to position 3
+    [PASS]  contains finds an entry
+    [PASS]  contains rejects one that is absent
+    [PASS]  getPosition is 1-based
+    [PASS]  getPosition returns -1 when absent
+    [PASS]  removeEntry shortens the list
+    [PASS]  the gap closes up
+    [PASS]  filter returns only what matches
+    [PASS]  the original is untouched by filter
+    [PASS]  search finds the first match
+    [PASS]  search returns null when nothing matches
+    [PASS]  countIf counts every match
+    [PASS]  countIf counts a narrower match
+    [PASS]  countIf returns zero when nothing matches
+    [PASS]  sort reorders in place
+    [PASS]  clear empties the list
+
+  ArrayQueue
+  ------------------------------
+    [PASS]  a new queue is empty
+    [PASS]  dequeue on an empty queue returns null
+    [PASS]  getFront on an empty queue returns null
+    [PASS]  three entries after three enqueues
+    [PASS]  getFront shows the front without removing it
+    [PASS]  still three after getFront
+    [PASS]  dequeue takes from the front
+    [PASS]  dequeue is first in, first out
+    [PASS]  one left
+
+  ArrayStack
+  ------------------------------
+    [PASS]  a new stack is empty
+    [PASS]  pop on an empty stack returns null
+    [PASS]  peek shows the top without removing it
+    [PASS]  still three after peek
+    [PASS]  pop takes the newest
+    [PASS]  pop is last in, first out
+    [PASS]  one left
+
+  DualLaneQueue - the urgent and normal lanes
+  ---------------------------------------------------------------
+    [PASS]  a new queue is empty
+    [PASS]  next() on an empty queue returns null
+    [PASS]  the urgent lane holds two
+    [PASS]  the normal lane holds three
+    [PASS]  five altogether
+    [PASS]  the urgent lane goes first even though it arrived later
+    [PASS]  the whole urgent lane is drained before any normal
+    [PASS]  then the normal lane, in arrival order
+    [PASS]  still in arrival order within the lane
+    [PASS]  a new urgent entry still overtakes a waiting normal one
+    [PASS]  removeEntry finds an entry in the normal lane
+    [PASS]  removeEntry returns false for something absent
+    [PASS]  clear empties both lanes
+    [PASS]  a misspelled priority does not reach the urgent lane
+    [PASS]  it goes to the normal lane instead
+    [PASS]  toServiceOrder lists everything
+    [PASS]  urgent comes first in the listing
+    [PASS]  then normal, in arrival order
+    [PASS]  the queue is left untouched by listing it
+    [PASS]  and still returns the same entry next
+
+  HashMap
+  ---------------------------
+    [PASS]  a new map is empty
+    [PASS]  get on a missing key returns null
+    [PASS]  containsKey is false for a missing key
+    [PASS]  two entries
+    [PASS]  get returns what was put
+    [PASS]  containsKey is true for a stored key
+    [PASS]  putting an existing key returns the old value
+    [PASS]  the value is replaced
+    [PASS]  replacing does not add an entry
+    [PASS]  remove returns the value removed
+    [PASS]  one entry left
+    [PASS]  remove on a missing key returns null
+    [PASS]  200 entries survive rehashing
+    [PASS]  an early entry is still findable
+    [PASS]  a late entry is findable
+    [PASS]  getKeys returns every key
+    [PASS]  getValues returns every value
+
+  BinarySearchTree
+  ------------------------------------
+    [PASS]  a new tree is empty
+    [PASS]  search on an empty tree returns null
+    [PASS]  five entries
+    [PASS]  search finds a value by key
+    [PASS]  contains is true for a stored key
+    [PASS]  contains is false for a missing key
+    [PASS]  an in-order walk gives everything
+    [PASS]  sorted, first
+    [PASS]  sorted, second
+    [PASS]  sorted, last
+    [PASS]  adding an existing key returns the old value
+    [PASS]  the value is replaced
+    [PASS]  replacing does not add an entry
+    [PASS]  four left after removing a two-child node
+    [PASS]  the removed key is gone
+    [PASS]  everything else survives
+    [PASS]  the order is still correct after removal
+    [PASS]  and at the end
+
+  IdGenerator
+  -------------------------------
+    [PASS]  the first ID in an empty series
+    [PASS]  the next ID follows the highest
+    [PASS]  a deletion does not cause an ID to be reused
+    [PASS]  the highest wins wherever it sits
+    [PASS]  malformed and foreign IDs are ignored
+    [PASS]  format pads with leading zeros
+    [PASS]  a three-digit series
+
+  Room - the assignable rule
+  ----------------------------------------------
+    [PASS]  vacant, cleaned and in service is assignable
+    [PASS]  a vacant but dirty room is NOT assignable
+    [PASS]  but it can be made ready by cleaning it
+    [PASS]  a cleaned but occupied room is NOT assignable
+    [PASS]  and it cannot be cleaned for somebody either
+    [PASS]  out of service beats everything else
+    [PASS]  and cannot be cleaned into use
+    [PASS]  inspected is not yet ready to sell
+    [PASS]  but it is cleanable
+    [PASS]  inspected ranks closest to ready
+    [PASS]  dirty ranks furthest
+    [PASS]  inspected sorts before dirty
+
+  Booking - nights and date overlap
+  -----------------------------------------------------
+    [PASS]  1st to 4th is three nights
+    [PASS]  the same day is no nights
+    [PASS]  a null date gives zero nights
+    [PASS]  nights are worked out on construction
+    [PASS]  a new booking starts PENDING
+    [PASS]  with no room
+    [PASS]  stores an eight-digit confirmation number
+    [PASS]  a stay inside the range overlaps
+    [PASS]  a stay straddling the start overlaps
+    [PASS]  a stay straddling the end overlaps
+    [PASS]  an identical stay overlaps
+    [PASS]  arriving the day the last guest leaves is NOT an overlap
+    [PASS]  leaving the day the next guest arrives is NOT an overlap
+    [PASS]  a stay entirely afterwards does not overlap
+    [PASS]  a confirmed booking holds its room
+    [PASS]  a checked-in booking holds its room
+    [PASS]  a cancelled booking does NOT hold its room
+    [PASS]  a checked-out booking does NOT hold its room
+
+  Invoice - the bill
+  --------------------------------------
+    [PASS]  service charge is 10% of the room charge
+    [PASS]  tax is 6% of room plus service
+    [PASS]  the total is room, service and tax
+    [PASS]  a new bill is unpaid
+    [PASS]  everything is outstanding
+    [PASS]  and it is not settled
+    [PASS]  part payment makes it PARTIAL
+    [PASS]  the balance drops
+    [PASS]  still not settled
+    [PASS]  paying in full makes it PAID
+    [PASS]  nothing outstanding
+    [PASS]  and it is settled
+    [PASS]  a discount comes off the total
+    [PASS]  the charges themselves are unchanged
+    [PASS]  the total floors at zero
+    [PASS]  and a zero bill counts as settled
+    [PASS]  a bill paid to the sen is PAID
+
+  Member - tiers and points
+  ---------------------------------------------
+    [PASS]  0 points is Silver
+    [PASS]  999 is still Silver
+    [PASS]  1000 is Gold
+    [PASS]  4999 is still Gold
+    [PASS]  5000 is Platinum
+    [PASS]  14999 is still Platinum
+    [PASS]  15000 is Diamond
+    [PASS]  Silver earns at the base rate
+    [PASS]  Gold earns more
+    [PASS]  Platinum more again
+    [PASS]  Diamond earns double
+    [PASS]  Gold outranks Silver
+    [PASS]  Diamond outranks Platinum
+    [PASS]  a new member starts Silver
+    [PASS]  with no points
+    [PASS]  and no lifetime points
+    [PASS]  refreshTier reports a change
+    [PASS]  and moves them up
+    [PASS]  refreshing again reports no change
+    [PASS]  spending every point does not demote them
+    [PASS]  because the tier comes from lifetime points
+    [PASS]  Platinum is the next tier up from Gold
+    [PASS]  and they are 500 points short
+    [PASS]  a Diamond member has no next tier
+    [PASS]  and nothing to earn towards it
+    [PASS]  a negative balance is floored at zero
+    [PASS]  points expiring in 10 days are expiring soon
+    [PASS]  points expiring in 90 days are not
+    [PASS]  a member with no points is not warned about expiry
+
+  HousekeepingTask - the cleaning workflow
+  ------------------------------------------------------------
+    [PASS]  dirty to cleaning is allowed
+    [PASS]  CHECKOUT_CLEAN dirty to cleaning is allowed
+    [PASS]  cleaning to inspected is allowed
+    [PASS]  inspected to ready is allowed
+    [PASS]  a failed inspection sends it back to dirty
+    [PASS]  a fresh check-out dirties a ready room
+    [PASS]  a dirty cleaning task cannot be blocked
+    [PASS]  CHECKOUT_CLEAN cannot go DIRTY to BLOCKED
+    [PASS]  DEEP_CLEAN cannot go DIRTY to BLOCKED
+    [PASS]  a room cannot be inspected without being cleaned
+    [PASS]  a dirty room cannot jump straight to ready
+    [PASS]  inspection cannot be skipped
+    [PASS]  a ready room cannot move backwards to inspected
+    [PASS]  the same status twice is refused as a duplicate
+    [PASS]  a null status is refused
+    [PASS]  any status can be blocked
+    [PASS]  a blocked room can go back to being cleaned
+    [PASS]  a blocked room cannot skip to inspected
+    [PASS]  a blocked room cannot skip to ready
+    [PASS]  a new task starts dirty
+    [PASS]  and in the normal lane
+    [PASS]  a dirty task is waiting to be picked up
+    [PASS]  and it is outstanding cleaning
+    [PASS]  work in progress is still outstanding
+    [PASS]  but it is no longer waiting in the queue
+    [PASS]  inspected is not outstanding cleaning
+    [PASS]  a finished clean is not outstanding
+    [PASS]  an inspection job is not outstanding cleaning
+    [PASS]  maintenance is not outstanding cleaning
+    [PASS]  and a maintenance job is never waiting in the cleaning queue
+    [PASS]  maintenance cannot start cleaning from DIRTY
+    [PASS]  maintenance can be marked BLOCKED
+    [PASS]  resolved maintenance returns the room to DIRTY
+    [PASS]  maintenance cannot resume as CLEANING_IN_PROGRESS
+    [PASS]  the UI does not offer CLEANING_IN_PROGRESS for MAINTENANCE
+    [PASS]  the UI does offer BLOCKED for MAINTENANCE
+    [PASS]  the UI does not offer BLOCKED from DIRTY cleaning
+    [PASS]  the UI does offer CLEANING_IN_PROGRESS from DIRTY cleaning
+    [PASS]  an inspection job is not started from the cleaning queue
+    [PASS]  an unfinished task has no duration
+    [PASS]  a finished task reports how long it took
+    [PASS]  failures are counted
+    [PASS]  a rollback takes one back off
+    [PASS]  the count cannot go negative
+
+  WalkInRegistration - waiting time
+  -----------------------------------------------------
+    [PASS]  a new registration is waiting
+    [PASS]  and isWaiting agrees
+    [PASS]  a normal registration is not urgent
+    [PASS]  the wait so far is about 45 minutes
+    [PASS]  shown in minutes under an hour
+    [PASS]  a called guest's wait stops at the call
+    [PASS]  and they are no longer waiting
+    [PASS]  over an hour is shown as hours and minutes
+    [PASS]  an urgent registration is urgent
+    [PASS]  and carries its reason
+    [PASS]  no arrival time means no wait
+    [PASS]  shown as a dash
+    [PASS]  and so is the arrival
+
+  Payment
+  ---------------------------
+    [PASS]  a card payment needs a reference
+    [PASS]  an e-wallet payment needs a reference
+    [PASS]  a bank transfer needs a reference
+    [PASS]  cash does not need a reference
+    [PASS]  the amount is kept
+    [PASS]  and the reference
+    [PASS]  and who took it
+
+============================================================================
+  UNIT TEST SUMMARY
+============================================================================
+  Passed: 242
+  Failed: 0
+
+  Everything passed.
+============================================================================
+
+============================================================================
+  VALIDATION TESTS - input rules and queue history
+============================================================================
+
+  Contact number - what is accepted
+  -----------------------------------------------------
+    [PASS]  a 10-digit mobile is valid
+    [PASS]  an 11-digit mobile is valid
+    [PASS]  a landline starting 03 is valid
+    [PASS]  dashes are allowed while typing
+    [PASS]  and so are spaces
+
+  Contact number - what is refused
+  ----------------------------------------------------
+    [PASS]  letters are refused
+    [PASS]  a number with a letter in it is refused
+    [PASS]  a name is refused
+    [PASS]  9 digits is too short
+    [PASS]  12 digits is too long
+    [PASS]  not starting with 0 is refused
+    [PASS]  empty is refused
+    [PASS]  null is refused
+    [PASS]  only separators is refused
+    [PASS]  a plus-prefixed international number is refused
+
+  Email - what is accepted
+  --------------------------------------------
+    [PASS]  an ordinary address is valid
+    [PASS]  a subdomain is valid
+    [PASS]  dots in the name are valid
+
+  Email - what is refused
+  -------------------------------------------
+    [PASS]  no at sign is refused
+    [PASS]  two at signs are refused
+    [PASS]  nothing before the at is refused
+    [PASS]  nothing after the at is refused
+    [PASS]  no dot in the domain is refused
+    [PASS]  a trailing dot is refused
+    [PASS]  a space is refused
+    [PASS]  empty is refused
+    [PASS]  null is refused
+
+  Guest name - what is accepted
+  -------------------------------------------------
+    [PASS]  a plain name is valid
+    [PASS]  an apostrophe is allowed
+    [PASS]  a hyphen is allowed
+    [PASS]  bin and a dot are allowed
+    [PASS]  a slash for a compound name is allowed
+
+  Guest name - what is refused
+  ------------------------------------------------
+    [PASS]  digits are refused
+    [PASS]  a phone number is refused
+    [PASS]  blank is refused
+    [PASS]  empty is refused
+    [PASS]  null is refused
+    [PASS]  punctuation only is refused
+
+  Digit and alphanumeric helpers
+  --------------------------------------------------
+    [PASS]  digits only is true
+    [PASS]  a letter makes it false
+    [PASS]  empty is false
+    [PASS]  null is false
+    [PASS]  an IC of digits is alphanumeric
+    [PASS]  a passport of letters and digits is too
+    [PASS]  a slash is not
+    [PASS]  empty is not
+
+  Zero cancels, however many are typed
+  --------------------------------------------------------
+    [PASS]  a single zero cancels
+    [PASS]  two zeros cancel
+    [PASS]  four zeros cancel
+    [PASS]  a long run of zeros cancels
+
+  What is not a cancel
+  ----------------------------------------
+    [PASS]  empty is not a cancel
+    [PASS]  null is not a cancel
+    [PASS]  a real option is not a cancel
+    [PASS]  a number ending in zero is not a cancel
+    [PASS]  a number starting with zero is not a cancel
+    [PASS]  letters are not a cancel
+
+  Email - a bare name or number is refused
+  ------------------------------------------------------------
+    [PASS]  123 alone is refused
+    [PASS]  a name alone is refused
+    [PASS]  a longer name alone is refused
+    [PASS]  a gmail name without the domain is refused
+
+  Email - short but valid addresses still pass
+  ----------------------------------------------------------------
+    [PASS]  123@gmail.co is accepted
+    [PASS]  123@gmail.com is accepted
+    [PASS]  a one-letter domain label is accepted
+
+  Email - malformed domains are refused
+  ---------------------------------------------------------
+    [PASS]  no dot in the domain is refused
+    [PASS]  a doubled dot is refused
+    [PASS]  a domain starting on a dot is refused
+    [PASS]  a domain ending on a dot is refused
+
+  Queue history - joining the queue
+  -----------------------------------------------------
+    [PASS]  joining the queue is stamped
+    [PASS]  at the moment they arrived
+    [PASS]  leaving it is not stamped yet
+    [PASS]  and it shows as a dash
+    [PASS]  the wait is still running
+
+  Queue history - being called to the counter
+  ---------------------------------------------------------------
+    [PASS]  the status becomes IN_SERVICE
+    [PASS]  leaving the queue is stamped
+    [PASS]  calledAt is stamped with it
+    [PASS]  the wait is fixed between the two stamps
+    [PASS]  and they are no longer waiting
+    [PASS]  a finished wait does not keep growing
+
+  Queue history - cancelling
+  ----------------------------------------------
+    [PASS]  the status becomes CANCELLED
+    [PASS]  the wait stops when they gave up
+    [PASS]  a cancelled guest was never called
+    [PASS]  but leaving the queue is still stamped
+
+  Queue history - an urgent guest
+  ---------------------------------------------------
+    [PASS]  is urgent
+    [PASS]  joins the queue with a stamp
+    [PASS]  and is served quickly
+
+  Queue history - a registration with no times
+  ----------------------------------------------------------------
+    [PASS]  no times means no wait
+    [PASS]  queued shows as a dash
+    [PASS]  left shows as a dash
+
+  Waiting count reads as a sentence
+  -----------------------------------------------------
+    [PASS]  one guest is singular
+    [PASS]  three guests are plural
+    [PASS]  none reads properly too
+
+============================================================================
+  VALIDATION TEST SUMMARY
+============================================================================
+  Passed: 91
+  Failed: 0
+
+  Everything passed.
+============================================================================
+
+============================================================================
+  INTEGRATION TESTS - where the modules meet
+============================================================================
+
+  The four modules share one copy of the data
+  ---------------------------------------------------------------
+    [PASS]  the service holds the same registry it was given
+    [PASS]  the map and the list hold the same object
+    [PASS]  so a change through one is seen through the other
+    [PASS]  the tree and the list hold the same booking
+    [PASS]  a booking has an eight-character confirmation code
+    [PASS]  the confirmation tree retrieves that same booking
+
+  A room is sellable only when both modules agree
+  -------------------------------------------------------------------
+    [PASS]  a vacant, cleaned room is available
+    [PASS]  housekeeping marking it dirty makes it unavailable
+    [PASS]  a room being cleaned is still unavailable
+    [PASS]  inspected but not signed off is still unavailable
+    [PASS]  only READY_FOR_CHECK_IN makes it available again
+    [PASS]  a clean room already booked for those dates is unavailable
+    [PASS]  but it is available for dates that do not clash
+    [PASS]  a cancelled booking no longer blocks the room
+
+  A served walk-in becomes a booking  (M1 to M3)
+  ------------------------------------------------------------------
+    [PASS]  there are guests waiting to start with
+    [PASS]  a guest can be called
+    [PASS]  they are now IN_SERVICE
+    [PASS]  their call time is stamped
+    [PASS]  and who called them is recorded
+    [PASS]  they have left the queue
+    [PASS]  and cannot be found in the waiting list any more
+    [PASS]  the registration becomes a booking
+    [PASS]  the booking starts PENDING with no room
+    [PASS]  no room is assigned yet
+    [PASS]  its source is WALK_IN
+    [PASS]  it points back at the registration
+    [PASS]  it carries the same guest
+    [PASS]  the registration is now BOOKED
+    [PASS]  and points forward at its booking
+    [PASS]  the same registration cannot be booked twice
+
+  Urgency travels M1 to M3 to M2 unchanged
+  ------------------------------------------------------------
+    [PASS]  the urgent guest is called first, whoever else is waiting
+    [PASS]  the booking is created
+    [PASS]  the booking inherits URGENT rather than deciding again
+    [PASS]  and isUrgent agrees
+    [PASS]  no RT02 room is ready
+    [PASS]  so no arrangement can be built from RT02 alone
+
+  Checking out dirties the room AND awards points  (M3 to M2, M4)
+  ----------------------------------------------------------------------
+    [PASS]  the guest is checked in
+    [PASS]  and is a loyalty member
+    [PASS]  the bill is settled
+    [PASS]  the guest can check out
+    [PASS]  the booking is CHECKED_OUT
+    [PASS]  the room is vacant again
+    [PASS]  and has been marked dirty
+    [PASS]  so it cannot be sold to anybody
+    [PASS]  a cleaning task was raised automatically
+    [PASS]  the task exists for that room
+    [PASS]  it is a check-out clean
+    [PASS]  and points back at the booking that caused it
+    [PASS]  it is waiting in the cleaning queue
+    [PASS]  the member's points went up
+    [PASS]  a ledger row records the award
+    [PASS]  the balance matches the ledger
+    [PASS]  the points are the bill times the tier multiplier
+    [PASS]  the room assignment is closed
+
+  Check-out is refused while the bill is unpaid
+  -----------------------------------------------------------------
+    [PASS]  the bill starts unsettled
+    [PASS]  check-out is refused
+    [PASS]  and says how much is owed
+    [PASS]  the guest is still checked in
+    [PASS]  and the room is still occupied
+    [PASS]  a part payment is refused
+    [PASS]  so the bill is untouched
+    [PASS]  and check-out is still refused
+    [PASS]  paying more than is owed is refused
+    [PASS]  once settled, check-out succeeds
+
+  Finishing the cleaning releases the room  (M2 to M3)
+  ----------------------------------------------------------------------
+    [PASS]  room 1001 has an open task
+    [PASS]  a dirty room cannot be sold
+    [PASS]  cleaning can be started
+    [PASS]  the room follows the task
+    [PASS]  it is still not sellable
+    [PASS]  and it has left the cleaning queue
+    [PASS]  cleaning can be finished
+    [PASS]  awaiting sign-off is still not sellable
+    [PASS]  the supervisor can sign it off
+    [PASS]  the room is now ready
+    [PASS]  the completion time is stamped
+    [PASS]  the room's last-cleaned time is stamped
+    [PASS]  and the front desk can sell it again
+
+  A failed inspection sends the room back to be cleaned
+  ----------------------------------------------------------------------
+    [PASS]  an inspection can be failed
+    [PASS]  the room goes back to dirty
+    [PASS]  the failure is counted
+    [PASS]  the failed job is no longer waiting in the queue
+    [PASS]  and it is no longer pending cleaning
+    [PASS]  a new cleaning task is raised
+    [PASS]  it is a normal cleaning type
+    [PASS]  it starts DIRTY
+    [PASS]  the same room is to be cleaned again
+    [PASS]  it is not the maintenance or inspection job reused
+    [PASS]  and it enters the cleaning queue exactly once
+    [PASS]  the queue still holds only pending cleaning
+    [PASS]  and it certainly cannot be sold
+    [PASS]  a dirty room cannot jump straight to ready
+    [PASS]  and the refusal explains why
+
+  Rollback restores the room and keeps the history
+  --------------------------------------------------------------------
+    [PASS]  the room is being cleaned
+    [PASS]  the last change can be rolled back
+    [PASS]  the task goes back to dirty
+    [PASS]  and so does the room
+    [PASS]  the room is back in the cleaning queue
+    [PASS]  a compensating row is added, not a row removed
+    [PASS]  and it is marked as a rollback
+    [PASS]  recording what was undone
+    [PASS]  and what it went back to
+    [PASS]  the failure was counted
+    [PASS]  rolling it back takes the failure off the count
+
+  Housekeeping rollback stack matches a live session
+  ----------------------------------------------------------------------
+    [PASS]  a fresh start has nothing new to roll back
+    [PASS]  restart still does not load historical updates as rollbacks
+    [PASS]  two updates both sit on the stack
+    [PASS]  one rollback succeeds
+    [PASS]  it undoes the latest update, not an earlier one
+    [PASS]  the room returns to cleaning in progress
+    [PASS]  and the room record follows
+    [PASS]  two rollbacks restore cleaning in progress
+    [PASS]  the stack top is again the start-cleaning update
+    [PASS]  restart does not treat saved history as new rollbacks
+    [PASS]  a room being cleaned is not waiting in the queue
+    [PASS]  rolling back start-cleaning succeeds
+    [PASS]  the room is dirty again
+    [PASS]  and is queued once, not twice
+    [PASS]  a failed inspection is accepted
+    [PASS]  a re-clean task is raised
+    [PASS]  the re-clean is queued once
+    [PASS]  the failed job itself is not re-queued
+    [PASS]  rolling back the failed inspection succeeds
+    [PASS]  the room returns to inspected
+    [PASS]  the original job leaves the cleaning queue
+    [PASS]  and the re-clean is taken off the queue
+    [PASS]  the room record is inspected again
+    [PASS]  an empty stack cannot be rolled back
+
+  A second open task does not make the room READY
+  -------------------------------------------------------------------
+    [PASS]  seed has a cleaning job and an inspection on 1003
+    [PASS]  the room starts as cleaning in progress
+    [PASS]  the inspection can still be signed as inspected
+    [PASS]  the inspection task can finish
+    [PASS]  that task is ready
+    [PASS]  the cleaning job is still in progress
+    [PASS]  the room is not ready while that cleaning job is open
+    [PASS]  BLOCKED cannot jump to INSPECTED
+    [PASS]  BLOCKED cannot jump to READY
+
+  Current workload ignores completed historical cleaning
+  ----------------------------------------------------------------------
+    [PASS]  room 2003 has no current outstanding cleaning
+    [PASS]  room 1001 still has outstanding DIRTY work
+    [PASS]  the historically busy room is not the current highest
+    [PASS]  RT02 has no current outstanding type workload
+    [PASS]  RT01 still has current outstanding type workload
+    [PASS]  the historically busy type is not the current highest
+
+  MAINTENANCE resolves to a new cleaning task, not the queue
+  ----------------------------------------------------------------------
+    [PASS]  seed includes a maintenance job
+    [PASS]  it is MAINTENANCE
+    [PASS]  and it is BLOCKED
+    [PASS]  it is not sitting in the cleaning queue
+    [PASS]  the queue holds only pending cleaning
+    [PASS]  MAINTENANCE cannot be sent to CLEANING_IN_PROGRESS
+    [PASS]  and the refusal says so
+    [PASS]  maintenance can be resolved back to DIRTY
+    [PASS]  the success message says the room remains dirty
+    [PASS]  the maintenance row stays MAINTENANCE
+    [PASS]  and is recorded as DIRTY
+    [PASS]  it is superseded rather than converted
+    [PASS]  the room remains DIRTY
+    [PASS]  and is back in service so it can be cleaned
+    [PASS]  exactly one new task was raised
+    [PASS]  a follow-on cleaning task exists
+    [PASS]  it has a new task id
+    [PASS]  same room number
+    [PASS]  it is a cleaning type
+    [PASS]  it starts DIRTY / pending cleaning
+    [PASS]  it enters the cleaning queue exactly once
+    [PASS]  the maintenance job is still not queued
+    [PASS]  and the queue still has no maintenance or inspection
+    [PASS]  the new cleaning job still follows DIRTY to READY
+    [PASS]  the room is then ready for check-in
+    [PASS]  enqueueing a MAINTENANCE task is a no-op
+    [PASS]  enqueueing an INSPECTION task is a no-op
+    [PASS]  the follow-on was queued before rollback
+    [PASS]  resolving maintenance can be rolled back
+    [PASS]  the maintenance job returns to BLOCKED
+    [PASS]  the follow-on leaves the cleaning queue
+    [PASS]  the room is blocked again
+
+  An approved reward comes off a live bill  (M4 to M3)
+  ----------------------------------------------------------------------
+    [PASS]  the guest is a member
+    [PASS]  a redemption can be requested
+    [PASS]  it starts PENDING
+    [PASS]  and no points have been taken yet
+    [PASS]  it ends up approved
+    [PASS]  and every approved request took its points
+    [PASS]  including this one
+    [PASS]  a ledger row records the spend
+    [PASS]  the bill is unchanged by the redemption
+    [PASS]  and the points came off the member instead
+    [PASS]  a request above the member's tier is refused at once
+    [PASS]  and the reason names the tier
+    [PASS]  nothing joins the queue
+    [PASS]  and no points are taken
+    [PASS]  the decision is recorded
+    [PASS]  a sold-out reward is rejected
+    [PASS]  no points are taken for a rejection
+    [PASS]  and the reason is recorded
+
+  Points are awarded once per stay
+  ----------------------------------------------------
+    [PASS]  points are awarded the first time
+    [PASS]  a second award is refused
+    [PASS]  and says so plainly
+    [PASS]  the balance is unchanged
+    [PASS]  a first stay enrols the guest and awards points
+    [PASS]  they now hold a membership
+    [PASS]  and the points are on it
+    [PASS]  the message says they were enrolled
+
+  Cancelling gives the room back
+  --------------------------------------------------
+    [PASS]  the room can be assigned
+    [PASS]  the booking is confirmed
+    [PASS]  the room is held
+    [PASS]  a bill is raised on assignment
+    [PASS]  priced from the nights booked
+    [PASS]  the room is no longer available to anybody else
+    [PASS]  once cancelled the room is available again
+
+  Everything survives a restart
+  -------------------------------------------------
+    [PASS]  the guest count survives
+    [PASS]  the new guest is found by their document
+    [PASS]  with the right ID
+    [PASS]  the member's points survive
+    [PASS]  the room's housekeeping status survives
+    [PASS]  the called guest is still IN_SERVICE
+    [PASS]  the waiting queue is rebuilt to the same size
+    [PASS]  with the same urgent count
+    [PASS]  the cleaning queue is rebuilt
+    [PASS]  and the pending redemptions
+    [PASS]  a called guest does not come back into the queue
+    [PASS]  the booking tree is rebuilt
+    [PASS]  the room map is rebuilt
+    [PASS]  the member tree is rebuilt
+    [PASS]  bookings still come back in sorted order
+    [PASS]  the next guest ID is unused
+
+============================================================================
+  INTEGRATION TEST SUMMARY
+============================================================================
+  Passed: 223
+  Failed: 0
+
+  Everything passed.
+============================================================================
+
+============================================================================
+  SYSTEM TESTS - whole journeys across all four modules
+============================================================================
+
+  A guest walks in and stays - the whole journey
+  ------------------------------------------------------------------
+    [PASS]  a new guest is created on arrival
+    [PASS]  and can be found again by their document
+    [PASS]  they are waiting
+    [PASS]  and are in the queue
+    [PASS]  their turn comes
+    [PASS]  and it is them
+    [PASS]  they are now being served
+    [PASS]  a booking is created for them
+    [PASS]  it starts with no room
+    [PASS]  and the registration points at it
+    [PASS]  housekeeping reports at least one ready room
+    [PASS]  the room can be assigned
+    [PASS]  the booking is confirmed
+    [PASS]  the room is held
+    [PASS]  and nobody else can have it
+    [PASS]  a bill is raised
+    [PASS]  priced at the rate times the nights
+    [PASS]  and it is unpaid
+    [PASS]  check-in is refused while the bill is unpaid
+    [PASS]  a half payment is refused
+    [PASS]  the bill is still unpaid
+    [PASS]  and an unpaid bill still refuses check-in
+    [PASS]  settling it makes it paid
+    [PASS]  one payment settles the whole bill
+    [PASS]  and it adds up to the bill
+    [PASS]  the guest can check in once it is settled
+    [PASS]  the booking is checked in
+    [PASS]  and the room is occupied
+    [PASS]  now they can check out
+    [PASS]  the stay is complete
+    [PASS]  the room is vacant again
+    [PASS]  but dirty
+    [PASS]  a cleaning task was raised without being asked for
+    [PASS]  the room cannot be sold in the meantime
+    [PASS]  the cleaning task exists
+    [PASS]  and is waiting in the queue
+    [PASS]  the room can be cleaned through to ready
+    [PASS]  the room is ready again
+    [PASS]  and it is sellable to the next guest
+
+  An urgent guest is served first and has a room prepared
+  ----------------------------------------------------------------------
+    [PASS]  several normal guests are waiting
+    [PASS]  they go into the urgent lane
+    [PASS]  the normal guests are all still waiting
+    [PASS]  somebody is called
+    [PASS]  and it is the urgent guest, who arrived last
+    [PASS]  their booking is created
+    [PASS]  carrying the urgency forward
+    [PASS]  no RT01 room is ready
+    [PASS]  the urgent booking waits as PENDING
+    [PASS]  the dirty room has a cleaning task
+    [PASS]  the room is ready
+    [PASS]  and the waiting guest gets it
+    [PASS]  their booking is confirmed at last
+
+  A room is recycled from one guest to the next
+  -----------------------------------------------------------------
+    [PASS]  after the first guest the room is dirty
+    [PASS]  the next guest cannot have the room while it is dirty
+    [PASS]  and is told why
+    [PASS]  once cleaned, the next guest can have it
+    [PASS]  the second booking is confirmed
+    [PASS]  the room's assignment history holds both stays
+
+  A member earns points from a stay and spends them on a bill
+  ----------------------------------------------------------------------
+    [PASS]  the guest can be enrolled
+    [PASS]  they start on Silver
+    [PASS]  with no points
+    [PASS]  the stay earned points
+    [PASS]  the balance and lifetime totals agree on a first stay
+    [PASS]  and the tier moved up
+    [PASS]  the award is in the ledger
+    [PASS]  with the running balance recorded
+    [PASS]  they can request a reward
+    [PASS]  nothing is taken until it is approved
+    [PASS]  it is approved
+    [PASS]  and the points are taken
+    [PASS]  spending does not touch the lifetime total
+    [PASS]  so the tier is unchanged
+    [PASS]  the next stay is billed at its own rate
+    [PASS]  and the approved reward is still on record
+
+  The system stays consistent after a busy day
+  ----------------------------------------------------------------
+    [PASS]  no room is double-booked over the same dates
+    [PASS]  no guest is checked into a dirty room
+    [PASS]  every bill agrees with its payments
+    [PASS]  every member's balance agrees with their ledger
+    [PASS]  everyone in the queue is actually waiting
+    [PASS]  the queue holds exactly the waiting registrations
+    [PASS]  booking IDs are unique
+    [PASS]  guest IDs are unique
+    [PASS]  bookings survive a save and reload
+    [PASS]  guests survive too
+    [PASS]  and the queue is rebuilt to the same size
+
+  The first run, with no data files
+  -----------------------------------------------------
+    [PASS]  staff are seeded
+    [PASS]  room types are seeded
+    [PASS]  rooms are seeded
+    [PASS]  guests are seeded
+    [PASS]  registrations are seeded
+    [PASS]  bookings are seeded
+    [PASS]  invoices are seeded
+    [PASS]  cleaning tasks are seeded
+    [PASS]  members are seeded
+    [PASS]  rewards are seeded
+    [PASS]  every seeded booking points at a real guest
+    [PASS]  and at a real room
+    [PASS]  every seeded member points at a real guest
+    [PASS]  every seeded task points at a real room
+    [PASS]  no seeded guest is checked into a dirty room
+    [PASS]  every seeded checked-in booking has its room marked occupied
+    [PASS]  the waiting queue is populated
+    [PASS]  and so is the cleaning queue
+    [PASS]  an urgent booking is waiting on a room, ready to demonstrate
+    [PASS]  and a room is being cleaned for it
+    [PASS]  in the urgent lane
+    [PASS]  a second start loads the same data, it does not re-seed
+
+============================================================================
+  SYSTEM TEST SUMMARY
+============================================================================
+  Passed: 107
+  Failed: 0
+
+  Everything passed.
+============================================================================
+
+============================================================================
+  WORKFLOW TEST - one guest, door to cleaned room
+============================================================================
+
+  Stage 1  Registration queues by priority, not arrival
+  ----------------------------------------------------------------------
+      IN : WR0033 NORMAL, WR0034 NORMAL, then WR0035 URGENT joins last
+      OUT: next to be called is WR0035 (URGENT)
+    [PASS]  the urgent guest is called first despite joining last
+    [PASS]  calling them succeeds
+    [PASS]  and they leave the queue as IN_SERVICE
+    [PASS]  the queue no longer holds them
+    [PASS]  a second guest can be called straight away
+      OUT: two guests now IN_SERVICE, both waiting at the front desk
+
+  Stage 2  Front desk books only who registration served
+  ----------------------------------------------------------------------
+      IN : try to book WR0033 while still WAITING
+      OUT: Only a guest currently being served can be booked in.
+    [PASS]  a guest still in the queue cannot be booked
+      IN : call them, then book WR0033
+      OUT: Booking BK0010 created for Tan Chee Yan.
+    [PASS]  once served, the booking is created
+    [PASS]  it starts PENDING with no room
+    [PASS]  and the registration points at the booking
+
+  Stage 3  Membership offered only to a non-member
+  --------------------------------------------------------------------
+    [PASS]  the sample has both a member and a non-member
+      IN : Tan Chee Yan already holds L0001
+      OUT: findMemberByGuest returns a membership, so the offer is skipped
+    [PASS]  an existing member is not offered membership again
+      OUT: enrolling them again -> Tan Chee Yan is already member L0001.
+    [PASS]  and enrolling a second time is refused
+      IN : Daniel Lee Wen Hao holds no membership
+      OUT: Daniel Lee Wen Hao enrolled as L0005 (SILVER).
+    [PASS]  a non-member can join
+    [PASS]  they start at SILVER
+    [PASS]  with nothing earned yet
+
+  Stage 4  Room, payment in full, and the confirmation code
+  ----------------------------------------------------------------------
+      IN : assign room 3001 to BK0010
+      OUT: Room 3001 assigned to BK0010. Invoice INV0006 raised.
+    [PASS]  the room can be assigned
+    [PASS]  the booking becomes CONFIRMED
+    [PASS]  a bill is raised with the room
+    [PASS]  and it starts unpaid
+      IN : offer RM559.68 of RM1119.36
+      OUT: The full RM1119.36 is due - a bill cannot be part paid.
+    [PASS]  a part payment is refused
+      IN : pay the full RM1119.36
+      OUT: RM1119.36 received. INV0006 is now PAID.
+    [PASS]  paying in full succeeds
+    [PASS]  the bill is settled
+      OUT: confirmation number is A8VVCSS2
+    [PASS]  the confirmation code is eight characters
+    [PASS]  letters and digits only
+    [PASS]  and it finds the booking again
+
+  Stage 5  Reward requested against a live booking
+  --------------------------------------------------------------------
+    [PASS]  the sample has a checked-in member
+      IN : confirmation U9EKC86V -> BK0002
+    [PASS]  the confirmation code reaches the booking
+      IN : request Private Yacht Day (11245 pts) with a balance of 6245
+      OUT: Private Yacht Day cannot be requested: only 6245 of the 11245 points required are available.
+    [PASS]  a reward beyond the balance is refused
+      IN : request Spa Session (60 min) (800 pts)
+      OUT: Request RD0006 queued for Spa Session (60 min).
+    [PASS]  an affordable reward can be requested
+    [PASS]  it waits as PENDING
+    [PASS]  and no points have moved yet
+    [PASS]  it is in the queue for loyalty to decide
+
+  Stage 6  Loyalty approves or rejects, both go on record
+  ----------------------------------------------------------------------
+      IN : approve RD0006 for Spa Session (60 min) (800 pts)
+           member balance before = 6245
+      OUT: Request RD0006 approved - Spa Session (60 min), 800 points deducted.
+           member balance after  = 5445
+    [PASS]  the request can be decided
+    [PASS]  it becomes APPROVED
+    [PASS]  the points come off the balance
+    [PASS]  and it records who decided it
+    [PASS]  it has left the pending queue
+    [PASS]  but stays in the redemption history
+      IN : SILVER member asks for a GOLD-only reward
+      OUT: Island Hopping Tour cannot be requested: member tier SILVER is below the required GOLD.
+    [PASS]  the request is refused at the desk
+    [PASS]  the reason names the tier
+    [PASS]  it costs the member no points
+    [PASS]  and nothing was added to the queue
+      IN : the reward sells out while the request is waiting
+      OUT: Request RD0007 rejected: Yoga & Wellness Class is out of stock
+    [PASS]  the request is REJECTED
+    [PASS]  the refusal costs no points
+    [PASS]  a reason is recorded
+    [PASS]  and the refusal is in the history too
+
+  Stage 7  Check-out awards points, enrolling if needed
+  ----------------------------------------------------------------------
+      IN : check out BK0002, bill RM818.53
+           PLATINUM multiplier x1.5
+      OUT: Lim Yong Le checked out of room 2001. Cleaning task HK0042 raised (NORMAL lane). 1228 points awarded to L0002.
+    [PASS]  the stay closes
+    [PASS]  the booking is CHECKED_OUT
+    [PASS]  points are the bill times the tier multiplier
+      IN : check out BK0005 for a non-member
+      OUT: Rajesh a/l Kumaran checked out of room 1002. Cleaning task HK0043 raised (NORMAL lane). Enrolled as loyalty member L0005 and awarded 350 points.
+    [PASS]  the guest is enrolled by their stay
+    [PASS]  and the points are on the new membership
+
+  Stage 8  Check-out hands the room to housekeeping
+  ---------------------------------------------------------------------
+      IN : check out BK0002 from room 2001, marked URGENT for cleaning
+           cleaning queue before = 4 (2 urgent)
+      OUT: Lim Yong Le checked out of room 2001. Cleaning task HK0042 raised (URGENT lane). 1228 points awarded to L0002.
+    [PASS]  the stay closes
+    [PASS]  the room is vacant again
+    [PASS]  but dirty
+    [PASS]  so it cannot be sold in the meantime
+    [PASS]  a cleaning task was raised without being asked for
+    [PASS]  in the lane the front desk chose
+    [PASS]  the cleaning queue grew by one
+    [PASS]  and the urgent lane is one longer
+           cleaning queue after  = 5 (3 urgent)
+      IN : housekeeping cleans 2001 through to ready
+      OUT: Room 2001: INSPECTED -> READY_FOR_CHECK_IN. The room is now available to the front desk.
+    [PASS]  the room can be cleaned through to ready
+    [PASS]  and it is ready again
+    [PASS]  so the front desk can sell it to the next guest
+
+  Stage 9  The ledger records earning and spending
+  --------------------------------------------------------------------
+      IN : one redemption approved, then one check-out
+      OUT: ledger rows 2 -> 4
+    [PASS]  two rows were written
+    [PASS]  the spend is on record
+    [PASS]  recorded as a negative amount
+    [PASS]  naming the stay it was spent on
+    [PASS]  the earning is on record
+    [PASS]  recorded as a positive amount
+    [PASS]  and the ledger agrees with the balance
+           spend -800, earn +1228, balance now 6673
+
+============================================================================
+  WORKFLOW TEST SUMMARY
+============================================================================
+  Passed: 69
+  Failed: 0
+
+  Everything passed.
+============================================================================
+
+############################################################################
+#  OVERALL
+############################################################################
+#    Unit tests         PASSED
+#    Validation tests   PASSED
+#    Integration tests  PASSED
+#    System tests       PASSED
+#    Workflow tests     PASSED
+############################################################################
+#  Everything passed.
+############################################################################
+
+
+
+
+############################################################################
+#  HOUSEKEEPING END-TO-END PROOF (real shared data)
+############################################################################
+
+  Phase 2 — Booking checkout creates CHECKOUT_CLEAN
+  ---------------------------------------------------------------------
+    [PASS]  seeded BK0002 exists
+    [PASS]  BK0002 is CHECKED_IN
+    [PASS]  BK0002 room is 2001
+    [PASS]  checkOut succeeded (real Booking workflow)
+    [PASS]  CHECKOUT_CLEAN exists for that room
+    [PASS]  Task ID is HK plus digits
+    [PASS]  Task ID is unique
+    [PASS]  Room ID matches Booking room
+    [PASS]  Booking ID matches
+    [PASS]  one extra task stored
+    [PASS]  task is in the cleaning queue
+    [PASS]  starts DIRTY
+    [PASS]  normal lane unless officer marked urgent
+    [PASS]  Take/start from queue (CIP) works
+    [PASS]  no longer waiting in queue
+
+  Phase 3 — DIRTY through READY_FOR_CHECK_IN
+  --------------------------------------------------------------
+    [PASS]  seeded dirty task on 1001
+    [PASS]  starts DIRTY
+    [PASS]  in the cleaning queue
+    [PASS]  DIRTY cannot skip to READY
+    [PASS]  DIRTY cannot jump to INSPECTED
+    [PASS]  UI queue rule: DIRTY cleaning must start from queue
+    [PASS]  CIP recorded
+    [PASS]  startedAt stamped
+    [PASS]  CIP history row exists
+    [PASS]  INSPECTED recorded
+    [PASS]  READY recorded
+    [PASS]  completedAt stamped
+    [PASS]  duration is Started?Completed
+
+  Phase 4 — inspection fail, re-clean, stack rollback
+  ----------------------------------------------------------------------
+    [PASS]  original task still DIRTY (history kept)
+    [PASS]  original Task ID unchanged
+    [PASS]  failure counted
+    [PASS]  follow-on re-clean created
+    [PASS]  new Task ID
+    [PASS]  follow-on starts DIRTY
+    [PASS]  follow-on is queued
+    [PASS]  history grew (not overwritten)
+    [PASS]  rollback of fail succeeded
+    [PASS]  original back to INSPECTED
+    [PASS]  stack shrank (LIFO pop)
+    [PASS]  follow-on cancelled by rollback design
+
+  Phase 5 — Maintenance raise and resolve
+  -----------------------------------------------------------
+    [PASS]  1002 occupancy is OCCUPIED (Front Desk seed)
+    [PASS]  occupied room does not offer MAINTENANCE
+    [PASS]  CHECKOUT_CLEAN not offered for manual raise
+    [PASS]  STAYOVER_CLEAN not offered for manual raise
+    [PASS]  3001 is VACANT
+    [PASS]  vacant room may raise MAINTENANCE
+    [PASS]  vacant room may raise DEEP_CLEAN
+    [PASS]  MAINTENANCE does not enter the cleaning queue
+    [PASS]  resolving maintenance succeeds
+    [PASS]  follow-on cleaning created
+    [PASS]  follow-on has a new Task ID
+    [PASS]  follow-on queued
+    [PASS]  maintenance row still exists
+
+  Phase 6 — Stayover from real Booking data
+  -------------------------------------------------------------
+    [PASS]  BK0002 CHECKED_IN with room and dates
+    [PASS]  today is a stayover day for BK0002
+    [PASS]  today is a stayover day for BK0005
+    [PASS]  today list is not empty
+    [PASS]  room 2001 Stayover matches BK0002
+    [PASS]  room 1002 Stayover matches BK0005
+    [PASS]  Stayover Booking ID exists
+    [PASS]  Stayover Room ID matches that Booking
+    [PASS]  Stayover Booking ID exists
+    [PASS]  Stayover Room ID matches that Booking
+    [PASS]  entity refuses NOT_CLEANED ? CLEANED
+    [PASS]  applyStayover does not skip NOT_CLEANED ? CLEANED
+    [PASS]  status is CIP
+    [PASS]  startedAt set
+    [PASS]  Stayover update pushed the existing Stack
+    [PASS]  status is CLEANED
+    [PASS]  completedAt set
+    [PASS]  existing rollbackLastStatusChange undoes Stayover CLEANED
+    [PASS]  Stayover completedAt cleared after rolling back CLEANED
+
+  Phase 7 — occupancy is shared Room data
+  -----------------------------------------------------------
+    [PASS]  1002 OCCUPIED from master rooms
+    [PASS]  1001 VACANT from master rooms
+    [PASS]  Housekeeping reads the same Room object
+
+  Phase 8 — Raise New Task type rules
+  -------------------------------------------------------
+    [PASS]  manual CHECKOUT_CLEAN absent
+    [PASS]  manual STAYOVER_CLEAN absent
+
+  Phase 15 — data consistency on seeded store
+  ---------------------------------------------------------------
+    [PASS]  no duplicate Task IDs
+    [PASS]  every task room exists
+    [PASS]  queue has no duplicate object twice
+
+  Phase 12 — report metrics from stored timestamps
+  --------------------------------------------------------------------
+    [PASS]  Total cleaning tasks is the isCleaningType count
+    [PASS]  Completed uses Started?Completed duration, not a constant
+    [PASS]  sample duration matches timestamps
+    [PASS]  room type name comes from RoomType master
+    [PASS]  Stayover-service CLEANED would be in isCleaningType
+
+============================================================================
+  HOUSEKEEPING END-TO-END SUMMARY
+============================================================================
+  Passed: 85
+  Failed: 0
+
+  Everything passed.
+============================================================================

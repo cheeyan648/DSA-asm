@@ -6,7 +6,6 @@ import boundary.LoyaltyRewardsUI;
 import entity.Booking;
 import entity.Guest;
 import entity.Member;
-import entity.Notification;
 import entity.PointTransaction;
 import entity.Redemption;
 import entity.Reward;
@@ -62,9 +61,6 @@ public class LoyaltyRewardsMaintenance {
           runRewardMenu();
           break;
         case 4:
-          runNotificationMenu();
-          break;
-        case 5:
           runReportMenu();
           break;
         default:
@@ -84,19 +80,22 @@ public class LoyaltyRewardsMaintenance {
           enrolMember();
           break;
         case 2:
-          searchMember();
+          editMember();
           break;
         case 3:
-          displayAllMembers();
+          removeMembership();
           break;
         case 4:
-          displayMembersByPoints();
+          displayAllMembers();
           break;
         case 5:
-          displayExpiringPoints();
+          displayMembersByPoints();
           break;
         case 6:
           displayNearNextTier();
+          break;
+        case 7:
+          editTierThresholds();
           break;
         default:
           break;
@@ -110,15 +109,9 @@ public class LoyaltyRewardsMaintenance {
       choice = ui.getPointsMenuChoice();
       switch (choice) {
         case 1:
-          awardPointsForStay();
-          break;
-        case 2:
-          adjustPoints();
-          break;
-        case 3:
           expirePoints();
           break;
-        case 4:
+        case 2:
           displayLedger();
           break;
         default:
@@ -139,39 +132,22 @@ public class LoyaltyRewardsMaintenance {
           addNewReward();
           break;
         case 3:
-          deleteRewardMenu();
+          editReward();
           break;
         case 4:
-          restockReward();
+          deleteRewardMenu();
           break;
         case 5:
-          requestRedemption();
+          restockReward();
           break;
         case 6:
-          processNextRedemption();
+          requestRedemption();
           break;
         case 7:
-          displayPendingQueue();
+          processPendingQueue();
           break;
         case 8:
           displayRedemptionHistory();
-          break;
-        default:
-          break;
-      }
-    } while (choice != 0);
-  }
-
-  private void runNotificationMenu() {
-    int choice;
-    do {
-      choice = ui.getNotificationMenuChoice();
-      switch (choice) {
-        case 1:
-          displayNotifications();
-          break;
-        case 2:
-          displayPromotion();
           break;
         default:
           break;
@@ -254,24 +230,6 @@ public class LoyaltyRewardsMaintenance {
     ui.pause();
   }
 
-  private void searchMember() {
-    ui.startAction("SEARCH BY MEMBER ID");
-
-    Member member = promptForMember();
-    if (member == null) {
-      return;
-    }
-
-    ui.displayMember(member, data.findGuest(member.getGuestId()));
-
-    // Their recent activity says more than the balance on its own.
-    ListInterface<PointTransaction> recent = ledgerFor(member.getMemberId());
-    if (!recent.isEmpty()) {
-      ui.displayLedger(recent, member);
-    }
-    ui.pause();
-  }
-
   private void displayAllMembers() {
     ui.startAction("ALL MEMBERS");
     // The tree walk gives them in ID order without a sort.
@@ -290,44 +248,78 @@ public class LoyaltyRewardsMaintenance {
   }
 
   /**
-   * Members whose points are about to be lost.
+   * Sets what each tier is worth.
    *
-   * The whole point of finding them is to tell them in time to spend the
-   * points, so a notification is offered here rather than only in a report.
+   * Tiers are earned from lifetime points, so moving a threshold re-tiers
+   * everybody at once - which is shown before it is applied, because raising a
+   * bar can demote a guest who did nothing wrong.
    */
-  private void displayExpiringPoints() {
-    ui.startAction("MEMBERS WITH POINTS EXPIRING SOON");
+  private void editTierThresholds() {
+    while (true) {
+      ui.startAction("TIER THRESHOLDS");
 
-    LocalDate today = LocalDate.now();
-    ListInterface<Member> expiring = data.getMemberList().filter(
-        member -> member.hasExpiringPoints(today));
+      ui.displayTierThresholds(data.getMemberList());
 
-    if (!ui.displayMemberList(expiring, data,
-        "No member has points expiring in the next " + Member.EXPIRING_SOON_DAYS
-            + " days.")) {
-      ui.pause();
+      ui.displayMessage("");
+      if (!ui.confirm("Change these thresholds?")) {
+        return;
+      }
+
+      int gold = ui.inputThreshold("GOLD", Member.getGoldThreshold());
+      if (gold < 0) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      int platinum = ui.inputThreshold("PLATINUM", Member.getPlatinumThreshold());
+      if (platinum < 0) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      int diamond = ui.inputThreshold("DIAMOND", Member.getDiamondThreshold());
+      if (diamond < 0) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      if (gold >= platinum || platinum >= diamond) {
+        ui.displayError("Each tier must need more points than the one below it.");
+        ui.displayMessage("  GOLD < PLATINUM < DIAMOND.");
+        ui.pause();
+        continue;
+      }
+
+      // What this would do to real members, worked out before anything is
+      // saved, so the officer sees the demotions rather than discovering them.
+      ui.displayRetierPreview(data.getMemberList(), gold, platinum, diamond, data);
+
+      ui.displayMessage("");
+      if (!ui.confirm("Apply these thresholds?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      Member.setThresholds(gold, platinum, diamond);
+
+      // Everyone is re-tiered from their lifetime points immediately.
+      int moved = 0;
+      ListInterface<Member> members = data.getMemberList();
+      for (int i = 1; i <= members.getNumberOfEntries(); i++) {
+        if (members.getEntry(i).refreshTier()) {
+          moved++;
+        }
+      }
+
+      data.saveLoyalty();
+      ui.displaySuccess("Thresholds updated. " + moved + " member(s) re-tiered.");
+      ui.pause("Press ENTER to accept the change");
       return;
     }
-
-    ui.displayMessage("");
-    if (!ui.confirm("Send each of them an expiry warning?")) {
-      ui.pause();
-      return;
-    }
-
-    for (int i = 1; i <= expiring.getNumberOfEntries(); i++) {
-      Member member = expiring.getEntry(i);
-      long days = ChronoUnit.DAYS.between(today, member.getPointsExpiryDate());
-
-      service.raiseNotification(member.getMemberId(), Notification.POINTS_EXPIRING,
-          String.format("Your %d points expire in %d day(s) - on %s.",
-              member.getPointsBalance(), days, member.getPointsExpiryDate()),
-          null);
-    }
-
-    data.saveLoyalty();
-    ui.displaySuccess(expiring.getNumberOfEntries() + " warning(s) sent.");
-    ui.pause();
   }
 
   /** Members who could be nudged over the line into the next tier. */
@@ -371,145 +363,119 @@ public class LoyaltyRewardsMaintenance {
   // ==================================================================
 
   /**
-   * Awards the points a completed stay earned.
-   *
-   * Normally this happens by itself when the front desk checks a guest out.
-   * This is here for a stay that was settled before the guest joined the
-   * programme, or one that needs putting right by hand.
-   */
-  private void awardPointsForStay() {
-    ui.startAction("AWARD POINTS FOR A STAY");
-
-    ListInterface<Booking> settled = data.getBookingList().filter(booking -> {
-      if (!Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())) {
-        return false;
-      }
-      entity.Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-      return invoice != null && invoice.isSettled();
-    });
-
-    if (settled.isEmpty()) {
-      ui.displayMessage("  There is no completed, settled stay to award points for.");
-      ui.pause();
-      return;
-    }
-
-    ui.displaySectionHeading("Completed stays");
-    ui.displayTableHeading(String.format("  %-5s %-8s %-22s %-8s %10s  %s",
-        "NO", "BOOKING", "GUEST", "MEMBER", "BILL", "POINTS AWARDED?"));
-
-    for (int i = 1; i <= settled.getNumberOfEntries(); i++) {
-      Booking booking = settled.getEntry(i);
-      Guest guest = data.findGuest(booking.getGuestId());
-      Member member = data.findMemberByGuest(booking.getGuestId());
-      entity.Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-
-      PointTransaction awarded = data.getTransactionList().search(
-          txn -> booking.getBookingId().equals(txn.getBookingId())
-              && PointTransaction.EARN.equals(txn.getTxnType()));
-
-      System.out.printf("  [%d]   %-8s %-22s %-8s %10.2f  %s%n",
-          i, booking.getBookingId(),
-          guest == null ? "-" : guest.getFullName(),
-          member == null ? "not a member" : member.getMemberId(),
-          invoice == null ? 0.0 : invoice.getTotalAmount(),
-          awarded == null ? "no" : "yes (" + awarded.getPoints() + ")");
-    }
-    ui.displayThinRule();
-    System.out.printf("  %d completed stay(s).%n", settled.getNumberOfEntries());
-
-    int position = ui.inputListPosition(settled.getNumberOfEntries(),
-        "Number of the stay to award points for");
-    if (position < 0) {
-      return;
-    }
-    String bookingId = settled.getEntry(position).getBookingId();
-
-    ServiceResult<PointTransaction> result = service.awardPointsForStay(bookingId);
-    if (result.isFailure()) {
-      ui.displayError(result.getMessage());
-      ui.pause();
-      return;
-    }
-
-    ui.displaySuccess(result.getMessage());
-
-    Member member = data.findMember(result.getValue().getMemberId());
-    if (member != null) {
-      ui.displayMember(member, data.findGuest(member.getGuestId()));
-    }
-    ui.pause();
-  }
-
-  /**
    * Changes a member's points by hand.
    *
    * Written to the ledger like any other movement, with the reason recorded -
    * an adjustment that left no trace would make the balance unexplainable.
    */
-  private void adjustPoints() {
-    ui.startAction("ADJUST A MEMBER'S POINTS");
+  /**
+   * Corrects a member's own details.
+   *
+   * Only the guest record behind the membership is editable here - the points,
+   * the tier and the lifetime total are all earned, so none of them is offered.
+   * A balance that could be typed in would make every report meaningless.
+   */
+  private void editMember() {
+    while (true) {
+      ui.startAction("EDIT A MEMBER");
 
-    Member member = promptForMember();
-    if (member == null) {
-      return;
+      Member member = promptForMember("Number of the member to edit");
+      if (member == null) {
+        ui.pause();
+        return;
+      }
+
+      Guest guest = data.findGuest(member.getGuestId());
+      if (guest == null) {
+        ui.displayError("That membership's guest record is missing.");
+        ui.pause();
+        continue;
+      }
+
+      ui.displayMember(member, guest);
+      ui.displayMessage("");
+      ui.displayMessage("  Points, tier and lifetime total are earned and"
+          + " cannot be typed in.");
+      ui.displayMessage("  Press ENTER on any field to leave it as it is.");
+
+      if (!ui.editGuestFields(guest)) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      ui.displayMessage("");
+      if (!ui.confirm("Save these changes to " + guest.getFullName() + "?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      data.saveMasters();
+      ui.displaySuccess("Member " + member.getMemberId() + " updated.");
+      ui.displayMember(member, guest);
+      ui.pause("Press ENTER to accept the changes");
+
+      if (!ui.confirmAnother("Edit another member?")) {
+        return;
+      }
     }
-
-    ui.displayMember(member, data.findGuest(member.getGuestId()));
-
-    int adjustment = ui.inputPointsAdjustment();
-    if (adjustment == MessageUI.CANCELLED_INT) {
-      ui.displayMessage("  Adjustment cancelled.");
-      ui.pause();
-      return;
-    }
-
-    if (adjustment < 0 && member.getPointsBalance() + adjustment < 0) {
-      ui.displayError("That would take the balance below zero. The member has only "
-          + member.getPointsBalance() + " points.");
-      ui.pause();
-      return;
-    }
-
-    String reason = ui.inputAdjustmentReason();
-    if (reason == null) {
-      ui.displayMessage("  Adjustment cancelled.");
-      ui.pause();
-      return;
-    }
-
-    if (!ui.confirm(String.format("Apply %+d points to %s?",
-        adjustment, member.getMemberId()))) {
-      ui.displayMessage("  Nothing has been changed.");
-      ui.pause();
-      return;
-    }
-
-    String previousTier = member.getTier();
-    member.setPointsBalance(member.getPointsBalance() + adjustment);
-
-    // Only points added count towards the lifetime total: taking points away
-    // must not cost the member the tier they earned.
-    if (adjustment > 0) {
-      member.setLifetimePoints(member.getLifetimePoints() + adjustment);
-    }
-
-    data.getTransactionList().add(new PointTransaction(data.nextTransactionId(),
-        member.getMemberId(), null, PointTransaction.ADJUST, adjustment,
-        member.getPointsBalance(), LocalDate.now(), reason));
-
-    if (member.refreshTier()) {
-      service.raiseNotification(member.getMemberId(), Notification.TIER_UPGRADE,
-          "Congratulations - you are now " + member.getTier() + ".", null);
-      ui.displaySuccess("Tier upgraded from " + previousTier
-          + " to " + member.getTier() + ".");
-    }
-
-    data.saveLoyalty();
-    ui.displaySuccess(String.format("%+d points applied. Balance is now %d.",
-        adjustment, member.getPointsBalance()));
-    ui.pause();
   }
+
+  /**
+   * Ends a membership.
+   *
+   * The guest record stays: they can still book, they simply stop earning.
+   * A membership holding points or a request still waiting is refused, so
+   * nothing a guest has earned disappears without being dealt with first.
+   */
+  private void removeMembership() {
+    while (true) {
+      ui.startAction("REMOVE A MEMBERSHIP");
+
+      Member member = promptForMember("Number of the membership to remove");
+      if (member == null) {
+        ui.pause();
+        return;
+      }
+
+      Guest guest = data.findGuest(member.getGuestId());
+      ui.displayMember(member, guest);
+
+      ui.displayMessage("");
+      if (member.getPointsBalance() > 0) {
+        ui.displayMessage("  " + member.getPointsBalance()
+            + " points will be forfeited.");
+      }
+      ui.displayMessage("  The guest record is kept - only the membership ends.");
+      ui.displayMessage("  Past transactions stay on record for reporting.");
+
+      if (!ui.confirm("Are you sure you want to remove membership "
+          + member.getMemberId() + "?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      int forfeited = member.getPointsBalance();
+      data.getMemberList().removeEntry(member);
+      data.rebuildIndexes();
+      data.saveLoyalty();
+
+      ui.displaySuccess("Membership " + member.getMemberId() + " removed.");
+      if (forfeited > 0) {
+        ui.displayMessage("  " + forfeited + " points forfeited.");
+      }
+      ui.displayMessage("  " + (guest == null ? "The guest" : guest.getFullName())
+          + " can still book, but no longer earns points.");
+      ui.pause("Press ENTER to accept the removal");
+
+      if (!ui.confirmAnother("Remove another membership?")) {
+        return;
+      }
+    }
+  }
+
 
   private void expirePoints() {
     ui.startAction("EXPIRE POINTS PAST THEIR DATE");
@@ -701,6 +667,53 @@ public class LoyaltyRewardsMaintenance {
         "The reward catalogue is empty.");
   }
 
+  /**
+   * Changes what a reward is and what it costs.
+   *
+   * A catalogue is not fixed: prices move, a service is withdrawn for a
+   * season, a name is corrected. Each field is offered with what it holds
+   * now, and pressing ENTER keeps it - so one figure can be changed without
+   * retyping the rest.
+   */
+  private void editReward() {
+    while (true) {
+      ui.startAction("EDIT A REWARD");
+
+      Reward reward = promptForReward("Number of the reward to edit");
+      if (reward == null) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayReward(reward);
+      ui.displayMessage("");
+      ui.displayMessage("  Press ENTER on any field to leave it as it is.");
+
+      ServiceResult<Reward> edited = ui.editRewardFields(reward);
+      if (edited.isFailure()) {
+        ui.displayMessage("  " + edited.getMessage());
+        ui.pause();
+        continue;
+      }
+
+      ui.displayMessage("");
+      if (!ui.confirm("Save these changes to " + reward.getRewardId() + "?")) {
+        ui.displayMessage("  Nothing has been changed.");
+        ui.pause();
+        continue;
+      }
+
+      data.saveLoyalty();
+      ui.displaySuccess("Reward " + reward.getRewardId() + " updated.");
+      ui.displayReward(reward);
+      ui.pause("Press ENTER to accept the changes");
+
+      if (!ui.confirmAnother("Edit another reward?")) {
+        return;
+      }
+    }
+  }
+
   /** Prompts for a reward ID and removes it from the catalogue. */
   private void deleteRewardMenu() {
     ui.startAction("DELETE A REWARD");
@@ -782,6 +795,48 @@ public class LoyaltyRewardsMaintenance {
   }
 
   /**
+   * Works through the requests waiting for a decision.
+   *
+   * The whole queue is on screen rather than one request at a time, so the
+   * officer can see what is waiting and pick from it - but the list stays in
+   * arrival order, because first asked is still first served.
+   */
+  private void processPendingQueue() {
+    while (true) {
+      ui.startAction("PROCESS THE PENDING QUEUE");
+
+      ListInterface<Redemption> pending = data.getPendingRedemptions();
+      Redemption chosen = ui.choosePendingRedemption(pending, data);
+      if (chosen == null) {
+        ui.pause();
+        return;
+      }
+
+      Member member = data.findMember(chosen.getMemberId());
+      Reward reward = data.findReward(chosen.getRewardId());
+      ui.displayRedemptionForDecision(chosen, member, reward, data);
+
+      ui.displayMessage("");
+      if (!ui.confirm("Are you sure you want to approve this request?")) {
+        ui.displayMessage("  Nothing has been changed - the request is still"
+            + " waiting.");
+        ui.pause();
+        continue;
+      }
+
+      ServiceResult<Redemption> result =
+          service.processRedemption(chosen.getRedemptionId(), staffId);
+
+      if (result.isSuccess()) {
+        ui.displaySuccess(result.getMessage());
+      } else {
+        ui.displayError(result.getMessage());
+      }
+      ui.pause("Press ENTER to go back to the queue");
+    }
+  }
+
+  /**
    * Puts a redemption request into the queue.
    *
    * Nothing is deducted here and eligibility is not decided here either. The
@@ -832,268 +887,32 @@ public class LoyaltyRewardsMaintenance {
   }
 
   /**
-   * Decides the oldest waiting request.
+   * Every redemption ever asked for, newest first.
    *
-   * Whoever asked first is dealt with first - there is no urgent lane here,
-   * because no redemption is more pressing than another.
+   * The listing answers "what has been redeemed"; picking a row answers "by
+   * whom, against which stay" - which is the question the listing cannot fit
+   * on one line.
    */
-  private void processNextRedemption() {
-    ui.startAction("PROCESS THE NEXT REQUEST");
-
-    ListInterface<Redemption> pending = data.getPendingRedemptions();
-    if (pending.isEmpty()) {
-      ui.displayError("There are no requests waiting.");
-      ui.pause();
-      return;
-    }
-
-    Redemption next = pending.getEntry(1);
-    Member member = data.findMember(next.getMemberId());
-    Reward reward = data.findReward(next.getRewardId());
-    Guest guest = (member == null) ? null : data.findGuest(member.getGuestId());
-
-    ui.displayMessage("  Next request in the queue:");
-    ui.displayMessage("");
-    MessageUI.displayField("Redemption ID", next.getRedemptionId());
-    MessageUI.displayField("Member", next.getMemberId()
-        + (guest == null ? "" : "  (" + guest.getFullName() + ")"));
-    MessageUI.displayField("Reward", reward == null ? next.getRewardId()
-        : reward.getRewardName());
-    MessageUI.displayField("Points required", String.valueOf(next.getPointsUsed()));
-    MessageUI.displayField("Requested on", String.valueOf(next.getRequestDate()));
-
-    if (member != null) {
-      MessageUI.displayField("Member balance", String.valueOf(member.getPointsBalance()));
-      MessageUI.displayField("Member tier", member.getTier());
-    }
-    if (reward != null) {
-      MessageUI.displayField("Minimum tier", reward.getMinimumTier());
-      MessageUI.displayField("Stock left", String.valueOf(reward.getStockQuantity()));
-    }
-
-    ui.displayMessage("");
-    if (!ui.confirm("Process this request?")) {
-      ui.displayMessage("  It stays at the front of the queue.");
-      ui.pause();
-      return;
-    }
-
-    ServiceResult<Redemption> result = service.processNextRedemption(staffId);
-    Redemption processed = result.getValue();
-
-    if (processed != null && Redemption.APPROVED.equals(processed.getStatus())) {
-      ui.displaySuccess(result.getMessage());
-
-      if (member != null) {
-        ui.displayMessage("  " + member.getMemberId() + " now has "
-            + member.getPointsBalance() + " points.");
-      }
-
-      // An approved reward is worth real money off a bill, so the chance to
-      // apply it is offered while the guest is still here.
-      if (reward != null && reward.getCashValue() > 0) {
-        offerToApplyToBill(processed, member, reward);
-      }
-    } else {
-      ui.displayError(result.getMessage());
-      ui.displayMessage("  No points have been deducted.");
-    }
-    ui.pause();
-  }
-
-  /** Offers to take an approved reward off the guest's live bill. */
-  private void offerToApplyToBill(Redemption redemption, Member member, Reward reward) {
-    if (member == null) {
-      return;
-    }
-
-    ListInterface<Booking> live = data.getBookingList().filter(
-        booking -> member.getGuestId().equals(booking.getGuestId())
-            && (Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())
-                || Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())));
-
-    if (live.isEmpty()) {
-      ui.displayMessage("");
-      ui.displayMessage("  This member has no live booking to apply the reward to.");
-      ui.displayMessage("  It can be applied from Front Desk on their next stay.");
-      return;
-    }
-
-    ui.displayMessage("");
-    ui.displayMessage(String.format("  This reward is worth RM%.2f off a bill.",
-        reward.getCashValue()));
-
-    Booking booking = live.getEntry(1);
-    if (!ui.confirm("Apply it to booking " + booking.getBookingId() + " now?")) {
-      return;
-    }
-
-    ServiceResult<entity.Invoice> applied = service.applyRedemptionToInvoice(
-        redemption.getRedemptionId(), booking.getBookingId());
-
-    if (applied.isSuccess()) {
-      ui.displaySuccess(applied.getMessage());
-    } else {
-      ui.displayError(applied.getMessage());
-    }
-  }
-
-  private void displayPendingQueue() {
-    ui.startAction("PENDING REDEMPTION QUEUE");
-
-    ListInterface<Redemption> pending = data.getPendingRedemptions();
-    if (pending.isEmpty()) {
-      ui.displayMessage("  No request is waiting.");
-      ui.pause();
-      return;
-    }
-
-    ui.displaySectionHeading("Waiting, in the order they will be processed");
-    ui.displayTableHeading(String.format("  %-4s %-8s %-7s %-26s %7s  %s",
-        "POS", "REDEEM", "MEMBER", "REWARD", "POINTS", "REQUESTED"));
-
-    for (int i = 1; i <= pending.getNumberOfEntries(); i++) {
-      Redemption redemption = pending.getEntry(i);
-      Reward reward = data.findReward(redemption.getRewardId());
-
-      System.out.printf("  %-4d %-8s %-7s %-26s %7d  %s%n",
-          i, redemption.getRedemptionId(), redemption.getMemberId(),
-          reward == null ? redemption.getRewardId() : reward.getRewardName(),
-          redemption.getPointsUsed(), redemption.getRequestDate());
-    }
-    ui.displayThinRule();
-    ui.displayMessage("  First requested, first processed. There is no priority lane.");
-    ui.pause();
-  }
-
   private void displayRedemptionHistory() {
-    ui.startAction("REDEMPTION HISTORY");
+    while (true) {
+      ui.startAction("REDEMPTION HISTORY");
 
-    ListInterface<Redemption> history = copyOfRedemptions(data.getRedemptionList());
-    history.sort(Comparator.comparing(Redemption::getRequestDate).reversed());
+      ListInterface<Redemption> history = copyOfRedemptions(data.getRedemptionList());
+      history.sort(Comparator.comparing(Redemption::getRequestDate).reversed());
 
-    ui.displayRedemptionList(history, data, "No redemption has ever been requested.");
-    ui.pause();
-  }
-
-  // ==================================================================
-  // NOTIFICATIONS
-  // ==================================================================
-
-  private void displayNotifications() {
-    ui.startAction("A MEMBER'S NOTIFICATIONS");
-
-    Member member = promptForMember();
-    if (member == null) {
-      return;
-    }
-
-    final String memberId = member.getMemberId();
-    ListInterface<Notification> notifications = data.getNotificationList().filter(
-        notification -> memberId.equals(notification.getMemberId()));
-    notifications.sort(Comparator.comparing(Notification::getCreatedDate).reversed());
-
-    ui.displayNotifications(notifications, memberId);
-
-    if (!notifications.isEmpty() && notifications.countIf(n -> !n.isRead()) > 0) {
-      ui.displayMessage("");
-      if (ui.confirm("Mark them all as read?")) {
-        for (int i = 1; i <= notifications.getNumberOfEntries(); i++) {
-          notifications.getEntry(i).setRead(true);
-        }
-        data.saveLoyalty();
-        ui.displaySuccess("All notifications marked as read.");
+      Redemption chosen = ui.chooseRedemptionFromHistory(history, data);
+      if (chosen == null) {
+        ui.pause();
+        return;
       }
+
+      // The detail stands on its own screen, so nothing of the listing is
+      // left around it to read by mistake.
+      ui.clearScreen();
+      ui.startAction("REDEMPTION " + chosen.getRedemptionId());
+      ui.displayRedemptionDetail(chosen, data);
+      ui.pause("Press ENTER to go back to the history");
     }
-    ui.pause();
-  }
-
-  /**
-   * Shows the offer that suits a particular member.
-   *
-   * Built from their tier, their balance and how long they have been a member,
-   * so a long-standing Diamond member is not shown the same welcome offer as
-   * somebody who joined last week.
-   */
-  private void displayPromotion() {
-    ui.startAction("PERSONALISED PROMOTION");
-
-    Member member = promptForMember();
-    if (member == null) {
-      return;
-    }
-
-    Guest guest = data.findGuest(member.getGuestId());
-    ui.displayMember(member, guest);
-
-    long monthsAMember = ChronoUnit.MONTHS.between(member.getJoinDate(), LocalDate.now());
-
-    ui.displaySectionHeading("Offer for "
-        + (guest == null ? member.getMemberId() : guest.getFullName()));
-
-    switch (member.getTier()) {
-      case Member.DIAMOND:
-        ui.displayMessage("  Diamond signature experience:");
-        ui.displayMessage("  A night in the Executive Villa, and a private dining");
-        ui.displayMessage("  experience for two.");
-        break;
-
-      case Member.PLATINUM:
-        ui.displayMessage("  Premium Platinum offer:");
-        ui.displayMessage("  A complimentary suite upgrade on your next stay, and");
-        ui.displayMessage("  lounge access for the duration.");
-        break;
-
-      case Member.GOLD:
-        ui.displayMessage("  Enhanced Gold offer:");
-        ui.displayMessage("  A spa session at half the usual points, and late");
-        ui.displayMessage("  check-out on request.");
-        break;
-
-      default:
-        ui.displayMessage("  Silver welcome offer:");
-        ui.displayMessage("  Double points on your next stay, and a welcome");
-        ui.displayMessage("  fruit basket on arrival.");
-        break;
-    }
-
-    String nextTier = member.getNextTier();
-    if (nextTier != null) {
-      ui.displayMessage("");
-      ui.displayMessage("  You are " + member.getPointsToNextTier()
-          + " lifetime points from " + nextTier + ".");
-    }
-
-    if (monthsAMember >= 12) {
-      ui.displayMessage("");
-      ui.displayMessage("  Thank you for " + monthsAMember
-          + " months with us - a loyalty bonus applies to your next booking.");
-    }
-
-    // Rewards they could actually take today, rather than the whole catalogue.
-    ListInterface<Reward> affordable = data.getRewardList().filter(reward ->
-        reward.isAvailable()
-            && reward.getPointsRequired() <= member.getPointsBalance()
-            && Member.tierRank(member.getTier())
-                >= Member.tierRank(reward.getMinimumTier()));
-
-    if (!affordable.isEmpty()) {
-      ui.displaySectionHeading("You could redeem right now");
-      for (int i = 1; i <= affordable.getNumberOfEntries(); i++) {
-        Reward reward = affordable.getEntry(i);
-        System.out.printf("    %-30s %d points%n",
-            reward.getRewardName(), reward.getPointsRequired());
-      }
-    }
-
-    ui.displayMessage("");
-    if (ui.confirm("Send this promotion to the member?")) {
-      service.raiseNotification(member.getMemberId(), Notification.PROMOTION,
-          "A " + member.getTier() + " offer is waiting for you.", null);
-      data.saveLoyalty();
-      ui.displaySuccess("Promotion sent.");
-    }
-    ui.pause();
   }
 
   // ==================================================================

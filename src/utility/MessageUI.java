@@ -987,6 +987,49 @@ public class MessageUI {
    * @param digits how many digits the stored ID uses, e.g. 4
    * @return the full ID, or CANCELLED if the user typed 0
    */
+  /**
+   * Asks for a fixed-length code of letters and digits.
+   *
+   * Unlike readIdNumber this does not treat the value as a number: a booking
+   * confirmation is a code, so leading characters matter and "3" is not the
+   * same as "00000003". What the guest types is upper-cased, so a code copied
+   * off a slip in either case still finds the booking.
+   *
+   * @param scanner the Scanner to read from
+   * @param prompt what the code is for
+   * @param length how many characters it has
+   * @return the code in upper case, or CANCELLED if the user typed 0
+   */
+  public static String readCode(Scanner scanner, String prompt, int length) {
+    while (true) {
+      System.out.printf("  %s (%d characters, 0 to cancel): ", prompt, length);
+      String input = readLine(scanner);
+
+      if (isCancelKey(input)) {
+        return CANCELLED;
+      }
+      if (input.isEmpty()) {
+        displayError("This cannot be left blank.");
+        continue;
+      }
+
+      // Spaces and dashes are how people break a long code up when they write
+      // it down, so they are stripped rather than refused.
+      String value = input.replace(" ", "").replace("-", "").toUpperCase();
+
+      if (value.length() != length) {
+        displayError("A " + prompt.toLowerCase() + " is " + length
+            + " characters - that one is " + value.length() + ".");
+        continue;
+      }
+      if (!isLettersOrDigits(value)) {
+        displayError("Only letters and numbers, e.g. 2F5JU9KP.");
+        continue;
+      }
+      return value;
+    }
+  }
+
   public static String readIdNumber(Scanner scanner, String prompt, String prefix,
       int digits) {
     String example = String.format("%0" + digits + "d", 3);

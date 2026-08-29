@@ -11,6 +11,8 @@ import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomType;
 import entity.WalkInRegistration;
+import entity.Redemption;
+import entity.Reward;
 import entity.RoomArrangement;
 import java.time.LocalDate;
 import java.util.function.Function;
@@ -37,7 +39,7 @@ public class FrontDeskServiceUI {
           "Bookings (create, edit, update, delete)",
           "Rooms (availability, assign, move, manage)",
           "Stay (check in, check out)",
-          "Billing (payments, loyalty discount)",
+          "Billing (payments, loyalty rewards)",
           "Search & display",
           "Reports"
         },
@@ -105,7 +107,7 @@ public class FrontDeskServiceUI {
         new String[] {
           "View an invoice",
           "Record a payment",
-          "Apply an approved loyalty reward to a bill"
+          "Request a loyalty reward for a booking"
         },
         "Back");
     return MessageUI.readMenuChoice(scanner, 3, "go back");
@@ -147,8 +149,8 @@ public class FrontDeskServiceUI {
   }
 
   public String inputConfirmationNumber() {
-    String number = MessageUI.readIdNumber(scanner, "8-digit confirmation number", "", 8);
-    return MessageUI.isCancelled(number) ? null : number;
+    String code = MessageUI.readCode(scanner, "Confirmation number", 8);
+    return MessageUI.isCancelled(code) ? null : code;
   }
 
   public String inputRoomNo() {
@@ -560,33 +562,232 @@ public class FrontDeskServiceUI {
       return null;
     }
 
-    MessageUI.displayBlankLine();
-    MessageUI.displayTableHeading(String.format(
-        "  %-5s %-7s %-20s %-16s %-16s %-6s %s",
-        "NO", "REG ID", "GUEST", "IC / PASSPORT", "REQUESTED", "NIGHTS", "CHECK IN"));
-
+    // How many are waiting, split by lane, so the officer can see at a glance
+    // whether anybody urgent is still unserved.
+    int urgent = 0;
     for (int i = 1; i <= served.getNumberOfEntries(); i++) {
-      WalkInRegistration reg = served.getEntry(i);
-      Guest guest = data.findGuest(reg.getGuestId());
-      RoomType type = data.findRoomType(reg.getRequestedTypeId());
+      if (served.getEntry(i).isUrgent()) {
+        urgent++;
+      }
+    }
+    int normal = served.getNumberOfEntries() - urgent;
 
-      System.out.printf("  [%d]   %-7s %-20s %-16s %-16s %-6d %s%n",
-          i,
-          reg.getRegId(),
-          guest == null ? "-" : truncate(guest.getFullName(), 20),
-          guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
-          truncate(type == null ? reg.getRequestedTypeId() : type.getTypeName(), 16),
-          reg.getRequestedNights(),
-          reg.getRequestedCheckInDate() == null ? "-"
-              : reg.getRequestedCheckInDate().toString());
+    int total = served.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
+    int page = 1;
+
+    while (true) {
+      MessageUI.displayBlankLine();
+      System.out.printf("  Urgent: %d     Normal: %d     Waiting to be booked: %d%n",
+          urgent, normal, total);
+      MessageUI.displayBlankLine();
+
+      MessageUI.displayTableHeading(String.format(
+          "  %-5s %-7s %-16s %-15s %-8s %-6s %-11s %s",
+          "NO", "REG ID", "IC / PASSPORT", "REQUESTED", "PRIORITY", "NIGHTS",
+          "CHECK IN", "STATUS"));
+
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
+        WalkInRegistration reg = served.getEntry(i);
+        Guest guest = data.findGuest(reg.getGuestId());
+        RoomType type = data.findRoomType(reg.getRequestedTypeId());
+
+        System.out.printf("  [%d]   %-7s %-16s %-15s %-8s %-6d %-11s %s%n",
+            i,
+            reg.getRegId(),
+            guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
+            truncate(type == null ? reg.getRequestedTypeId() : type.getTypeName(), 15),
+            reg.getPriority(),
+            reg.getRequestedNights(),
+            reg.getRequestedCheckInDate() == null ? "-"
+                : reg.getRequestedCheckInDate().toString(),
+            reg.getStatus());
+      }
+
+      MessageUI.displayThinRule();
+      MessageUI.displayMessage("  Urgent guests are listed first - work down from"
+          + " the top.");
+
+      // A short list needs no paging, so the number is asked for outright.
+      if (totalPages == 1) {
+        int picked = MessageUI.readInt(scanner, "Number of the guest to book",
+            1, total);
+        return (picked == MessageUI.CANCELLED_INT) ? null : served.getEntry(picked);
+      }
+
+      System.out.printf("  Showing %d-%d of %d.%n", from, upTo, total);
+
+      // S picks a guest, so a bare number can mean the page without ambiguity.
+      Integer chosen = readPagedSelection(page, totalPages, total, "guest");
+      if (chosen == null) {
+        return null;
+      }
+      if (chosen > 0) {
+        return served.getEntry(chosen);
+      }
+      page = -chosen;
+    }
+  }
+
+  /**
+   * Reads a paging command or a selection from one prompt.
+   *
+   * Paging and picking share a screen, so they have to share a prompt without
+   * being mistaken for each other: a bare number moves between pages, and S
+   * starts a selection. That way "3" never accidentally books guest three when
+   * the officer meant page three.
+   *
+   * @param page the page on screen now
+   * @param totalPages how many there are
+   * @param total how many rows in the whole listing
+   * @param noun what is being selected, for the wording
+   * @return a positive row number to select, a negated page number to move to,
+   *     or null to go back
+   */
+  private Integer readPagedSelection(int page, int totalPages, int total, String noun) {
+    while (true) {
+      System.out.printf("  Page %d of %d - [N]ext, [P]revious, [1-%d] jump,"
+          + " [S]elect, 0 to go back: ", page, totalPages, totalPages);
+      String input = MessageUI.readLine(scanner, "0").trim().toLowerCase();
+
+      if (input.equals("0") || input.equals("q")) {
+        return null;
+      }
+      if (input.isEmpty() || input.equals("n")) {
+        return -((page >= totalPages) ? 1 : page + 1);
+      }
+      if (input.equals("p")) {
+        return -((page <= 1) ? totalPages : page - 1);
+      }
+      if (input.equals("s")) {
+        int picked = MessageUI.readInt(scanner,
+            "Number of the " + noun + " to book", 1, total);
+        if (picked == MessageUI.CANCELLED_INT) {
+          continue;
+        }
+        return picked;
+      }
+
+      try {
+        int wanted = Integer.parseInt(input);
+        if (wanted >= 1 && wanted <= totalPages) {
+          return -wanted;
+        }
+        MessageUI.displayError("There is no page " + wanted + ". Enter 1 to "
+            + totalPages + ", or S to select.");
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Enter N, P, a page number, S to select,"
+            + " or 0 to go back.");
+      }
+    }
+  }
+
+  /**
+   * Shows the booking a reward is being asked for, so the officer can check
+   * they have the right guest before anything is submitted.
+   *
+   * @param booking the stay found by its confirmation number
+   * @param guest whose stay it is
+   * @param data used to name the room type
+   */
+  public void displayBookingForRedemption(Booking booking, Guest guest, ResortData data) {
+    RoomType type = data.findRoomType(booking.getTypeId());
+
+    MessageUI.displaySectionHeading("Booking " + booking.getConfirmationNumber());
+    MessageUI.displayField("Guest", guest.getFullName());
+    MessageUI.displayField("IC / Passport", guest.getIcPassportNo());
+    MessageUI.displayField("Contact", guest.getContactNumber());
+    MessageUI.displayField("Booking", booking.getBookingId());
+    MessageUI.displayField("Room type",
+        (type == null ? booking.getTypeId() : type.getTypeName()));
+    MessageUI.displayField("Room", booking.getRoomNo() == null
+        ? "not assigned yet" : booking.getRoomNo());
+    MessageUI.displayField("Check-in", booking.getCheckInDate().toString());
+    MessageUI.displayField("Check-out", booking.getCheckOutDate().toString());
+    MessageUI.displayField("Nights", booking.getNumberOfNights() + " night(s)");
+    MessageUI.displayField("Guests", String.valueOf(booking.getNumberOfGuests()));
+    MessageUI.displayField("Status", booking.getBookingStatus());
+  }
+
+  /**
+   * The banner above the reward list: who is redeeming, against which stay,
+   * and what they have to spend.
+   *
+   * @param booking the stay the reward belongs to
+   * @param guest whose stay it is
+   * @param member their loyalty record
+   */
+  public void displayRedemptionHeader(Booking booking, Guest guest, Member member) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Member", guest.getFullName()
+        + "  (" + member.getMemberId() + ")");
+    MessageUI.displayField("IC / Passport", guest.getIcPassportNo());
+    MessageUI.displayField("Confirmation no.", booking.getConfirmationNumber());
+    MessageUI.displayField("Stay", booking.getCheckInDate() + " to "
+        + booking.getCheckOutDate() + "  (" + booking.getNumberOfNights()
+        + " night(s))");
+    MessageUI.displayField("Tier", member.getTier());
+    MessageUI.displayField("Points available",
+        String.valueOf(member.getPointsBalance()));
+  }
+
+  /**
+   * Offers the reward catalogue and takes the one picked.
+   *
+   * What the member cannot have is still listed, with the reason against it,
+   * so the officer can tell the guest why rather than simply not seeing it.
+   *
+   * @param rewards the catalogue
+   * @param member who is redeeming
+   * @return the chosen reward, or null if the officer went back
+   */
+  public Reward chooseRewardForMember(ListInterface<Reward> rewards, Member member) {
+    if (rewards.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  There are no rewards in the catalogue.");
+      return null;
+    }
+
+    MessageUI.displaySectionHeading("Rewards");
+    MessageUI.displayTableHeading(String.format("  %-5s %-28s %-10s %8s %10s  %s",
+        "NO", "REWARD", "CATEGORY", "POINTS", "VALUE", "AVAILABLE?"));
+
+    for (int i = 1; i <= rewards.getNumberOfEntries(); i++) {
+      Reward reward = rewards.getEntry(i);
+      System.out.printf("  [%d]   %-28s %-10s %8d %10.2f  %s%n",
+          i, truncate(reward.getRewardName(), 28),
+          truncate(reward.getCategory(), 10), reward.getPointsRequired(),
+          reward.getCashValue(), availabilityFor(reward, member));
     }
 
     MessageUI.displayThinRule();
-    System.out.printf("  %d guest(s) at the counter.%n", served.getNumberOfEntries());
+    MessageUI.displayMessage("  The request goes to Loyalty for approval."
+        + " No points are taken yet.");
 
-    int picked = MessageUI.readInt(scanner, "Number of the guest to book", 1,
-        served.getNumberOfEntries());
-    return (picked == MessageUI.CANCELLED_INT) ? null : served.getEntry(picked);
+    int picked = MessageUI.readInt(scanner, "Reward number", 1,
+        rewards.getNumberOfEntries());
+    return (picked == MessageUI.CANCELLED_INT) ? null : rewards.getEntry(picked);
+  }
+
+  /** Why a member can or cannot have a reward, in a few words. */
+  private String availabilityFor(Reward reward, Member member) {
+    if (!reward.isActive()) {
+      return "No - withdrawn";
+    }
+    if (reward.getStockQuantity() <= 0) {
+      return "No - out of stock";
+    }
+    if (member.getPointsBalance() < reward.getPointsRequired()) {
+      return "No - needs "
+          + (reward.getPointsRequired() - member.getPointsBalance()) + " more";
+    }
+    if (Member.tierRank(member.getTier()) < Member.tierRank(reward.getMinimumTier())) {
+      return "No - " + reward.getMinimumTier() + " only";
+    }
+    return "Yes";
   }
 
   /** Wipes the screen, so nothing of the last action is left behind. */
@@ -608,7 +809,8 @@ public class FrontDeskServiceUI {
    * @param changeDue anything handed back
    */
   public void displayReceipt(Booking booking, Invoice invoice,
-      ListInterface<Payment> payments, String guestName, double changeDue) {
+      ListInterface<Payment> payments, String guestName, double changeDue,
+      ResortData data) {
     MessageUI.displayBlankLine();
     MessageUI.displayBoxTop();
     MessageUI.displayBoxBlank();
@@ -636,10 +838,6 @@ public class FrontDeskServiceUI {
     System.out.printf("  %-28s   RM%10.2f%n", "Service charge (10%)",
         invoice.getServiceCharge());
     System.out.printf("  %-28s   RM%10.2f%n", "SST (6%)", invoice.getTaxAmount());
-    if (invoice.getDiscountAmount() > 0) {
-      System.out.printf("  %-28s  -RM%10.2f%n", "Loyalty discount",
-          invoice.getDiscountAmount());
-    }
     MessageUI.displayThinRule();
     System.out.printf("  %-28s   RM%10.2f%n", "TOTAL", invoice.getTotalAmount());
 
@@ -672,10 +870,72 @@ public class FrontDeskServiceUI {
     System.out.printf("  %-28s   RM%10.2f%n", "AMOUNT PAID", invoice.getAmountPaid());
     System.out.printf("  %-28s   %s%n", "Status", invoice.getPaymentStatus());
 
+    displayLoyaltyOnReceipt(booking, data);
+
     MessageUI.displayBlankLine();
     MessageUI.displayRule();
     MessageUI.displayMessage("  Thank you for staying with TARUMT Resort.");
     MessageUI.displayRule();
+  }
+
+  /**
+   * The loyalty lines on a receipt: what the guest asked for and where it got to.
+   *
+   * A reward is requested at the desk but granted by Loyalty, so the receipt
+   * has to say which of the two has happened - a guest holding a slip that
+   * says nothing cannot tell whether their spa session is booked or still
+   * waiting on somebody else.
+   *
+   * @param booking the stay this receipt covers
+   * @param data used to reach the redemptions, rewards and membership
+   */
+  private void displayLoyaltyOnReceipt(Booking booking, ResortData data) {
+    Member member = data.findMemberByGuest(booking.getGuestId());
+    if (member == null) {
+      return;
+    }
+
+    ListInterface<Redemption> mine = data.getRedemptionList().filter(
+        redemption -> booking.getBookingId().equals(redemption.getBookingId()));
+    if (mine.isEmpty()) {
+      return;
+    }
+
+    MessageUI.displaySectionHeading("Loyalty rewards");
+
+    for (int i = 1; i <= mine.getNumberOfEntries(); i++) {
+      Redemption redemption = mine.getEntry(i);
+      Reward reward = data.findReward(redemption.getRewardId());
+      String name = (reward == null) ? redemption.getRewardId() : reward.getRewardName();
+
+      if (Redemption.APPROVED.equals(redemption.getStatus())) {
+        System.out.printf("  %-28s   %s%n", truncate(name, 28), "APPROVED");
+        System.out.printf("  %-28s   %d points%n", "  Points spent",
+            redemption.getPointsUsed());
+        // The confirmation number is what the spa or restaurant asks for, so
+        // it belongs on the slip the guest carries to them.
+        System.out.printf("  %-28s   %s%n", "  Booking confirmation",
+            booking.getConfirmationNumber());
+      } else if (Redemption.REJECTED.equals(redemption.getStatus())) {
+        System.out.printf("  %-28s   %s%n", truncate(name, 28), "DECLINED");
+        if (redemption.getRejectReason() != null) {
+          MessageUI.displayMessage("    " + redemption.getRejectReason());
+        }
+      } else {
+        System.out.printf("  %-28s   %s%n", truncate(name, 28),
+            "PENDING APPROVAL");
+        System.out.printf("  %-28s   %d points%n", "  Points to be spent",
+            redemption.getPointsUsed());
+        MessageUI.displayMessage("    Awaiting a loyalty officer - no points"
+            + " taken yet.");
+      }
+    }
+
+    MessageUI.displayThinRule();
+    System.out.printf("  %-28s   %s (%s)%n", "Member", member.getMemberId(),
+        member.getTier());
+    System.out.printf("  %-28s   %d points%n", "Points remaining",
+        member.getPointsBalance());
   }
 
   /** Thanks a guest whose booking could not be met, and apologises for it. */
@@ -898,10 +1158,6 @@ public class FrontDeskServiceUI {
         invoice.getServiceCharge());
     System.out.printf("  %-28s   RM%10.2f%n", "SST (6%)", invoice.getTaxAmount());
 
-    if (invoice.getDiscountAmount() > 0) {
-      System.out.printf("  %-28s  -RM%10.2f%n", "Loyalty discount",
-          invoice.getDiscountAmount());
-    }
 
     MessageUI.displayThinRule();
     System.out.printf("  %-28s   RM%10.2f%n", "TOTAL", invoice.getTotalAmount());
@@ -1124,8 +1380,12 @@ public class FrontDeskServiceUI {
     MessageUI.displayField("Lifetime points", String.valueOf(member.getLifetimePoints()));
 
     if (member.getNextTier() != null) {
-      MessageUI.displayField("Points to " + member.getNextTier(),
-          String.valueOf(member.getPointsToNextTier()));
+      // Shown as progress rather than a bare gap: "1819 / 5000" says how far
+      // along they are, where "3181 to go" only says how far is left.
+      int needed = member.getLifetimePoints() + member.getPointsToNextTier();
+      MessageUI.displayField("Progress to " + member.getNextTier(),
+          member.getLifetimePoints() + " / " + needed + "  ("
+              + member.getPointsToNextTier() + " more)");
     } else {
       MessageUI.displayField("Tier standing", "Highest tier reached");
     }
