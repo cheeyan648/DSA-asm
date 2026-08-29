@@ -579,10 +579,16 @@ public class WalkInRegistrationMaintenance {
 
       sortNewestFirst(matches);
 
-      if (ui.displayRegistrationList(matches, data,
-          "No guest matched \"" + term + "\".", "SEARCH BY GUEST NAME")) {
-        ui.startAction("SEARCH BY GUEST NAME");
+      ui.displayRegistrationList(matches, data,
+          "No guest matched \"" + term + "\".", "SEARCH BY GUEST NAME");
+
+      // A short result fits on one page, so the pager returns at once without
+      // waiting. Without this pause the next prompt would clear the screen
+      // before the reader had seen what they searched for.
+      if (!ui.confirmAnother("Search for another name?")) {
+        return;
       }
+      ui.startAction("SEARCH BY GUEST NAME");
     }
   }
 
