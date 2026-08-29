@@ -255,7 +255,7 @@ public class HousekeepingTaskLogMaintenance {
     while (true) {
       ui.startAction("STAYOVER CLEANING MONITOR");
       ListInterface<HousekeepingTask> records = collectAllStayoverRecords();
-      ui.displayStayoverCleaning(records, null);
+      ui.displayStayoverCleaning(records);
 
       String query = ui.inputStayoverSearch();
       if (query == null) {
@@ -272,7 +272,7 @@ public class HousekeepingTaskLogMaintenance {
       }
 
       ui.startAction("STAYOVER CLEANING MONITOR");
-      ui.displayStayoverCleaning(matches, null);
+      ui.displayStayoverCleaning(matches);
       if (!ui.confirmDoAnother("Do you want to search again?")) {
         return;
       }
@@ -298,7 +298,7 @@ public class HousekeepingTaskLogMaintenance {
         continue;
       }
 
-      ui.displayStayoverCleaning(matches, null);
+      ui.displayStayoverCleaning(matches);
       if (!ui.confirmDoAnother("Do you want to filter again?")) {
         return;
       }

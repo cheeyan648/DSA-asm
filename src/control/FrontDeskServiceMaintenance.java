@@ -33,7 +33,29 @@ import utility.MessageUI;
  * free for the dates AND clean. Neither can answer that alone, which is why
  * the check lives in the shared service rather than here.
  *
- * @author Lim Yong Le
+ * COLLECTION ADTs USED
+ *   TreeInterface<String, Booking> - the confirmation tree, held in
+ *       ResortData. A guest quotes an eight-character code and the booking
+ *       is found by descending the tree rather than scanning every record.
+ *   ListInterface<Booking> / <Room> / <Invoice> - the bookings, rooms and
+ *       bills. filter() picks what each screen may act on, sort() orders the
+ *       listings, and countIf() builds the report tallies.
+ *   MapInterface<String, Room> - roomNo to Room, consulted on every
+ *       availability check.
+ *
+ * INTERACTS WITH
+ *   Walk-In Registration. Reads registrations that are IN_SERVICE and turns
+ *   one into a booking. Receives: regId, guestId, room type, nights, dates.
+ *
+ *   Housekeeping. At check-out the room is dirtied and a cleaning task is
+ *   raised. Passes: roomNo, bookingId and the lane the officer chose
+ *   (URGENT or NORMAL).
+ *
+ *   Loyalty and Rewards. At check-out the settled bill earns points.
+ *   Passes: bookingId, guestId and the invoice total. Also submits reward
+ *   requests against a booking, which Loyalty approves or rejects.
+ *
+ * @author Tew Yong Le
  */
 public class FrontDeskServiceMaintenance {
 

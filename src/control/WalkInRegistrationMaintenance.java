@@ -16,12 +16,24 @@ import utility.MessageUI;
 /**
  * Walk-In Registration - who is waiting, and whose turn it is.
  *
- * Three ADTs do the work: a List holds every registration and answers the
- * searches, filters and reports; a DualLaneQueue holds only those still
- * waiting and decides who is called next; a Stack remembers this session's
- * registrations so the last one can be undone.
+ * COLLECTION ADTs USED
+ *   ListInterface<WalkInRegistration>  - every registration ever taken.
+ *       Answers the searches, filters, sorts and report tallies through
+ *       search(), filter(), sort(), getPosition() and countIf().
+ *   DualLaneQueueInterface<WalkInRegistration> - only those still waiting.
+ *       Two lanes: the urgent lane is drained before the normal one, so an
+ *       exception granted at the door is honoured without reordering a list.
+ *   StackInterface<WalkInRegistration> - this session's registrations.
+ *       Last in, first out, so pop() always returns the newest for an undo.
  *
- * @author Tan Chee Yan
+ * INTERACTS WITH
+ *   Front-Desk Service. A guest called to the counter leaves the queue as
+ *   IN_SERVICE, and the front desk turns that registration into a booking.
+ *   Data passed over: regId, guestId, requested room type, nights and
+ *   check-in date. Nothing is passed back except the bookingId stamped on
+ *   the registration once the booking exists.
+ *
+ * @author Wong Chee Yan
  */
 public class WalkInRegistrationMaintenance {
   private final WalkInRegistrationUI ui = new WalkInRegistrationUI();

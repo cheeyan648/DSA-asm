@@ -96,8 +96,8 @@ public class MasterDataInitializer {
         false, now.withHour(10).withMinute(10), ""));
     rooms.add(new Room("2004", "RT02", 20, Room.VACANT, Room.INSPECTED,
         false, now.withHour(10).withMinute(45), "Awaiting supervisor sign-off"));
-    rooms.add(new Room("2005", "RT02", 20, Room.RESERVED, Room.READY_FOR_CHECK_IN,
-        false, now.withHour(8).withMinute(30), "Held for walk-in booking"));
+    rooms.add(new Room("2005", "RT02", 20, Room.VACANT, Room.READY_FOR_CHECK_IN,
+        false, now.withHour(8).withMinute(30), ""));
 
     // --- Family Suite, floor 30 ----------------------------------
     rooms.add(new Room("3001", "RT03", 30, Room.VACANT, Room.READY_FOR_CHECK_IN,

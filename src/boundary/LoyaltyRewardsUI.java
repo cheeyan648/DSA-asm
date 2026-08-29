@@ -1044,9 +1044,12 @@ public class LoyaltyRewardsUI {
 
     while (true) {
       MessageUI.displayBlankLine();
+      // The lifetime total is not shown when picking a member to act on: what
+      // matters here is the balance they can actually spend. Lifetime points
+      // only decide the tier, and the tier is already on the row.
       MessageUI.displayTableHeading(String.format(
-          "  %-5s %-7s %-22s %-9s %9s %11s  %s",
-          "NO", "MEMBER", "GUEST", "TIER", "BALANCE", "LIFETIME", "EXPIRES"));
+          "  %-5s %-7s %-24s %-9s %9s  %s",
+          "NO", "MEMBER", "GUEST", "TIER", "BALANCE", "EXPIRES"));
 
       int from = MessageUI.firstRowOnPage(page);
       int upTo = MessageUI.lastRowOnPage(page, total);
@@ -1055,11 +1058,11 @@ public class LoyaltyRewardsUI {
         Member member = members.getEntry(i);
         Guest guest = data.findGuest(member.getGuestId());
 
-        System.out.printf("  [%d]   %-7s %-22s %-9s %9d %11d  %s%n",
+        System.out.printf("  [%d]   %-7s %-24s %-9s %9d  %s%n",
             i, member.getMemberId(),
-            guest == null ? "-" : truncate(guest.getFullName(), 22),
+            guest == null ? "-" : truncate(guest.getFullName(), 24),
             member.getTier(), member.getPointsBalance(),
-            member.getLifetimePoints(), member.getPointsExpiryDate());
+            member.getPointsExpiryDate());
       }
 
       MessageUI.displayThinRule();

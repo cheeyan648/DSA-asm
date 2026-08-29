@@ -504,8 +504,14 @@ public class OperationalDataInitializer {
     addCompletedCleaning(tasks, "HK0026", "2003", HousekeepingTask.TYPE_STAYOVER_CLEAN,
         at(now, 0, 8, 0), 29, "ST004", 0, HousekeepingTask.PRIORITY_NORMAL);
 
-    tasks.add(new HousekeepingTask("HK0027", "1004", HousekeepingTask.TYPE_CHECKOUT_CLEAN,
-        null, now.minusHours(2)));
+    // 3003 is mid-clean: the room record says CLEANING_IN_PROGRESS, so the
+    // task that put it there has to exist and say the same thing.
+    HousekeepingTask hk27 = new HousekeepingTask("HK0027", "3003",
+        HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusHours(2));
+    hk27.setStatus(HousekeepingTask.CLEANING_IN_PROGRESS);
+    hk27.setAssignedTo("ST003");
+    hk27.setStartedAt(now.minusMinutes(40));
+    tasks.add(hk27);
 
     HousekeepingTask hk28 = new HousekeepingTask("HK0028", "1005",
         HousekeepingTask.TYPE_CHECKOUT_CLEAN, null, now.minusHours(1));
@@ -653,7 +659,7 @@ public class OperationalDataInitializer {
     appendCompletedHistory(logs, "HK0025", "1005", at(now, 0, 19, 0), 36, "ST003", 0);
     appendCompletedHistory(logs, "HK0026", "2003", at(now, 0, 8, 0), 29, "ST004", 0);
 
-    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0027", "1004", null,
+    logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0027", "3003", null,
         HousekeepingTask.DIRTY, now.minusHours(2), "ST001", false,
         "Raised on check-out"));
     logs.add(new RoomStatusLog(nextHousekeepingLogId(), "HK0028", "1005", null,

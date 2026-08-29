@@ -1020,15 +1020,10 @@ public class HousekeepingTaskLogUI {
   }
 
   // Displays Stayover Cleaning records for Search & Monitor.
-  public void displayStayoverCleaning(ListInterface<HousekeepingTask> records,
-      LocalDate filterDate) {
+  public void displayStayoverCleaning(ListInterface<HousekeepingTask> records) {
+    // No heading or date-filter line: the screen title above already says
+    // what this is, and the rows carry their own dates.
     DateTimeFormatter format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-    displaySectionHeading("STAYOVER CLEANING");
-    if (filterDate != null) {
-      MessageUI.displayField("Date filter", filterDate.format(format));
-    } else {
-      MessageUI.displayField("Date filter", "View all");
-    }
     if (records.isEmpty()) {
       MessageUI.displayBlankLine();
       MessageUI.displayMessage("  No stayover cleaning records found.");

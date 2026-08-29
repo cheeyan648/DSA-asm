@@ -2,6 +2,7 @@ package entity;
 
 import adt.ArrayList;
 import adt.ListInterface;
+import java.util.Objects;
 
 /**
  * One way of housing a party across the rooms that are actually free.
@@ -155,5 +156,35 @@ public class RoomArrangement {
       numbers.append(rooms.getEntry(i).getRoomNo());
     }
     return numbers.toString();
+  }
+
+  /**
+   * Two arrangements are the same when they hold the same rooms.
+   *
+   * The rooms are what an arrangement is: the capacity and the rate are both
+   * worked out from them, so comparing the room numbers compares everything
+   * that matters.
+   */
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    return roomNumbers().equals(((RoomArrangement) obj).roomNumbers());
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(roomNumbers());
+  }
+
+  /** The arrangement as one line, e.g. "1001, 2003  sleeps 6  RM410.00". */
+  @Override
+  public String toString() {
+    return String.format("%-20s sleeps %d  RM%.2f",
+        roomNumbers(), totalCapacity, totalRatePerNight);
   }
 }

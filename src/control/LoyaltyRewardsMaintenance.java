@@ -24,10 +24,27 @@ import utility.MessageUI;
  * Two rules shape everything here. Tier comes from lifetime points rather than
  * the spendable balance, so redeeming never costs a member their standing. And
  * points are deducted only when a request is approved, so a refusal costs the
- * member nothing - which is why eligibility is checked when the request is
- * processed rather than when it is made.
+ * member nothing - the eligibility rules are checked both when a request is
+ * made and again when it is decided, since stock can run out while it waits.
  *
- * @author Ivan Wong
+ * COLLECTION ADTs USED
+ *   ListInterface<Member> / <Reward> / <Redemption> / <PointTransaction>
+ *       The memberships, the catalogue, every redemption and the points
+ *       ledger. filter() and search() answer the lookups, sort() orders the
+ *       listings and reports, countIf() builds the tier tallies.
+ *   ListInterface<Redemption> as a FIFO queue - the pending requests.
+ *       Whoever asked first is decided first; there is no urgent lane here
+ *       because loyalty has no urgency concept.
+ *   TreeInterface<String, Member> - memberId to Member, for fast lookup.
+ *
+ * INTERACTS WITH
+ *   Front-Desk Service. Receives at check-out: bookingId, guestId and the
+ *   settled invoice total, from which points are earned. Receives reward
+ *   requests carrying memberId, rewardId and the bookingId they belong to.
+ *   Returns nothing directly - the decision is written on the redemption,
+ *   and the front desk reads it when printing a receipt.
+ *
+ * @author Ivan Tan Yann Rong
  */
 public class LoyaltyRewardsMaintenance {
 

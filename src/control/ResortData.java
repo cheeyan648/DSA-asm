@@ -46,6 +46,23 @@ import utility.IdGenerator;
  * the map and the trees answer the by-key lookups that happen on almost every
  * screen.
  *
+ * SHARED BY ALL FOUR MODULES
+ * Every collection ADT in the system is created here and handed to whichever
+ * module needs it, so all four look at the same objects. This is what lets a
+ * room the front desk just sold appear as taken to housekeeping.
+ *
+ * COLLECTION ADTs CREATED HERE
+ *   ListInterface  - one per table: rooms, guests, bookings, invoices,
+ *       payments, registrations, tasks, logs, members, rewards, redemptions,
+ *       point transactions. These are what get written to file.
+ *   MapInterface   - roomNo/guestId/staffId/typeId to their objects, for the
+ *       lookups that happen on nearly every screen.
+ *   TreeInterface  - bookingId, the eight-character confirmation code, and
+ *       memberId. Gives keyed lookup plus a sorted listing from an in-order
+ *       walk, which is what the front-desk search needs.
+ *   DualLaneQueue  - the walk-in waiting list and the cleaning queue.
+ *   StackInterface - the housekeeping rollback stack.
+ *
  * @author Tan Chee Yan
  */
 public class ResortData {

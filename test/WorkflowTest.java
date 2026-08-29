@@ -57,6 +57,7 @@ public class WorkflowTest {
     stage7CheckOutAwardsPoints();
     stage8CheckOutFeedsHousekeeping();
     stage9LedgerRecordsBothDirections();
+    stage10SeedDataIsConsistent();
 
     return runner.report("WORKFLOW TEST SUMMARY");
   }
@@ -610,6 +611,98 @@ public class WorkflowTest {
     say("     spend " + (spent == null ? "?" : spent.getPoints())
         + ", earn +" + (earned == null ? "?" : earned.getPoints())
         + ", balance now " + member.getPointsBalance());
+  }
+
+  // ==================================================================
+  // STAGE 10 - THE SAMPLE DATA ITSELF
+  // ==================================================================
+
+  /**
+   * The seed must describe a state the system would actually allow.
+   *
+   * A sample that contradicts the rules teaches the wrong thing and hides
+   * real defects: a room shown as both sold and waiting to be cleaned would
+   * let a guest be refused check-in for a room that is theirs.
+   */
+  private void stage10SeedDataIsConsistent() {
+    runner.suite("Stage 10  The sample data obeys its own rules");
+
+    ResortData data = freshData();
+    ResortService service = new ResortService(data);
+
+    ListInterface<Booking> live = data.getBookingList().filter(booking ->
+        booking.getRoomNo() != null
+            && (Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())
+                || Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())));
+
+    say("IN : " + live.getNumberOfEntries() + " booking(s) hold a room");
+
+    int notReady = 0;
+    int stillQueued = 0;
+    for (int i = 1; i <= live.getNumberOfEntries(); i++) {
+      Booking booking = live.getEntry(i);
+      Room room = data.findRoom(booking.getRoomNo());
+
+      if (room == null || !Room.READY_FOR_CHECK_IN.equals(room.getHousekeepingStatus())) {
+        notReady++;
+        say("     " + booking.getBookingId() + " holds " + booking.getRoomNo()
+            + " which is " + (room == null ? "missing" : room.getHousekeepingStatus()));
+      }
+      if (data.findOpenTaskForRoom(booking.getRoomNo()) != null) {
+        stillQueued++;
+        say("     " + booking.getBookingId() + " holds " + booking.getRoomNo()
+            + " which still has an open cleaning task");
+      }
+    }
+
+    runner.checkEquals("every sold room is cleaned and ready", 0, notReady);
+    runner.checkEquals("and none is still waiting to be cleaned", 0, stillQueued);
+
+    // A room the records call mid-clean must have the task that says so.
+    ListInterface<Room> rooms = data.getRoomList();
+    int orphaned = 0;
+    int reservedForNobody = 0;
+
+    for (int i = 1; i <= rooms.getNumberOfEntries(); i++) {
+      Room room = rooms.getEntry(i);
+
+      if (Room.CLEANING_IN_PROGRESS.equals(room.getHousekeepingStatus())
+          && data.findOpenTaskForRoom(room.getRoomNo()) == null) {
+        orphaned++;
+        say("     room " + room.getRoomNo() + " is mid-clean with no task");
+      }
+
+      if (Room.RESERVED.equals(room.getOccupancyStatus())) {
+        Booking holder = data.getBookingList().search(booking ->
+            room.getRoomNo().equals(booking.getRoomNo())
+                && (Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())
+                    || Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())));
+        if (holder == null) {
+          reservedForNobody++;
+          say("     room " + room.getRoomNo() + " is RESERVED for nobody");
+        }
+      }
+    }
+
+    runner.checkEquals("a room being cleaned has the task that says so",
+        0, orphaned);
+    runner.checkEquals("and no room is held for a booking that does not exist",
+        0, reservedForNobody);
+
+    // A sold room must be safe from being withdrawn under the guest.
+    Booking held = live.isEmpty() ? null : live.getEntry(1);
+    if (held != null) {
+      say("IN : try to withdraw " + held.getRoomNo() + ", held by "
+          + held.getBookingId());
+      ServiceResult<Room> blocked =
+          service.setRoomOutOfService(held.getRoomNo(), true, FRONT_DESK);
+      say("OUT: " + blocked.getMessage());
+
+      runner.check("a sold room cannot be taken out of service",
+          blocked.isFailure());
+      runner.check("nor removed altogether",
+          service.removeRoom(held.getRoomNo()).isFailure());
+    }
   }
 
   private int countLedgerRows(ResortData data, String memberId) {

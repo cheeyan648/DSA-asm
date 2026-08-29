@@ -36,6 +36,12 @@ import java.util.Comparator;
  * clean. Neither module can answer that alone, which is exactly why the
  * separate versions of this system could sell a dirty room.
  *
+ * SHARED BY ALL FOUR MODULES
+ * This is not any one member's module. It holds the rules that need more
+ * than one module to answer - room availability, check-out, points awarded
+ * from a settled bill - so no module has to reach into another's data.
+ * Each module calls the operations it needs; none of them calls each other.
+ *
  * @author Tan Chee Yan
  */
 public class ResortService {
@@ -640,6 +646,19 @@ public class ResortService {
       }
       if (room.isOutOfService()) {
         return ServiceResult.fail("Room " + roomNo + " is already out of service.");
+      }
+
+      // A room that has been sold is not free to withdraw. The guest has paid
+      // for it and is expected, so it stays theirs until somebody moves the
+      // booking - checking only for a guest already in the room would let a
+      // confirmed stay be blocked out from under them.
+      Booking holding = data.getBookingList().search(
+          booking -> roomNo.equals(booking.getRoomNo())
+              && (Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())
+                  || Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())));
+      if (holding != null) {
+        return ServiceResult.fail("Booking " + holding.getBookingId()
+            + " is holding room " + roomNo + ". Move it first.");
       }
 
       room.setOutOfService(true);
