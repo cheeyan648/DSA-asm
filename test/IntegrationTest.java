@@ -12,6 +12,7 @@ import entity.Member;
 import entity.Payment;
 import entity.PointTransaction;
 import entity.Redemption;
+import entity.Reward;
 import entity.Room;
 import entity.RoomAssignment;
 import entity.RoomStatusLog;
@@ -119,8 +120,8 @@ public class IntegrationTest {
         candidate -> "BK0001".equals(candidate.getBookingId()));
     runner.check("the tree and the list hold the same booking",
         booking == sameBookingViaList);
-    runner.check("a booking has an eight-digit confirmation number",
-        booking.getConfirmationNumber().matches("\\d{8}"));
+    runner.check("a booking has an eight-character confirmation code",
+        booking.getConfirmationNumber().matches("[0-9A-Z]{8}"));
     runner.check("the confirmation tree retrieves that same booking",
         booking == data.findBookingByConfirmation(booking.getConfirmationNumber()));
   }
@@ -1059,39 +1060,49 @@ public class IntegrationTest {
             && txn.getDescription().contains(redemption.getRedemptionId()));
     runner.check("a ledger row records the spend", spent != null);
 
-    ServiceResult<Invoice> applied = service.applyRedemptionToInvoice(
-        redemption.getRedemptionId(), booking.getBookingId());
-    runner.check("the reward can be applied to the bill", applied.isSuccess());
-
-    runner.check("the bill total drops", invoice.getTotalAmount() < totalBefore);
-    runner.checkEquals("and the redemption records which bill",
-        invoice.getInvoiceId(), redemption.getInvoiceId());
-
-    // It must not be possible to spend the same reward twice.
-    ServiceResult<Invoice> twice = service.applyRedemptionToInvoice(
-        redemption.getRedemptionId(), booking.getBookingId());
-    runner.check("the same reward cannot be applied twice", twice.isFailure());
+    // A reward is an entitlement to a service, not money off the room, so the
+    // bill is untouched by it: the stay was paid for when it was booked.
+    runner.checkAmount("the bill is unchanged by the redemption",
+        totalBefore, invoice.getTotalAmount());
+    runner.check("and the points came off the member instead",
+        member.getPointsBalance() < pointsBefore);
 
     // A refusal must cost the member nothing. L0003 is Silver, and RW003
     // needs Gold.
     Member silver = data.findMember("L0003");
     int silverPoints = silver.getPointsBalance();
 
+    // A request that could never be granted is refused at the counter rather
+    // than queued, so the loyalty officer never sees work that cannot be done.
+    int queuedBefore = data.getPendingRedemptions().getNumberOfEntries();
     ServiceResult<Redemption> tooJunior =
         service.requestRedemption("L0003", "RW003");
-    runner.check("a request above the member's tier is still accepted",
-        tooJunior.isSuccess());
 
-    Redemption rejected = tooJunior.getValue();
-    while (data.getPendingRedemptions().contains(rejected)) {
-      service.processNextRedemption("ST006");
-    }
+    runner.check("a request above the member's tier is refused at once",
+        tooJunior.isFailure());
+    runner.check("and the reason names the tier",
+        tooJunior.getMessage().contains("tier"));
+    runner.checkEquals("nothing joins the queue", queuedBefore,
+        data.getPendingRedemptions().getNumberOfEntries());
+    runner.checkEquals("and no points are taken", silverPoints,
+        silver.getPointsBalance());
 
-    runner.checkEquals("but it is rejected when processed", Redemption.REJECTED,
-        rejected.getStatus());
+    // A request can still be rejected later - stock runs out while it waits -
+    // and that rejection must cost the member nothing either.
+    Reward scarce = data.findReward("RW004");
+    Redemption waiting = service.requestRedemption("L0003",
+        scarce.getRewardId()).getValue();
+    scarce.setStockQuantity(0);
+
+    ServiceResult<Redemption> decided =
+        service.processRedemption(waiting.getRedemptionId(), "ST006");
+
+    runner.check("the decision is recorded", decided.isSuccess());
+    runner.checkEquals("a sold-out reward is rejected", Redemption.REJECTED,
+        waiting.getStatus());
     runner.checkEquals("no points are taken for a rejection", silverPoints,
         silver.getPointsBalance());
-    runner.check("and the reason is recorded", rejected.getRejectReason() != null);
+    runner.check("and the reason is recorded", waiting.getRejectReason() != null);
   }
 
   /** Awarding twice for one stay would be a real defect. */
@@ -1122,13 +1133,25 @@ public class IntegrationTest {
     runner.checkEquals("the balance is unchanged", afterFirst,
         member.getPointsBalance());
 
-    // A stay by somebody who is not a member earns nothing.
-    Booking notMember = data.getBookingList().search(
-        candidate -> data.findMemberByGuest(candidate.getGuestId()) == null);
+    // A guest who is not yet a member is enrolled by their settled stay
+    // rather than losing the points: the resort already holds their details.
+    Booking notMember = data.getBookingList().search(candidate ->
+        data.findMemberByGuest(candidate.getGuestId()) == null
+            && data.findInvoiceByBooking(candidate.getBookingId()) != null
+            && data.findInvoiceByBooking(candidate.getBookingId()).isSettled());
     if (notMember != null) {
-      ServiceResult<PointTransaction> none =
+      String guestId = notMember.getGuestId();
+      ServiceResult<PointTransaction> enrolAward =
           service.awardPointsForStay(notMember.getBookingId());
-      runner.check("a non-member earns no points", none.isFailure());
+
+      runner.check("a first stay enrols the guest and awards points",
+          enrolAward.isSuccess());
+      Member enrolled = data.findMemberByGuest(guestId);
+      runner.check("they now hold a membership", enrolled != null);
+      runner.check("and the points are on it",
+          enrolled != null && enrolled.getPointsBalance() > 0);
+      runner.check("the message says they were enrolled",
+          enrolAward.getMessage().toLowerCase().contains("enrolled"));
     }
   }
 

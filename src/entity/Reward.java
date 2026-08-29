@@ -12,11 +12,14 @@ public class Reward implements Serializable {
 
   private static final long serialVersionUID = 2L;
 
-  public static final String CAT_ROOM = "ROOM";
-  public static final String CAT_DINING = "DINING";
+  // Rewards are things the guest enjoys while they are here, not money off
+  // the stay itself: the room is paid for when it is booked, so a reward
+  // entitles them to a service rather than reducing a settled bill.
   public static final String CAT_SPA = "SPA";
+  public static final String CAT_DINING = "DINING";
+  public static final String CAT_ACTIVITY = "ACTIVITY";
+  public static final String CAT_WELLNESS = "WELLNESS";
   public static final String CAT_TRANSPORT = "TRANSPORT";
-  public static final String CAT_VOUCHER = "VOUCHER";
 
   private String rewardId;
   private String rewardName;

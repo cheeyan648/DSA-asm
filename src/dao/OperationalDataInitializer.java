@@ -356,7 +356,6 @@ public class OperationalDataInitializer {
     invoices.add(inv1);
 
     Invoice inv2 = new Invoice("INV0002", "BK0002", 702.00, now.minusDays(1));
-    inv2.setDiscountAmount(50.00);
     inv2.setAmountPaid(inv2.getTotalAmount());
     invoices.add(inv2);
 
@@ -388,7 +387,7 @@ public class OperationalDataInitializer {
         "APPR-884213", now.minusDays(2).withHour(15).withMinute(2), "ST002"));
     payments.add(new Payment("PY0002", "INV0001", 149.80, Payment.CASH,
         null, now.minusHours(3), "ST001"));
-    payments.add(new Payment("PY0003", "INV0002", 768.53, Payment.EWALLET,
+    payments.add(new Payment("PY0003", "INV0002", 818.53, Payment.EWALLET,
         "TNG-5590231", now.minusDays(1).withHour(14).withMinute(10), "ST001"));
     payments.add(new Payment("PY0004", "INV0003", 909.48, Payment.BANK_TRANSFER,
         "MBB-77102934", now.minusDays(1).withHour(12).withMinute(5), "ST002"));

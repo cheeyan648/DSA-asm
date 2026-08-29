@@ -2,9 +2,10 @@ package boundary;
 
 import adt.ListInterface;
 import control.ResortData;
+import control.ServiceResult;
+import entity.Booking;
 import entity.Guest;
 import entity.Member;
-import entity.Notification;
 import entity.PointTransaction;
 import entity.Redemption;
 import entity.Reward;
@@ -28,14 +29,13 @@ public class LoyaltyRewardsUI {
     MessageUI.displayMenuScreen("LOYALTY", null,
         "Main Menu  >  Loyalty & Rewards",
         new String[] {
-          "Members (enrol, search, list)",
-          "Points (award, expire, ledger)",
+          "Members (enrol, edit, tiers)",
+          "Points (expire, ledger)",
           "Rewards & redemptions",
-          "Notifications & promotions",
           "Reports"
         },
         "Back to main menu");
-    return MessageUI.readMenuChoice(scanner, 5, "go back to the main menu");
+    return MessageUI.readMenuChoice(scanner, 4, "go back to the main menu");
   }
 
   public int getMemberMenuChoice() {
@@ -43,27 +43,26 @@ public class LoyaltyRewardsUI {
         "Main Menu  >  Loyalty & Rewards  >  Members",
         new String[] {
           "Enrol a new member",
-          "Search by member ID",
+          "Edit a member's details",
+          "Remove a membership",
           "Display all members",
           "Display members sorted by points",
-          "Members with points expiring soon",
-          "Members close to the next tier"
+          "Members close to the next tier",
+          "Tier thresholds (points needed for each tier)"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 6, "go back");
+    return MessageUI.readMenuChoice(scanner, 7, "go back");
   }
 
   public int getPointsMenuChoice() {
     MessageUI.displayMenuScreen("POINTS", null,
         "Main Menu  >  Loyalty & Rewards  >  Points",
         new String[] {
-          "Award points for a completed stay",
-          "Adjust a member's points by hand",
           "Expire points that are past their date",
           "View a member's point ledger"
         },
         "Back");
-    return MessageUI.readMenuChoice(scanner, 4, "go back");
+    return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
 
   public int getRewardMenuChoice() {
@@ -72,26 +71,15 @@ public class LoyaltyRewardsUI {
         new String[] {
           "View the reward catalogue",
           "Add a new reward",
+          "Edit a reward",
           "Delete a reward",
           "Restock a reward",
           "Request a redemption",
-          "Process the next pending request",
-          "View the pending queue",
+          "Process the pending queue",
           "View redemption history"
         },
         "Back");
     return MessageUI.readMenuChoice(scanner, 8, "go back");
-  }
-
-  public int getNotificationMenuChoice() {
-    MessageUI.displayMenuScreen("NOTIFICATIONS", null,
-        "Main Menu  >  Loyalty & Rewards  >  Notifications",
-        new String[] {
-          "View a member's notifications",
-          "View a member's personalised promotion"
-        },
-        "Back");
-    return MessageUI.readMenuChoice(scanner, 2, "go back");
   }
 
   public int getReportMenuChoice() {
@@ -134,35 +122,6 @@ public class LoyaltyRewardsUI {
   public int inputListPosition(int maximum, String prompt) {
     int picked = MessageUI.readInt(scanner, prompt, 1, maximum);
     return (picked == MessageUI.CANCELLED_INT) ? -1 : picked;
-  }
-
-  public int inputPointsAdjustment() {
-    MessageUI.displayMessage("");
-    MessageUI.displayMessage("  Enter a positive number to add points, negative to take away.");
-
-    while (true) {
-      System.out.print("  Points adjustment (0 to cancel): ");
-      String input = MessageUI.readLine(scanner);
-
-      if ("0".equals(input)) {
-        return MessageUI.CANCELLED_INT;
-      }
-      if (input.isEmpty()) {
-        MessageUI.displayError("This cannot be left blank.");
-        continue;
-      }
-
-      try {
-        return Integer.parseInt(input);
-      } catch (NumberFormatException notANumber) {
-        MessageUI.displayError("Please enter a whole number, e.g. 500 or -200.");
-      }
-    }
-  }
-
-  public String inputAdjustmentReason() {
-    String reason = MessageUI.readRequiredText(scanner, "Reason for the adjustment");
-    return MessageUI.isCancelled(reason) ? null : reason;
   }
 
   /**
@@ -234,11 +193,11 @@ public class LoyaltyRewardsUI {
     }
 
     String category = readChoiceOrCancel("Category", new String[] {
-        Reward.CAT_ROOM,
+        Reward.CAT_ACTIVITY,
         Reward.CAT_DINING,
         Reward.CAT_SPA,
         Reward.CAT_TRANSPORT,
-        Reward.CAT_VOUCHER
+        Reward.CAT_WELLNESS
     });
     if (category == null) {
       return null;
@@ -504,6 +463,573 @@ public class LoyaltyRewardsUI {
    * @param emptyMessage what to say when there is nothing to show
    * @return the chosen member, or null if the officer quit
    */
+  /**
+   * Walks the editable fields of a guest, keeping whatever is left blank.
+   *
+   * The IC or passport is not offered: it is what the front desk recognises a
+   * returning guest by, so changing it here would quietly detach them from
+   * their own booking history.
+   *
+   * @param guest the guest behind the membership
+   * @return true if anything was actually changed
+   */
+  public boolean editGuestFields(Guest guest) {
+    MessageUI.displaySectionHeading("Edit " + guest.getGuestId());
+    boolean changed = false;
+
+    String name = MessageUI.readOptionalText(scanner,
+        "Full name [" + guest.getFullName() + "]");
+    if (name != null && !name.isBlank()) {
+      guest.setFullName(name.trim());
+      changed = true;
+    }
+
+    String contact = MessageUI.readOptionalText(scanner,
+        "Contact number [" + guest.getContactNumber() + "]");
+    if (contact != null && !contact.isBlank()) {
+      guest.setContactNumber(contact.trim());
+      changed = true;
+    }
+
+    String email = MessageUI.readOptionalText(scanner,
+        "Email [" + (guest.getEmail() == null || guest.getEmail().isBlank()
+            ? "none" : guest.getEmail()) + "]");
+    if (email != null && !email.isBlank()) {
+      guest.setEmail(email.trim());
+      changed = true;
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  IC / Passport stays " + guest.getIcPassportNo()
+        + " - it is how a returning");
+    MessageUI.displayMessage("  guest is recognised at the front desk.");
+
+    return changed;
+  }
+
+  /** Wipes the screen, so nothing of the last listing is left behind. */
+  public void clearScreen() {
+    MessageUI.clearScreen();
+  }
+
+  /**
+   * Lists every redemption and takes the one to look at in detail.
+   *
+   * @param history the redemptions, newest first
+   * @param data used to name the member and reward on each row
+   * @return the chosen redemption, or null to go back
+   */
+  public Redemption chooseRedemptionFromHistory(ListInterface<Redemption> history,
+      ResortData data) {
+    if (history.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  No redemption has ever been requested.");
+      return null;
+    }
+
+    int total = history.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
+    int page = 1;
+
+    while (true) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayTableHeading(String.format(
+          "  %-5s %-8s %-8s %-24s %8s %-10s  %s",
+          "NO", "REDEEM", "MEMBER", "REWARD", "POINTS", "STATUS", "REQUESTED"));
+
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
+        Redemption redemption = history.getEntry(i);
+        Reward reward = data.findReward(redemption.getRewardId());
+
+        System.out.printf("  [%d]   %-8s %-8s %-24s %8d %-10s  %s%n",
+            i, redemption.getRedemptionId(), redemption.getMemberId(),
+            truncate(reward == null ? redemption.getRewardId()
+                : reward.getRewardName(), 24),
+            redemption.getPointsUsed(), redemption.getStatus(),
+            redemption.getRequestDate());
+      }
+
+      MessageUI.displayThinRule();
+      System.out.printf("  %d redemption(s).%n", total);
+
+      if (totalPages == 1) {
+        int picked = MessageUI.readInt(scanner,
+            "Number of the redemption to view", 1, total);
+        return (picked == MessageUI.CANCELLED_INT) ? null : history.getEntry(picked);
+      }
+
+      System.out.printf("  Showing %d-%d of %d.%n", from, upTo, total);
+
+      Integer chosen = readPagedSelection(page, totalPages, total, "redemption");
+      if (chosen == null) {
+        return null;
+      }
+      if (chosen > 0) {
+        return history.getEntry(chosen);
+      }
+      page = -chosen;
+    }
+  }
+
+  /**
+   * Everything known about one redemption, on its own screen.
+   *
+   * @param redemption the redemption to show
+   * @param data used to reach the member, reward, guest and booking
+   */
+  public void displayRedemptionDetail(Redemption redemption, ResortData data) {
+    Member member = data.findMember(redemption.getMemberId());
+    Reward reward = data.findReward(redemption.getRewardId());
+    Guest guest = (member == null) ? null : data.findGuest(member.getGuestId());
+
+    MessageUI.displaySectionHeading("Member");
+    MessageUI.displayField("Name", guest == null ? "-" : guest.getFullName());
+    MessageUI.displayField("Member ID", redemption.getMemberId());
+    MessageUI.displayField("IC / Passport", guest == null ? "-"
+        : guest.getIcPassportNo());
+    MessageUI.displayField("Tier now", member == null ? "-" : member.getTier());
+    MessageUI.displayField("Points balance now", member == null ? "-"
+        : String.valueOf(member.getPointsBalance()));
+
+    MessageUI.displaySectionHeading("Reward");
+    MessageUI.displayField("Reward", reward == null ? redemption.getRewardId()
+        : reward.getRewardName());
+    MessageUI.displayField("Category", reward == null ? "-" : reward.getCategory());
+    MessageUI.displayField("Points spent", String.valueOf(redemption.getPointsUsed()));
+    MessageUI.displayField("Value", reward == null ? "-"
+        : String.format("RM%.2f", reward.getCashValue()));
+
+    MessageUI.displaySectionHeading("Request");
+    MessageUI.displayField("Redemption ID", redemption.getRedemptionId());
+    MessageUI.displayField("Status", redemption.getStatus());
+    MessageUI.displayField("Requested on", redemption.getRequestDate().toString());
+    if (redemption.getProcessedDate() != null) {
+      MessageUI.displayField("Decided on", redemption.getProcessedDate().toString());
+    }
+    if (redemption.getProcessedBy() != null) {
+      MessageUI.displayField("Decided by", redemption.getProcessedBy());
+    }
+    if (redemption.getRejectReason() != null
+        && !redemption.getRejectReason().isBlank()) {
+      MessageUI.displayField("Reason", redemption.getRejectReason());
+    }
+
+    // Which stay it belongs to - the whole point of tying a reward to a
+    // booking, and what tells the spa which guest is turning up.
+    MessageUI.displaySectionHeading("Stay");
+    if (redemption.getBookingId() == null) {
+      MessageUI.displayMessage("  Not tied to a particular booking.");
+      return;
+    }
+
+    Booking booking = data.findBooking(redemption.getBookingId());
+    if (booking == null) {
+      MessageUI.displayMessage("  Booking " + redemption.getBookingId()
+          + " is no longer on record.");
+      return;
+    }
+
+    MessageUI.displayField("Booking", booking.getBookingId());
+    MessageUI.displayField("Confirmation no.", booking.getConfirmationNumber());
+    MessageUI.displayField("Room", booking.getRoomNo() == null
+        ? "not assigned" : booking.getRoomNo());
+    MessageUI.displayField("Check-in", booking.getCheckInDate().toString());
+    MessageUI.displayField("Check-out", booking.getCheckOutDate().toString());
+    MessageUI.displayField("Nights", booking.getNumberOfNights() + " night(s)");
+    MessageUI.displayField("Booking status", booking.getBookingStatus());
+  }
+
+  /**
+   * Lists the requests waiting for a decision and takes the one picked.
+   *
+   * Paged like every other long listing, and S is what starts a selection so a
+   * bare number can mean the page without being mistaken for a request.
+   *
+   * @param pending the queue, in arrival order
+   * @param data used to name the member and reward on each row
+   * @return the chosen request, or null to go back
+   */
+  public Redemption choosePendingRedemption(ListInterface<Redemption> pending,
+      ResortData data) {
+    if (pending.isEmpty()) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayMessage("  No request is waiting for a decision.");
+      return null;
+    }
+
+    int total = pending.getNumberOfEntries();
+    int totalPages = MessageUI.pageCount(total);
+    int page = 1;
+
+    while (true) {
+      MessageUI.displayBlankLine();
+      MessageUI.displayTableHeading(String.format(
+          "  %-5s %-8s %-8s %-26s %8s  %s",
+          "NO", "REDEEM", "MEMBER", "REWARD", "POINTS", "REQUESTED"));
+
+      int from = MessageUI.firstRowOnPage(page);
+      int upTo = MessageUI.lastRowOnPage(page, total);
+
+      for (int i = from; i <= upTo; i++) {
+        Redemption redemption = pending.getEntry(i);
+        Reward reward = data.findReward(redemption.getRewardId());
+
+        System.out.printf("  [%d]   %-8s %-8s %-26s %8d  %s%n",
+            i, redemption.getRedemptionId(), redemption.getMemberId(),
+            truncate(reward == null ? redemption.getRewardId()
+                : reward.getRewardName(), 26),
+            redemption.getPointsUsed(), redemption.getRequestDate());
+      }
+
+      MessageUI.displayThinRule();
+      MessageUI.displayMessage("  First asked is first served - work down from"
+          + " the top.");
+
+      if (totalPages == 1) {
+        int picked = MessageUI.readInt(scanner,
+            "Number of the request to decide", 1, total);
+        return (picked == MessageUI.CANCELLED_INT) ? null : pending.getEntry(picked);
+      }
+
+      System.out.printf("  Showing %d-%d of %d.%n", from, upTo, total);
+
+      Integer chosen = readPagedSelection(page, totalPages, total, "request");
+      if (chosen == null) {
+        return null;
+      }
+      if (chosen > 0) {
+        return pending.getEntry(chosen);
+      }
+      page = -chosen;
+    }
+  }
+
+  /**
+   * Reads a paging command or a selection from one prompt.
+   *
+   * @param page the page on screen now
+   * @param totalPages how many there are
+   * @param total how many rows altogether
+   * @param noun what is being selected, for the wording
+   * @return a positive row to select, a negated page to move to, or null to quit
+   */
+  private Integer readPagedSelection(int page, int totalPages, int total, String noun) {
+    while (true) {
+      System.out.printf("  Page %d of %d - [N]ext, [P]revious, [1-%d] jump,"
+          + " [S]elect, 0 to go back: ", page, totalPages, totalPages);
+      String input = MessageUI.readLine(scanner, "0").trim().toLowerCase();
+
+      if (input.equals("0") || input.equals("q")) {
+        return null;
+      }
+      if (input.isEmpty() || input.equals("n")) {
+        return -((page >= totalPages) ? 1 : page + 1);
+      }
+      if (input.equals("p")) {
+        return -((page <= 1) ? totalPages : page - 1);
+      }
+      if (input.equals("s")) {
+        int picked = MessageUI.readInt(scanner,
+            "Number of the " + noun, 1, total);
+        if (picked == MessageUI.CANCELLED_INT) {
+          continue;
+        }
+        return picked;
+      }
+
+      try {
+        int wanted = Integer.parseInt(input);
+        if (wanted >= 1 && wanted <= totalPages) {
+          return -wanted;
+        }
+        MessageUI.displayError("There is no page " + wanted + ". Enter 1 to "
+            + totalPages + ", or S to select.");
+      } catch (NumberFormatException notANumber) {
+        MessageUI.displayError("Enter N, P, a page number, S to select,"
+            + " or 0 to go back.");
+      }
+    }
+  }
+
+  /**
+   * Shows one request in full, so the decision is made on the facts.
+   *
+   * @param redemption the request
+   * @param member who asked
+   * @param reward what they asked for
+   * @param data used to reach the booking behind the request
+   */
+  public void displayRedemptionForDecision(Redemption redemption, Member member,
+      Reward reward, ResortData data) {
+    MessageUI.displaySectionHeading("Request " + redemption.getRedemptionId());
+    MessageUI.displayField("Member", member == null ? redemption.getMemberId()
+        : member.getMemberId() + "  (" + member.getTier() + ")");
+    MessageUI.displayField("Reward", reward == null ? redemption.getRewardId()
+        : reward.getRewardName());
+    MessageUI.displayField("Points required",
+        String.valueOf(redemption.getPointsUsed()));
+    MessageUI.displayField("Member balance", member == null ? "-"
+        : String.valueOf(member.getPointsBalance()));
+    MessageUI.displayField("Requested on", redemption.getRequestDate().toString());
+
+    if (redemption.getBookingId() != null) {
+      Booking booking = data.findBooking(redemption.getBookingId());
+      if (booking != null) {
+        MessageUI.displayField("For booking", booking.getBookingId()
+            + "  (confirmation " + booking.getConfirmationNumber() + ")");
+        MessageUI.displayField("Stay", booking.getCheckInDate() + " to "
+            + booking.getCheckOutDate());
+        MessageUI.displayField("Booking status", booking.getBookingStatus());
+      }
+    }
+  }
+
+  /**
+   * Shows what each tier costs and how many members sit in it.
+   *
+   * @param members every member, counted by tier
+   */
+  public void displayTierThresholds(ListInterface<Member> members) {
+    int[] counts = new int[4];
+    for (int i = 1; i <= members.getNumberOfEntries(); i++) {
+      switch (members.getEntry(i).getTier()) {
+        case Member.DIAMOND: counts[3]++; break;
+        case Member.PLATINUM: counts[2]++; break;
+        case Member.GOLD: counts[1]++; break;
+        default: counts[0]++; break;
+      }
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayTableHeading(String.format("  %-12s %16s  %s",
+        "TIER", "LIFETIME POINTS", "MEMBERS"));
+    System.out.printf("  %-12s %16s  %d%n", Member.SILVER, "0 (everyone)", counts[0]);
+    System.out.printf("  %-12s %16d  %d%n", Member.GOLD,
+        Member.getGoldThreshold(), counts[1]);
+    System.out.printf("  %-12s %16d  %d%n", Member.PLATINUM,
+        Member.getPlatinumThreshold(), counts[2]);
+    System.out.printf("  %-12s %16d  %d%n", Member.DIAMOND,
+        Member.getDiamondThreshold(), counts[3]);
+    MessageUI.displayThinRule();
+    MessageUI.displayMessage("  A tier is earned on lifetime points, so these"
+        + " apply to everyone at once.");
+  }
+
+  /**
+   * Asks for one tier's threshold.
+   *
+   * @param tier which tier it is for
+   * @param current what it is now
+   * @return the new figure, or -1 if cancelled
+   */
+  public int inputThreshold(String tier, int current) {
+    int value = MessageUI.readInt(scanner,
+        "Lifetime points for " + tier + " [" + current + "]", 1, 1000000);
+    return (value == MessageUI.CANCELLED_INT) ? -1 : value;
+  }
+
+  /**
+   * Shows who would move tier if the proposed thresholds were applied.
+   *
+   * A demotion is the thing worth seeing: a guest can lose a tier through a
+   * management decision rather than anything they did, so it is named before
+   * the change is saved rather than discovered afterwards.
+   *
+   * @param members everybody on the books
+   * @param gold the proposed GOLD threshold
+   * @param platinum the proposed PLATINUM threshold
+   * @param diamond the proposed DIAMOND threshold
+   */
+  public void displayRetierPreview(ListInterface<Member> members, int gold,
+      int platinum, int diamond, ResortData data) {
+    MessageUI.displaySectionHeading("What this would change");
+
+    int up = 0;
+    int down = 0;
+    boolean listed = false;
+
+    for (int i = 1; i <= members.getNumberOfEntries(); i++) {
+      Member member = members.getEntry(i);
+      String now = member.getTier();
+      String after = tierUnder(member.getLifetimePoints(), gold, platinum, diamond);
+      if (now.equals(after)) {
+        continue;
+      }
+
+      boolean promotion = Member.tierRank(after) > Member.tierRank(now);
+      if (promotion) {
+        up++;
+      } else {
+        down++;
+      }
+
+      if (!listed) {
+        MessageUI.displayTableHeading(String.format("  %-8s %-22s %10s  %s",
+            "MEMBER", "GUEST", "LIFETIME", "TIER"));
+        listed = true;
+      }
+      Guest guest = data.findGuest(member.getGuestId());
+      System.out.printf("  %-8s %-22s %10d  %s -> %s%s%n",
+          member.getMemberId(),
+          truncate(guest == null ? "-" : guest.getFullName(), 22),
+          member.getLifetimePoints(), now, after, promotion ? "" : "   (demoted)");
+    }
+
+    if (!listed) {
+      MessageUI.displayMessage("  Nobody changes tier.");
+      return;
+    }
+
+    MessageUI.displayThinRule();
+    System.out.printf("  %d promoted, %d demoted.%n", up, down);
+  }
+
+  /** Which tier a lifetime total would earn under the proposed thresholds. */
+  private String tierUnder(int lifetimePoints, int gold, int platinum, int diamond) {
+    if (lifetimePoints >= diamond) {
+      return Member.DIAMOND;
+    }
+    if (lifetimePoints >= platinum) {
+      return Member.PLATINUM;
+    }
+    if (lifetimePoints >= gold) {
+      return Member.GOLD;
+    }
+    return Member.SILVER;
+  }
+
+  /**
+   * Shows one reward in full.
+   *
+   * @param reward the reward to show
+   */
+  public void displayReward(Reward reward) {
+    MessageUI.displayBlankLine();
+    MessageUI.displayField("Reward ID", reward.getRewardId());
+    MessageUI.displayField("Name", reward.getRewardName());
+    MessageUI.displayField("Category", reward.getCategory());
+    MessageUI.displayField("Points required", String.valueOf(reward.getPointsRequired()));
+    MessageUI.displayField("Minimum tier", reward.getMinimumTier());
+    MessageUI.displayField("Cash value", String.format("RM%.2f", reward.getCashValue()));
+    MessageUI.displayField("In stock", String.valueOf(reward.getStockQuantity()));
+    MessageUI.displayField("Active", reward.isActive() ? "Yes" : "No");
+  }
+
+  /**
+   * Walks the editable fields of a reward, keeping whatever is left blank.
+   *
+   * The reward is changed in place as each answer is given, so a value that
+   * fails its own check is refused before it reaches the record.
+   *
+   * @param reward the reward being edited
+   * @return ok when something was changed, or a failure explaining why not
+   */
+  public ServiceResult<Reward> editRewardFields(Reward reward) {
+    MessageUI.displaySectionHeading("Edit " + reward.getRewardId());
+
+    String name = MessageUI.readOptionalText(scanner,
+        "Name [" + reward.getRewardName() + "]");
+    if (name != null && !name.isBlank()) {
+      reward.setRewardName(name.trim());
+    }
+
+    String category = inputRewardCategory(reward.getCategory());
+    if (category != null) {
+      reward.setCategory(category);
+    }
+
+    String points = MessageUI.readOptionalText(scanner,
+        "Points required [" + reward.getPointsRequired() + "]");
+    if (points != null && !points.isBlank()) {
+      try {
+        int value = Integer.parseInt(points.trim());
+        if (value <= 0) {
+          return ServiceResult.fail("Points required must be more than zero.");
+        }
+        reward.setPointsRequired(value);
+      } catch (NumberFormatException notANumber) {
+        return ServiceResult.fail("Points required must be a whole number.");
+      }
+    }
+
+    String value = MessageUI.readOptionalText(scanner,
+        String.format("Cash value [RM%.2f]", reward.getCashValue()));
+    if (value != null && !value.isBlank()) {
+      try {
+        double amount = Double.parseDouble(value.trim());
+        if (amount < 0) {
+          return ServiceResult.fail("A cash value cannot be negative.");
+        }
+        reward.setCashValue(Math.round(amount * 100.0) / 100.0);
+      } catch (NumberFormatException notANumber) {
+        return ServiceResult.fail("Cash value must be an amount, e.g. 160.00");
+      }
+    }
+
+    String stock = MessageUI.readOptionalText(scanner,
+        "In stock [" + reward.getStockQuantity() + "]");
+    if (stock != null && !stock.isBlank()) {
+      try {
+        int quantity = Integer.parseInt(stock.trim());
+        if (quantity < 0) {
+          return ServiceResult.fail("Stock cannot be negative.");
+        }
+        reward.setStockQuantity(quantity);
+      } catch (NumberFormatException notANumber) {
+        return ServiceResult.fail("Stock must be a whole number.");
+      }
+    }
+
+    MessageUI.displayBlankLine();
+    MessageUI.displayMessage("  Currently "
+        + (reward.isActive() ? "on offer." : "withdrawn."));
+    if (MessageUI.confirm(scanner, reward.isActive()
+        ? "Withdraw it from the catalogue?" : "Put it back on offer?")) {
+      reward.setActive(!reward.isActive());
+    }
+
+    return ServiceResult.ok("Updated.", reward);
+  }
+
+  /**
+   * Asks which category a reward belongs to, or keeps the one it has.
+   *
+   * @param current what it is now
+   * @return the chosen category, or null to leave it alone
+   */
+  private String inputRewardCategory(String current) {
+    String[] categories = {
+      Reward.CAT_SPA, Reward.CAT_DINING, Reward.CAT_ACTIVITY,
+      Reward.CAT_WELLNESS, Reward.CAT_TRANSPORT
+    };
+
+    MessageUI.displayMessage("  Category [" + current + "]:");
+    for (int i = 0; i < categories.length; i++) {
+      MessageUI.displayMessage("     [" + (i + 1) + "]  " + categories[i]);
+    }
+
+    String answer = MessageUI.readOptionalText(scanner,
+        "Category number (ENTER to keep " + current + ")");
+    if (answer == null || answer.isBlank()) {
+      return null;
+    }
+
+    try {
+      int picked = Integer.parseInt(answer.trim());
+      if (picked >= 1 && picked <= categories.length) {
+        return categories[picked - 1];
+      }
+    } catch (NumberFormatException notANumber) {
+      // fall through - an unreadable answer keeps what is there
+    }
+
+    MessageUI.displayError("Category unchanged - " + current + " kept.");
+    return null;
+  }
+
   public Member chooseMember(ListInterface<Member> members, ResortData data,
       String prompt, String emptyMessage) {
     if (members.isEmpty()) {
@@ -764,50 +1290,36 @@ public class LoyaltyRewardsUI {
       return;
     }
 
-    MessageUI.displayTableHeading(String.format("  %-7s %-11s %-8s %8s %9s  %s",
-        "TXN", "DATE", "TYPE", "POINTS", "BALANCE", "DESCRIPTION"));
+    MessageUI.displayTableHeading(String.format(
+        "  %-7s %-11s %-8s %8s %9s %-8s  %s",
+        "TXN", "DATE", "TYPE", "POINTS", "BALANCE", "BOOKING", "DESCRIPTION"));
+
+    int earned = 0;
+    int spent = 0;
 
     for (int i = 1; i <= txns.getNumberOfEntries(); i++) {
       PointTransaction txn = txns.getEntry(i);
 
-      System.out.printf("  %-7s %-11s %-8s %+8d %9d  %s%n",
+      if (txn.getPoints() > 0) {
+        earned += txn.getPoints();
+      } else {
+        spent += -txn.getPoints();
+      }
+
+      System.out.printf("  %-7s %-11s %-8s %+8d %9d %-8s  %s%n",
           txn.getTxnId(), txn.getTxnDate(), txn.getTxnType(),
           txn.getPoints(), txn.getBalanceAfter(),
+          txn.getBookingId() == null ? "-" : txn.getBookingId(),
           txn.getDescription() == null ? "" : txn.getDescription());
     }
+
+    // The two totals said plainly, so the balance is not something the reader
+    // has to add up themselves from a column of signed figures.
     MessageUI.displayThinRule();
-    System.out.printf("  Balance now: %d points.%n", member.getPointsBalance());
-  }
-
-  /**
-   * Shows a member's notifications, newest first.
-   *
-   * @param notifications the messages
-   * @param memberId whose they are
-   */
-  public void displayNotifications(ListInterface<Notification> notifications,
-      String memberId) {
-    MessageUI.displaySectionHeading("Notifications for " + memberId);
-
-    if (notifications.isEmpty()) {
-      MessageUI.displayMessage("  This member has no notifications.");
-      return;
-    }
-
-    for (int i = 1; i <= notifications.getNumberOfEntries(); i++) {
-      Notification notification = notifications.getEntry(i);
-
-      System.out.printf("  [%s]  %-16s %s%n",
-          notification.isRead() ? " " : "*",
-          notification.getType(), notification.getCreatedDate());
-      System.out.printf("        %s%n", notification.getMessage());
-      MessageUI.displayBlankLine();
-    }
-
-    MessageUI.displayThinRule();
-    int unread = notifications.countIf(n -> !n.isRead());
-    System.out.printf("  %d notification(s), %d unread (marked *).%n",
-        notifications.getNumberOfEntries(), unread);
+    System.out.printf("  %-24s %+8d points%n", "Total earned", earned);
+    System.out.printf("  %-24s %+8d points%n", "Total spent or expired", -spent);
+    System.out.printf("  %-24s %8d points%n", "Balance now",
+        member.getPointsBalance());
   }
 
   private String truncate(String text, int width) {

@@ -142,12 +142,9 @@ public class WalkInRegistrationUI {
       return null;
     }
 
-    String email = MessageUI.readOptionalEmail(scanner, "Email");
-    if (MessageUI.isCancelled(email)) {
-      return null;
-    }
-
-    return new Guest(guestId, name, icPassportNo, contact, email,
+    // No email is taken: nothing is sent to guests, so asking for one at the
+    // counter would collect something the system never uses.
+    return new Guest(guestId, name, icPassportNo, contact, "",
         java.time.LocalDateTime.now());
   }
 

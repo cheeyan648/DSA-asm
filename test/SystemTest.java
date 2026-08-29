@@ -103,14 +103,13 @@ public class SystemTest {
 
     // --- Being served ---------------------------------------------
     // Everyone ahead of them is dealt with first, which is the queue working.
-    // Only one guest holds the counter at a time, so each is cleared before
-    // the next is called - otherwise the unfinished one keeps their place.
+    // Several guests can be called through without waiting on the last one
+    // being booked, so the queue is simply drained until this guest is next.
     while (!reg.equals(data.getWaitingList().peekNext())) {
       ServiceResult<WalkInRegistration> other = service.serveNextGuest(FRONT_DESK);
       if (other.isFailure()) {
         break;
       }
-      other.getValue().setStatus(WalkInRegistration.STATUS_CANCELLED);
     }
 
     ServiceResult<WalkInRegistration> called = service.serveNextGuest(FRONT_DESK);
@@ -470,14 +469,6 @@ public class SystemTest {
     runner.checkEquals("with the running balance recorded",
         member.getPointsBalance(), earned.getBalanceAfter());
 
-    // They were told about it.
-    ListInterface<entity.Notification> messages = data.getNotificationList().filter(
-        note -> member.getMemberId().equals(note.getMemberId()));
-    runner.check("the member was notified", messages.getNumberOfEntries() >= 2);
-    runner.check("including about the tier upgrade",
-        messages.countIf(note ->
-            entity.Notification.TIER_UPGRADE.equals(note.getType())) >= 1);
-
     // --- Spending them --------------------------------------------
     int beforeSpend = member.getPointsBalance();
     int lifetimeBefore = member.getLifetimePoints();
@@ -517,14 +508,14 @@ public class SystemTest {
     service.assignRoom(second.getBookingId(), "1001", FRONT_DESK,
         RoomAssignment.REASON_INITIAL);
 
+    // The reward is an entitlement to a service, so the next stay's bill is
+    // unaffected by it - what the guest spent was points, not money.
     Invoice secondInvoice = data.findInvoiceByBooking(second.getBookingId());
-    double beforeDiscount = secondInvoice.getTotalAmount();
-
-    ServiceResult<Invoice> discounted = service.applyRedemptionToInvoice(
-        redemption.getRedemptionId(), second.getBookingId());
-    runner.check("the reward can be used on the next stay", discounted.isSuccess());
-    runner.check("and the bill is smaller for it",
-        secondInvoice.getTotalAmount() < beforeDiscount);
+    runner.checkAmount("the next stay is billed at its own rate",
+        second.getRatePerNight() * second.getNumberOfNights(),
+        secondInvoice.getRoomCharge());
+    runner.checkEquals("and the approved reward is still on record",
+        Redemption.APPROVED, redemption.getStatus());
   }
 
   // ==================================================================

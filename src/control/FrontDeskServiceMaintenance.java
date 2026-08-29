@@ -8,7 +8,9 @@ import entity.Guest;
 import entity.HousekeepingTask;
 import entity.Invoice;
 import entity.Payment;
+import entity.Member;
 import entity.Redemption;
+import entity.Reward;
 import entity.Room;
 import entity.RoomArrangement;
 import entity.RoomAssignment;
@@ -365,7 +367,7 @@ public class FrontDeskServiceMaintenance {
           recordPayment();
           break;
         case 3:
-          applyLoyaltyDiscount();
+          requestLoyaltyReward();
           break;
         default:
           break;
@@ -445,8 +447,14 @@ public class FrontDeskServiceMaintenance {
     // than copying an IC off a screen they have just left.
     ListInterface<WalkInRegistration> atCounter = data.getRegistrationList().filter(
         reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
-    atCounter.sort(java.util.Comparator.comparing(WalkInRegistration::getCalledAt,
-        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+
+    // Urgent guests first, then whoever was called earliest. The urgency
+    // granted at the door has to survive all the way to the booking, or the
+    // exception the officer made at registration counts for nothing here.
+    atCounter.sort(java.util.Comparator
+        .comparing((WalkInRegistration reg) -> reg.isUrgent() ? 0 : 1)
+        .thenComparing(WalkInRegistration::getCalledAt,
+            java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
 
     WalkInRegistration calledWalkIn = ui.chooseServedRegistration(atCounter, data);
     if (calledWalkIn == null) {
@@ -546,8 +554,22 @@ public class FrontDeskServiceMaintenance {
     // because a guest standing at the counter expects to leave with a room.
     ui.displayMessage("");
     ui.displaySectionHeading("Room");
-    if (assignRoomTo(booking)) {
+    int outcome = assignRoomTo(booking);
+
+    if (outcome == ROOM_ASSIGNED) {
       settleBookingAtCounter(booking);
+      ui.pause();
+      return;
+    }
+
+    if (outcome == ROOM_CANCELLED) {
+      // Rooms were available and the officer backed out, so there is nothing
+      // to solve: the booking waits as PENDING for a room to be assigned.
+      ui.displayMessage("");
+      ui.displayMessage("  Booking " + booking.getBookingId()
+          + " stays PENDING with no room.");
+      ui.displayMessage("  Give it one from Rooms > Assign a room to a pending"
+          + " booking.");
       ui.pause();
       return;
     }
@@ -706,6 +728,11 @@ public class FrontDeskServiceMaintenance {
       return;
     }
 
+    // Asked before the money is taken, while the guest is still deciding: a
+    // membership costs nothing and this stay is what earns their first points,
+    // so the offer is worth more now than after they have paid and left.
+    offerMembership(booking);
+
     ui.displayMessage("");
     ui.displaySectionHeading("Payment");
     ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
@@ -721,6 +748,47 @@ public class FrontDeskServiceMaintenance {
     }
 
     displayReceipt(booking, invoice, changeDue);
+  }
+
+  /**
+   * Offers a free membership to a guest who does not have one.
+   *
+   * Nothing is awarded here. Enrolling only opens the account; the points for
+   * this stay are worked out and stored when the guest checks out, which is
+   * when the bill is final and the stay actually happened.
+   *
+   * @param booking the stay being paid for
+   */
+  private void offerMembership(Booking booking) {
+    Guest guest = data.findGuest(booking.getGuestId());
+    if (guest == null || data.findMemberByGuest(booking.getGuestId()) != null) {
+      return;
+    }
+
+    ui.displayMessage("");
+    ui.displaySectionHeading("Loyalty membership");
+    ui.displayMessage("  " + guest.getFullName() + " is not a member yet.");
+    ui.displayMessage("  Membership is free. Points are earned on every stay"
+        + " and spent on");
+    ui.displayMessage("  spa sessions, dining and activities during a visit.");
+    ui.displayMessage("");
+
+    if (!ui.confirm("Join the loyalty programme?")) {
+      ui.displayMessage("  No membership taken. They will be enrolled"
+          + " automatically at check-out.");
+      return;
+    }
+
+    ServiceResult<Member> enrolled = service.enrolMember(booking.getGuestId());
+    if (enrolled.isFailure()) {
+      ui.displayError(enrolled.getMessage());
+      return;
+    }
+
+    ui.displaySuccess("Welcome aboard - member "
+        + enrolled.getValue().getMemberId() + ", "
+        + enrolled.getValue().getTier() + " tier.");
+    ui.displayMessage("  Points for this stay are added when they check out.");
   }
 
   /** Returned by collectPayment when the officer gave up on the bill. */
@@ -821,7 +889,7 @@ public class FrontDeskServiceMaintenance {
     Guest guest = data.findGuest(booking.getGuestId());
 
     ui.displayReceipt(booking, invoice, service.paymentsFor(invoice.getInvoiceId()),
-        guest == null ? "-" : guest.getFullName(), changeDue);
+        guest == null ? "-" : guest.getFullName(), changeDue, data);
 
     ui.pause("Press ENTER to close the receipt");
     ui.clearScreen();
@@ -1464,7 +1532,7 @@ public class FrontDeskServiceMaintenance {
       // Giving a room raises the bill, so the chance to settle it is offered
       // here too - the same rule whichever screen the room came from.
       Booking given = pending.getEntry(position);
-      if (assignRoomTo(given)) {
+      if (assignRoomTo(given) == ROOM_ASSIGNED) {
         settleBookingAtCounter(given);
       }
 
@@ -1486,7 +1554,14 @@ public class FrontDeskServiceMaintenance {
    * @param booking the booking to give a room to
    * @return true if the booking now holds a room
    */
-  private boolean assignRoomTo(Booking booking) {
+  /** A room was given to the booking. */
+  private static final int ROOM_ASSIGNED = 1;
+  /** No room of that type is ready, so alternatives are worth offering. */
+  private static final int ROOM_NONE_READY = 0;
+  /** The officer backed out. Nothing further should be offered. */
+  private static final int ROOM_CANCELLED = -1;
+
+  private int assignRoomTo(Booking booking) {
     ListInterface<Room> available = service.findAvailableRooms(
         booking.getTypeId(), booking.getCheckInDate(), booking.getCheckOutDate());
 
@@ -1494,8 +1569,10 @@ public class FrontDeskServiceMaintenance {
       ui.displayMessage("  These rooms are vacant for the dates and cleaned.");
       String roomNo = ui.chooseRoom(available);
       if (roomNo == null) {
+        // Backing out is a decision, not a shortage: rooms were on offer and
+        // the officer declined them, so nothing else is proposed.
         ui.displayMessage("  Assignment cancelled.");
-        return false;
+        return ROOM_CANCELLED;
       }
 
       ServiceResult<Booking> assigned = service.assignRoom(booking.getBookingId(),
@@ -1503,12 +1580,12 @@ public class FrontDeskServiceMaintenance {
 
       if (assigned.isFailure()) {
         ui.displayError(assigned.getMessage());
-        return false;
+        return ROOM_CANCELLED;
       }
 
       ui.displaySuccess(assigned.getMessage());
       ui.displayBooking(booking, data);
-      return true;
+      return ROOM_ASSIGNED;
     }
 
     // Only a room housekeeping has finished with can be sold. The front desk
@@ -1518,7 +1595,7 @@ public class FrontDeskServiceMaintenance {
     RoomType wanted = data.findRoomType(booking.getTypeId());
     ui.displayError("No " + (wanted == null ? booking.getTypeId() : wanted.getTypeName())
         + " room is ready for those dates.");
-    return false;
+    return ROOM_NONE_READY;
   }
 
   /** Moves a guest to a different room, keeping the history of both. */
@@ -1722,23 +1799,39 @@ public class FrontDeskServiceMaintenance {
   // BILLING
   // ==================================================================
 
+  /**
+   * Shows a bill picked from a list rather than typed in.
+   *
+   * Nobody remembers invoice numbers, so the bills are listed with the guest,
+   * the dates and the amount, and a row number is what gets typed.
+   */
   private void viewInvoice() {
-    ui.startAction("VIEW AN INVOICE");
+    while (true) {
+      ui.startAction("VIEW AN INVOICE");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
+      // Newest first: the bill somebody asks about is usually a recent one.
+      ListInterface<Invoice> invoices = copyOfInvoices(data.getInvoiceList());
+      invoices.sort(java.util.Comparator.comparing(Invoice::getIssuedAt,
+          java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+
+      if (!ui.displayBookingRecords(invoices, data)) {
+        ui.pause();
+        return;
+      }
+
+      ui.displayMessage("");
+      int position = ui.inputListPosition(invoices.getNumberOfEntries(),
+          "Number of the invoice to view");
+      if (position < 0) {
+        return;
+      }
+
+      Invoice invoice = invoices.getEntry(position);
+      ui.clearScreen();
+      ui.startAction("INVOICE " + invoice.getInvoiceId());
+      ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
+      ui.pause("Press ENTER to go back to the list");
     }
-
-    Invoice invoice = data.findInvoiceByBooking(booking.getBookingId());
-    if (invoice == null) {
-      ui.displayError("This booking has no invoice - no room has been assigned yet.");
-      ui.pause();
-      return;
-    }
-
-    ui.displayInvoice(invoice, service.paymentsFor(invoice.getInvoiceId()));
-    ui.pause();
   }
 
   private void recordPayment() {
@@ -1816,56 +1909,129 @@ public class FrontDeskServiceMaintenance {
   }
 
   /** Takes an approved loyalty reward off a live bill. */
-  private void applyLoyaltyDiscount() {
-    ui.startAction("APPLY A LOYALTY REWARD TO A BILL");
+  /**
+   * Requests a loyalty reward against a booking.
+   *
+   * Driven by the 8-digit confirmation number the guest is carrying rather
+   * than an internal ID, because that is the only reference they have. The
+   * booking is shown and confirmed first, so a mistyped number is caught
+   * before anything is submitted.
+   *
+   * Nothing is granted here. The request goes into the pending queue for
+   * Loyalty to approve, which is what keeps the desk from awarding rewards
+   * to itself - the points are only taken when a loyalty officer processes it.
+   */
+  private void requestLoyaltyReward() {
+    ui.startAction("REQUEST A LOYALTY REWARD");
 
-    ListInterface<Redemption> approved = data.getRedemptionList().filter(
-        redemption -> Redemption.APPROVED.equals(redemption.getStatus())
-            && redemption.getInvoiceId() == null);
+    // --- Screen one: which booking? -------------------------------
+    Booking booking = promptByConfirmationNumber();
+    if (booking == null) {
+      return;
+    }
 
-    if (approved.isEmpty()) {
-      ui.displayMessage("  There is no approved reward waiting to be applied.");
+    Guest guest = data.findGuest(booking.getGuestId());
+    if (guest == null) {
+      ui.displayError("That booking's guest record is missing.");
       ui.pause();
       return;
     }
 
-    ui.displaySectionHeading("Approved rewards not yet applied");
-    ui.displayTableHeading(String.format("  %-8s %-7s %-30s %s",
-        "REDEEM", "MEMBER", "REWARD", "VALUE"));
+    ui.displayBookingForRedemption(booking, guest, data);
+    ui.displayMessage("");
 
-    for (int i = 1; i <= approved.getNumberOfEntries(); i++) {
-      Redemption redemption = approved.getEntry(i);
-      entity.Reward reward = data.findReward(redemption.getRewardId());
-
-      System.out.printf("  %-8s %-7s %-30s RM%.2f%n",
-          redemption.getRedemptionId(), redemption.getMemberId(),
-          reward == null ? redemption.getRewardId() : reward.getRewardName(),
-          reward == null ? 0.0 : reward.getCashValue());
-    }
-    ui.displayThinRule();
-
-    String redemptionId = MessageUI.readRequiredText(MessageUI.scanner,
-        "Redemption ID (e.g. RD0002)");
-    if (MessageUI.isCancelled(redemptionId)) {
+    if (!ui.confirm("Is this the right booking?")) {
+      ui.displayMessage("  Nothing has been requested.");
+      ui.pause();
       return;
     }
 
-    String bookingId = ui.inputBookingId();
-    if (bookingId == null) {
+    // A reward is enjoyed during the stay, so a stay already finished or
+    // called off has nothing left to attach one to.
+    if (Booking.STATUS_CHECKED_OUT.equals(booking.getBookingStatus())
+        || Booking.STATUS_CANCELLED.equals(booking.getBookingStatus())
+        || Booking.STATUS_NO_SHOW.equals(booking.getBookingStatus())) {
+      ui.displayError("A " + booking.getBookingStatus()
+          + " booking can no longer take a reward.");
+      ui.displayMessage("  Rewards are enjoyed before or during the stay.");
+      ui.pause();
       return;
     }
 
-    ServiceResult<Invoice> result =
-        service.applyRedemptionToInvoice(redemptionId, bookingId);
-
-    if (result.isSuccess()) {
-      ui.displaySuccess(result.getMessage());
-      ui.displayInvoice(result.getValue(),
-          service.paymentsFor(result.getValue().getInvoiceId()));
-    } else {
-      ui.displayError(result.getMessage());
+    Member member = data.findMemberByGuest(booking.getGuestId());
+    if (member == null) {
+      ui.displayError(guest.getFullName() + " is not a loyalty member yet.");
+      ui.displayMessage("  Membership starts automatically at their first"
+          + " check-out, so they");
+      ui.displayMessage("  will be enrolled once this stay is complete.");
+      ui.pause();
+      return;
     }
-    ui.pause();
+
+    // --- Screen two: which reward? --------------------------------
+    ui.clearScreen();
+    ui.startAction("REQUEST A LOYALTY REWARD");
+    ui.displayRedemptionHeader(booking, guest, member);
+
+    ListInterface<Reward> catalogue = data.getRewardList();
+    Reward chosen = ui.chooseRewardForMember(catalogue, member);
+    if (chosen == null) {
+      ui.displayMessage("  Nothing has been requested.");
+      ui.pause();
+      return;
+    }
+
+    ServiceResult<Redemption> requested =
+        service.requestRedemption(member.getMemberId(), chosen.getRewardId());
+
+    if (requested.isFailure()) {
+      ui.displayError(requested.getMessage());
+      ui.pause();
+      return;
+    }
+
+    // The booking is remembered on the request, so Loyalty can see which stay
+    // the reward belongs to when they come to approve it.
+    Redemption redemption = requested.getValue();
+    redemption.setBookingId(booking.getBookingId());
+    data.saveLoyalty();
+
+    ui.displayMessage("");
+    ui.displaySuccess("Request " + redemption.getRedemptionId()
+        + " submitted for " + chosen.getRewardName() + ".");
+    ui.displayMessage("  It is waiting in the loyalty queue. No points have"
+        + " been taken yet.");
+    ui.displayMessage("  A loyalty officer approves it at Loyalty & Rewards >"
+        + " Rewards &");
+    ui.displayMessage("  redemptions > Process the next pending request.");
+    ui.pause("Press ENTER to accept the request");
+    ui.clearScreen();
+  }
+
+  /**
+   * Finds a booking from the 8-digit number the guest is carrying.
+   *
+   * Looked up through the confirmation tree rather than by scanning, and a
+   * number that names nothing is re-asked rather than ending the action.
+   *
+   * @return the booking, or null if the officer went back
+   */
+  private Booking promptByConfirmationNumber() {
+    while (true) {
+      String confirmation = ui.inputConfirmationNumber();
+      if (confirmation == null) {
+        return null;
+      }
+
+      Booking booking = data.findBookingByConfirmation(confirmation);
+      if (booking != null) {
+        return booking;
+      }
+
+      ui.displayError("No booking carries confirmation number " + confirmation + ".");
+      ui.displayMessage("  Check the guest's confirmation slip, or enter 0 to"
+          + " go back.");
+    }
   }
 
   // ==================================================================
@@ -2130,22 +2296,18 @@ public class FrontDeskServiceMaintenance {
   private void displayRevenue() {
     double billed = 0;
     double collected = 0;
-    double discounts = 0;
 
     ListInterface<Invoice> invoices = data.getInvoiceList();
     for (int i = 1; i <= invoices.getNumberOfEntries(); i++) {
       Invoice invoice = invoices.getEntry(i);
       billed += invoice.getTotalAmount();
       collected += invoice.getAmountPaid();
-      discounts += invoice.getDiscountAmount();
     }
 
     ui.displaySectionHeading("Revenue");
     ui.displayReportLine("Total billed", String.format("RM%.2f", billed));
     ui.displayReportLine("Total collected", String.format("RM%.2f", collected));
     ui.displayReportLine("Still outstanding", String.format("RM%.2f", billed - collected));
-    ui.displayReportLine("Given away as loyalty discounts",
-        String.format("RM%.2f", discounts));
 
     if (invoices.getNumberOfEntries() > 0) {
       ui.displayReportLine("Average invoice",

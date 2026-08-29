@@ -27,9 +27,53 @@ public class Member implements Serializable {
   public static final String PLATINUM = "PLATINUM";
   public static final String DIAMOND = "DIAMOND";
 
-  public static final int GOLD_THRESHOLD = 1000;
-  public static final int PLATINUM_THRESHOLD = 5000;
-  public static final int DIAMOND_THRESHOLD = 15000;
+  /**
+   * Lifetime points needed to reach each tier.
+   *
+   * Set by management rather than fixed in the code: what a tier is worth is a
+   * business decision that changes with the seasons, so these are editable
+   * from Loyalty & Rewards and saved with the rest of the loyalty data.
+   *
+   * They must stay in ascending order - GOLD below PLATINUM below DIAMOND -
+   * or tierOf would never reach the higher ones.
+   */
+  private static int goldThreshold = 1000;
+  private static int platinumThreshold = 5000;
+  private static int diamondThreshold = 15000;
+
+  public static int getGoldThreshold() {
+    return goldThreshold;
+  }
+
+  public static int getPlatinumThreshold() {
+    return platinumThreshold;
+  }
+
+  public static int getDiamondThreshold() {
+    return diamondThreshold;
+  }
+
+  /**
+   * Sets all three thresholds at once.
+   *
+   * Taken together rather than one at a time, because a single change could
+   * momentarily put them out of order - raising GOLD above PLATINUM would make
+   * PLATINUM unreachable until the second change landed.
+   *
+   * @param gold points for GOLD
+   * @param platinum points for PLATINUM
+   * @param diamond points for DIAMOND
+   * @return true if the three were in ascending order and were applied
+   */
+  public static boolean setThresholds(int gold, int platinum, int diamond) {
+    if (gold < 1 || gold >= platinum || platinum >= diamond) {
+      return false;
+    }
+    goldThreshold = gold;
+    platinumThreshold = platinum;
+    diamondThreshold = diamond;
+    return true;
+  }
 
   public static final String ACTIVE = "ACTIVE";
   public static final String DORMANT = "DORMANT";
@@ -147,13 +191,13 @@ public class Member implements Serializable {
    * @return the tier name
    */
   public static String tierFor(int lifetimePoints) {
-    if (lifetimePoints >= DIAMOND_THRESHOLD) {
+    if (lifetimePoints >= diamondThreshold) {
       return DIAMOND;
     }
-    if (lifetimePoints >= PLATINUM_THRESHOLD) {
+    if (lifetimePoints >= platinumThreshold) {
       return PLATINUM;
     }
-    if (lifetimePoints >= GOLD_THRESHOLD) {
+    if (lifetimePoints >= goldThreshold) {
       return GOLD;
     }
     return SILVER;
@@ -241,11 +285,11 @@ public class Member implements Serializable {
   public int getPointsToNextTier() {
     switch (tierRank(tier)) {
       case 0:
-        return GOLD_THRESHOLD - lifetimePoints;
+        return goldThreshold - lifetimePoints;
       case 1:
-        return PLATINUM_THRESHOLD - lifetimePoints;
+        return platinumThreshold - lifetimePoints;
       case 2:
-        return DIAMOND_THRESHOLD - lifetimePoints;
+        return diamondThreshold - lifetimePoints;
       default:
         return 0;
     }

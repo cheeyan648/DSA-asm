@@ -7,7 +7,6 @@ import entity.Guest;
 import entity.HousekeepingTask;
 import entity.Invoice;
 import entity.Member;
-import entity.Notification;
 import entity.Payment;
 import entity.PointTransaction;
 import entity.Redemption;
@@ -307,17 +306,10 @@ public class ResortService {
    * @return the registration now being served
    */
   public ServiceResult<WalkInRegistration> serveNextGuest(String staffId) {
-    // Only one guest is at the counter at a time. If the last one called has
-    // not finished - their booking was never made, or the officer walked away
-    // mid-transaction - they keep the desk rather than being dropped for the
-    // next in line. Nobody is served past an unfinished guest.
-    WalkInRegistration atCounter = findGuestAtCounter();
-    if (atCounter != null) {
-      return ServiceResult.fail(guestNameOf(atCounter.getGuestId())
-          + " (" + atCounter.getRegId() + ") is still at the counter with no"
-          + " booking made. Finish or cancel their registration first.");
-    }
-
+    // Registration and booking run at their own pace. Calling a guest through
+    // does not wait on the last one being booked: several can be served and
+    // sent over, and the front desk works through them in priority order. A
+    // guest already called simply stays IN_SERVICE until a booking is made.
     WalkInRegistration next = data.getWaitingList().next();
     if (next == null) {
       return ServiceResult.fail("No guests are waiting.");
@@ -1326,11 +1318,6 @@ public class ResortService {
       return ServiceResult.fail("Booking " + bookingId + " was not found.");
     }
 
-    Member member = data.findMemberByGuest(booking.getGuestId());
-    if (member == null) {
-      return ServiceResult.fail("That guest is not a loyalty member.");
-    }
-
     Invoice invoice = data.findInvoiceByBooking(bookingId);
     if (invoice == null || !invoice.isSettled()) {
       return ServiceResult.fail("Points are awarded once the bill is settled.");
@@ -1343,6 +1330,20 @@ public class ResortService {
             && PointTransaction.EARN.equals(txn.getTxnType()));
     if (existing != null) {
       return ServiceResult.fail("Points for " + bookingId + " have already been awarded.");
+    }
+
+    // A guest who has paid for a stay has already given the resort everything
+    // a membership needs, so the first completed stay enrols them rather than
+    // throwing the points away. Their next visit starts with a balance.
+    Member member = data.findMemberByGuest(booking.getGuestId());
+    boolean newlyEnrolled = false;
+    if (member == null) {
+      ServiceResult<Member> enrolled = enrolMember(booking.getGuestId());
+      if (enrolled.isFailure()) {
+        return ServiceResult.fail(enrolled.getMessage());
+      }
+      member = enrolled.getValue();
+      newlyEnrolled = true;
     }
 
     int points = (int) Math.round(
@@ -1362,18 +1363,15 @@ public class ResortService {
         String.format("Stay %s at %s rate", bookingId, previousTier));
     data.getTransactionList().add(txn);
 
-    raiseNotification(member.getMemberId(), Notification.POINTS_EARNED,
-        String.format("You earned %d points from your stay in room %s.",
-            points, booking.getRoomNo()), bookingId);
-
     if (member.refreshTier()) {
-      raiseNotification(member.getMemberId(), Notification.TIER_UPGRADE,
-          "Congratulations - you are now " + member.getTier() + ".", bookingId);
     }
 
     data.saveLoyalty();
 
-    String message = points + " points awarded to " + member.getMemberId() + ".";
+    String message = newlyEnrolled
+        ? "Enrolled as loyalty member " + member.getMemberId() + " and awarded "
+            + points + " points."
+        : points + " points awarded to " + member.getMemberId() + ".";
     if (!previousTier.equals(member.getTier())) {
       message += " Tier upgraded from " + previousTier + " to " + member.getTier() + ".";
     }
@@ -1406,12 +1404,18 @@ public class ResortService {
     // already waiting in the queue.
     Redemption redemption = new Redemption(data.nextRedemptionId(), memberId, rewardId,
         reward.getPointsRequired(), LocalDate.now());
+
+    // Checked here as well as at approval. The rules are the same either way,
+    // but a guest told at the counter that they are short is better served
+    // than one who waits in the queue only to be refused - and it keeps
+    // requests nobody could ever grant out of the loyalty officer's list.
+    String refusal = checkRedemptionEligibility(member, reward, redemption);
+    if (refusal != null) {
+      return ServiceResult.fail(reward.getRewardName() + " cannot be requested: "
+          + refusal + ".");
+    }
     data.getRedemptionList().add(redemption);
     data.getPendingRedemptions().add(redemption);
-
-    raiseNotification(memberId, Notification.REDEMPTION,
-        "Your request for " + reward.getRewardName() + " has been received.",
-        redemption.getRedemptionId());
 
     data.saveLoyalty();
     return ServiceResult.ok("Request " + redemption.getRedemptionId()
@@ -1433,8 +1437,37 @@ public class ResortService {
     if (pending.isEmpty()) {
       return ServiceResult.fail("There are no redemption requests waiting.");
     }
+    return processRedemption(pending.getEntry(1).getRedemptionId(), staffId);
+  }
 
-    Redemption redemption = pending.remove(1);
+  /**
+   * Decides one particular request.
+   *
+   * The officer picks which to deal with rather than always taking the head of
+   * the queue, so a request that cannot be met yet does not hold up the rest.
+   * The eligibility rules are the same either way.
+   *
+   * @param redemptionId the request being decided
+   * @param staffId who is deciding it
+   * @return the request, approved or rejected with its reason
+   */
+  public ServiceResult<Redemption> processRedemption(String redemptionId,
+      String staffId) {
+    ListInterface<Redemption> pending = data.getPendingRedemptions();
+
+    int at = -1;
+    for (int i = 1; i <= pending.getNumberOfEntries(); i++) {
+      if (pending.getEntry(i).getRedemptionId().equals(redemptionId)) {
+        at = i;
+        break;
+      }
+    }
+    if (at < 0) {
+      return ServiceResult.fail("Request " + redemptionId
+          + " is not waiting for a decision.");
+    }
+
+    Redemption redemption = pending.remove(at);
     Member member = data.findMember(redemption.getMemberId());
     Reward reward = data.findReward(redemption.getRewardId());
 
@@ -1445,8 +1478,6 @@ public class ResortService {
     if (refusal != null) {
       redemption.setStatus(Redemption.REJECTED);
       redemption.setRejectReason(refusal);
-      raiseNotification(redemption.getMemberId(), Notification.REDEMPTION,
-          "Redemption declined - " + refusal, redemption.getRedemptionId());
       data.saveLoyalty();
       return ServiceResult.ok("Request " + redemption.getRedemptionId()
           + " rejected: " + refusal, redemption);
@@ -1456,14 +1487,12 @@ public class ResortService {
     member.setPointsBalance(member.getPointsBalance() - redemption.getPointsUsed());
     reward.reduceStock();
 
+    // The booking goes on the row so the ledger reads both ways: an EARN says
+    // which stay paid for the points, and a REDEEM says which stay spent them.
     data.getTransactionList().add(new PointTransaction(data.nextTransactionId(),
-        member.getMemberId(), null, PointTransaction.REDEEM,
+        member.getMemberId(), redemption.getBookingId(), PointTransaction.REDEEM,
         -redemption.getPointsUsed(), member.getPointsBalance(), LocalDate.now(),
         redemption.getRedemptionId() + " - " + reward.getRewardName()));
-
-    raiseNotification(member.getMemberId(), Notification.REDEMPTION,
-        reward.getRewardName() + " approved. " + redemption.getPointsUsed()
-            + " points deducted.", redemption.getRedemptionId());
 
     data.saveLoyalty();
     return ServiceResult.ok("Request " + redemption.getRedemptionId() + " approved - "
@@ -1502,67 +1531,6 @@ public class ResortService {
     return null;
   }
 
-  /**
-   * Takes an approved reward off a guest's live bill.
-   *
-   * Only a bill that is still open can be discounted - once a stay is settled
-   * and the guest has gone there is nothing to reduce.
-   */
-  public ServiceResult<Invoice> applyRedemptionToInvoice(String redemptionId,
-      String bookingId) {
-    Redemption redemption = data.findRedemption(redemptionId);
-    if (redemption == null) {
-      return ServiceResult.fail("Redemption " + redemptionId + " was not found.");
-    }
-    if (!Redemption.APPROVED.equals(redemption.getStatus())) {
-      return ServiceResult.fail("Only an approved redemption can be applied to a bill.");
-    }
-    if (redemption.getInvoiceId() != null) {
-      return ServiceResult.fail("That redemption has already been applied to "
-          + redemption.getInvoiceId() + ".");
-    }
-
-    Booking booking = data.findBooking(bookingId);
-    if (booking == null) {
-      return ServiceResult.fail("Booking " + bookingId + " was not found.");
-    }
-    if (!Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())
-        && !Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())) {
-      return ServiceResult.fail("A discount can only be applied to a live booking.");
-    }
-
-    Member member = data.findMember(redemption.getMemberId());
-    if (member == null || !member.getGuestId().equals(booking.getGuestId())) {
-      return ServiceResult.fail("That redemption belongs to a different guest.");
-    }
-
-    Invoice invoice = data.findInvoiceByBooking(bookingId);
-    if (invoice == null) {
-      return ServiceResult.fail("That booking has no invoice yet.");
-    }
-
-    Reward reward = data.findReward(redemption.getRewardId());
-    double discount = (reward == null) ? 0.0 : reward.getCashValue();
-    if (discount <= 0) {
-      return ServiceResult.fail("That reward has no cash value to take off a bill.");
-    }
-
-    invoice.setDiscountAmount(invoice.getDiscountAmount() + discount);
-    invoice.setAmountPaid(sumPayments(invoice.getInvoiceId()));
-    redemption.setInvoiceId(invoice.getInvoiceId());
-
-    raiseNotification(member.getMemberId(), Notification.REDEMPTION,
-        String.format("%s applied to invoice %s - RM%.2f off.",
-            reward.getRewardName(), invoice.getInvoiceId(), discount),
-        redemptionId);
-
-    data.saveFrontDesk();
-    data.saveLoyalty();
-
-    return ServiceResult.ok(String.format("RM%.2f taken off %s. New total RM%.2f.",
-        discount, invoice.getInvoiceId(), invoice.getTotalAmount()), invoice);
-  }
-
   /** Signs a guest up to the loyalty programme. */
   public ServiceResult<Member> enrolMember(String guestId) {
     Guest guest = data.findGuest(guestId);
@@ -1579,22 +1547,9 @@ public class ResortService {
     Member member = new Member(data.nextMemberId(), guestId, LocalDate.now());
     data.addMember(member);
 
-    raiseNotification(member.getMemberId(), Notification.PROMOTION,
-        "Welcome to TARUMT Resort Rewards. You are a " + member.getTier() + " member.",
-        null);
-
     data.saveLoyalty();
     return ServiceResult.ok(guest.getFullName() + " enrolled as "
         + member.getMemberId() + " (" + member.getTier() + ").", member);
-  }
-
-  /** Raises a message for a member. */
-  public Notification raiseNotification(String memberId, String type, String message,
-      String relatedRefId) {
-    Notification notification = new Notification(data.nextNotificationId(), memberId,
-        type, message, LocalDate.now(), relatedRefId);
-    data.getNotificationList().add(notification);
-    return notification;
   }
 
   /**
@@ -1626,8 +1581,6 @@ public class ResortService {
       data.getTransactionList().add(new PointTransaction(data.nextTransactionId(),
           member.getMemberId(), null, PointTransaction.EXPIRE, -lost, 0, today,
           "Points expired"));
-      raiseNotification(member.getMemberId(), Notification.POINTS_EXPIRING,
-          lost + " points have expired from your account.", null);
       affected++;
     }
 

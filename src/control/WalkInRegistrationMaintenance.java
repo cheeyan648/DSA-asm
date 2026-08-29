@@ -333,25 +333,17 @@ public class WalkInRegistrationMaintenance {
   private void serveNextGuest() {
     ui.startAction("SERVE NEXT GUEST");
 
-    // A guest called but not yet booked still holds the counter. Showing who
-    // it is - rather than only refusing - tells the officer what to go and
-    // finish, since the booking is made on the Front Desk side.
-    WalkInRegistration atCounter = service.findGuestAtCounter();
-    if (atCounter != null) {
-      Guest waiting = data.findGuest(atCounter.getGuestId());
-      RoomType wanted = data.findRoomType(atCounter.getRequestedTypeId());
-
-      ui.displayError("Somebody is already at the counter.");
-      ui.displayMessage("  Their booking has not been made yet, so they keep"
-          + " their place.");
-      ui.displayRegistration(atCounter, waiting,
-          wanted == null ? atCounter.getRequestedTypeId() : wanted.getTypeName());
+    // Guests already sent over but not yet booked are counted here rather
+    // than blocking the queue: registration keeps calling people through, and
+    // the front desk works down its own list in its own time.
+    ListInterface<WalkInRegistration> sentOver = data.getRegistrationList().filter(
+        reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
+    if (!sentOver.isEmpty()) {
+      ui.displayMessage("  " + sentOver.getNumberOfEntries()
+          + " guest(s) already sent to the front desk and not yet booked.");
+      ui.displayMessage("  They are waiting under Front Desk > Bookings >"
+          + " Create a new booking.");
       ui.displayMessage("");
-      ui.displayMessage("  Finish this booking at Front Desk > Bookings >"
-          + " Create a new booking,");
-      ui.displayMessage("  or cancel the registration, before calling anyone else.");
-      ui.pause();
-      return;
     }
 
     // peekNext() reads the front of the urgent lane, or the normal lane
@@ -386,7 +378,13 @@ public class WalkInRegistrationMaintenance {
 
     ui.displaySuccess(called.getMessage());
     ui.displayMessage("  They have left the waiting list and are now IN_SERVICE.");
-    ui.displayMessage("  Their booking is made at the Front Desk.");
+
+    // The running total, so the officer can see the front desk's list growing
+    // and knows how many are stacked up there waiting to be booked.
+    int awaitingBooking = data.getRegistrationList().countIf(
+        reg -> WalkInRegistration.STATUS_IN_SERVICE.equals(reg.getStatus()));
+    ui.displayMessage("  Sent to the front desk. " + awaitingBooking
+        + " guest(s) now waiting to be booked there.");
     ui.displayMessage("");
 
     reportNextInQueue();

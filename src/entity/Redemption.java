@@ -37,6 +37,15 @@ public class Redemption implements Serializable {
   private String processedBy;
   private String invoiceId;
 
+  /**
+   * The stay this reward belongs to.
+   *
+   * A reward is enjoyed during a particular visit, so the request carries the
+   * booking it was asked for - which is what lets a loyalty officer see whose
+   * stay they are approving rather than only which member asked.
+   */
+  private String bookingId;
+
   public Redemption() {
   }
 
@@ -52,6 +61,14 @@ public class Redemption implements Serializable {
 
   public String getRedemptionId() {
     return redemptionId;
+  }
+
+  public String getBookingId() {
+    return bookingId;
+  }
+
+  public void setBookingId(String bookingId) {
+    this.bookingId = bookingId;
   }
 
   public void setRedemptionId(String redemptionId) {

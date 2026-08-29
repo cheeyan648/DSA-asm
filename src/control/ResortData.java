@@ -19,7 +19,6 @@ import entity.Guest;
 import entity.HousekeepingTask;
 import entity.Invoice;
 import entity.Member;
-import entity.Notification;
 import entity.Payment;
 import entity.PointTransaction;
 import entity.Redemption;
@@ -74,7 +73,6 @@ public class ResortData {
   private ListInterface<Reward> rewardList;
   private ListInterface<Redemption> redemptionList;
   private ListInterface<PointTransaction> transactionList;
-  private ListInterface<Notification> notificationList;
 
   // ==================================================================
   // LOOKUP STRUCTURES
@@ -142,8 +140,6 @@ public class ResortData {
   private final GenericDAO<Redemption> redemptionDAO = new GenericDAO<>("redemptions.dat");
   private final GenericDAO<PointTransaction> transactionDAO =
       new GenericDAO<>("pointTransactions.dat");
-  private final GenericDAO<Notification> notificationDAO =
-      new GenericDAO<>("notifications.dat");
 
   public ResortData() {
     loadAll();
@@ -181,7 +177,6 @@ public class ResortData {
     rewardList = loadOrSeed(rewardDAO, loyalty.initializeRewards());
     redemptionList = loadOrSeed(redemptionDAO, loyalty.initializeRedemptions());
     transactionList = loadOrSeed(transactionDAO, loyalty.initializeTransactions());
-    notificationList = loadOrSeed(notificationDAO, loyalty.initializeNotifications());
 
     rebuildIndexes();
     rebuildQueues();
@@ -238,22 +233,28 @@ public class ResortData {
 
     bookingTree = new BinarySearchTree<>();
     confirmationTree = new BinarySearchTree<>();
-    int nextConfirmation = 1;
+    boolean issuedAny = false;
+
     for (int i = 1; i <= bookingList.getNumberOfEntries(); i++) {
       Booking booking = bookingList.getEntry(i);
       bookingTree.add(booking.getBookingId(), booking);
 
-      // Saved records created before confirmation numbers were introduced are
-      // upgraded in memory on load.  This keeps existing demonstrations and
-      // persisted data searchable without changing other modules.
+      // Records seeded or saved without a confirmation number are given one
+      // here. It is written back below rather than only held in memory: the
+      // guest quotes this number, so it has to be the same one tomorrow.
       String confirmation = booking.getConfirmationNumber();
       if (!isEightDigitNumber(confirmation) || confirmationTree.contains(confirmation)) {
         do {
-          confirmation = String.format("%08d", nextConfirmation++);
+          confirmation = randomConfirmationCode();
         } while (confirmationTree.contains(confirmation));
         booking.setConfirmationNumber(confirmation);
+        issuedAny = true;
       }
       confirmationTree.add(confirmation, booking);
+    }
+
+    if (issuedAny) {
+      bookingDAO.saveToFile(bookingList);
     }
 
     memberTree = new BinarySearchTree<>();
@@ -381,7 +382,6 @@ public class ResortData {
     rewardDAO.saveToFile(rewardList);
     redemptionDAO.saveToFile(redemptionList);
     transactionDAO.saveToFile(transactionList);
-    notificationDAO.saveToFile(notificationList);
   }
 
   /** Deletes every data file. Used by the tests to start from nothing. */
@@ -401,7 +401,6 @@ public class ResortData {
     rewardDAO.deleteFile();
     redemptionDAO.deleteFile();
     transactionDAO.deleteFile();
-    notificationDAO.deleteFile();
   }
 
   // ==================================================================
@@ -466,10 +465,6 @@ public class ResortData {
 
   public ListInterface<PointTransaction> getTransactionList() {
     return transactionList;
-  }
-
-  public ListInterface<Notification> getNotificationList() {
-    return notificationList;
   }
 
   public DualLaneQueueInterface<WalkInRegistration> getWaitingList() {
@@ -677,17 +672,48 @@ public class ResortData {
     return nextId("BK", 4, bookingList, Booking::getBookingId);
   }
 
-  /** Issues the next unused eight-digit confirmation number. */
+  /**
+   * Issues an unused eight-digit confirmation number.
+   *
+   * Drawn at random rather than counted up, because this is the number the
+   * guest carries and quotes: a sequential one tells anybody who holds a slip
+   * roughly how many bookings the resort has taken, and lets them guess the
+   * next. The tree is what guarantees it has not been issued before, so a
+   * clash simply draws again.
+   *
+   * @return a fresh eight-digit number
+   */
   public String nextConfirmationNumber() {
-    ListInterface<String> confirmations = new ArrayList<>();
-    for (int i = 1; i <= bookingList.getNumberOfEntries(); i++) {
-      String confirmation = bookingList.getEntry(i).getConfirmationNumber();
-      if (isEightDigitNumber(confirmation)) {
-        confirmations.add(confirmation);
+    while (true) {
+      String candidate = randomConfirmationCode();
+      if (findBookingByConfirmation(candidate) == null) {
+        return candidate;
       }
     }
-    return IdGenerator.next("", 8, confirmations);
   }
+
+  /**
+   * The characters a confirmation code is drawn from.
+   *
+   * Digits and capital letters, minus the pairs that are misread when a code
+   * is written on a slip and typed back in: 0 against O, 1 against I. Dropping
+   * them costs a little of the range and saves the guest being turned away
+   * over a character they copied faithfully.
+   */
+  private static final String CONFIRMATION_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+  /** Eight characters drawn from the confirmation alphabet, e.g. "2F5JU9KP". */
+  private String randomConfirmationCode() {
+    StringBuilder code = new StringBuilder(8);
+    for (int i = 0; i < 8; i++) {
+      code.append(CONFIRMATION_ALPHABET.charAt(
+          confirmationRandom.nextInt(CONFIRMATION_ALPHABET.length())));
+    }
+    return code.toString();
+  }
+
+  /** Draws confirmation numbers. Seeded from the clock, not fixed. */
+  private final java.util.Random confirmationRandom = new java.util.Random();
 
   public String nextAssignmentId() {
     return nextId("RA", 4, assignmentList, RoomAssignment::getAssignmentId);
@@ -719,10 +745,6 @@ public class ResortData {
 
   public String nextTransactionId() {
     return nextId("PT", 4, transactionList, PointTransaction::getTxnId);
-  }
-
-  public String nextNotificationId() {
-    return nextId("NT", 4, notificationList, Notification::getNotificationId);
   }
 
   public String nextRewardId() {
@@ -763,15 +785,22 @@ public class ResortData {
     confirmationTree.remove(booking.getConfirmationNumber());
   }
 
+  /**
+   * Whether a stored value is a usable confirmation code.
+   *
+   * Eight characters, letters or digits. Anything else - a blank, an old
+   * shorter code, something truncated - is replaced on load.
+   */
   private boolean isEightDigitNumber(String value) {
     if (value == null || value.length() != 8) {
       return false;
     }
     for (int i = 0; i < value.length(); i++) {
-      if (!Character.isDigit(value.charAt(i))) {
+      if (!Character.isLetterOrDigit(value.charAt(i))) {
         return false;
       }
     }
     return true;
   }
+
 }
