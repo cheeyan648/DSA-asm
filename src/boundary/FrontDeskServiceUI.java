@@ -148,6 +148,62 @@ public class FrontDeskServiceUI {
     return MessageUI.isCancelled(id) ? null : id;
   }
 
+  /**
+   * Asks for a booking ID, showing a list of movable bookings first.
+   *
+   * Only bookings that already have a room assigned (CONFIRMED or CHECKED_IN)
+   * can be moved. This method displays them in a table so the officer can
+   * see which booking to pick without having to remember the ID.
+   *
+   * @param bookings the list of bookings that can be moved
+   * @param data the resort data for looking up guest names
+   * @return the chosen booking ID, or null if cancelled
+   */
+  public String inputBookingId(ListInterface<Booking> bookings, ResortData data) {
+    if (bookings == null || bookings.isEmpty()) {
+      displayMessage("");
+      displayMessage("  No booking can be moved.");
+      displayMessage("  Only a CONFIRMED or CHECKED_IN booking with a room");
+      displayMessage("  can be moved to another room.");
+      return null;
+    }
+
+    displaySectionHeading("Bookings that can be moved");
+    displayTableHeading(String.format(
+        "  %-5s %-7s %-20s %-16s %-6s %-6s %-11s %-11s %s",
+        "NO", "BOOKING", "GUEST", "IC / PASSPORT", "TYPE", "ROOM",
+        "CHECK IN", "CHECK OUT", "STATUS"));
+
+    for (int i = 1; i <= bookings.getNumberOfEntries(); i++) {
+      Booking booking = bookings.getEntry(i);
+      Guest guest = data.findGuest(booking.getGuestId());
+
+      System.out.printf("  [%d]   %-7s %-20s %-16s %-6s %-6s %-11s %-11s %s%n",
+          i,
+          booking.getBookingId(),
+          guest == null ? "-" : truncate(guest.getFullName(), 20),
+          guest == null ? "-" : truncate(guest.getIcPassportNo(), 16),
+          booking.getTypeId(),
+          booking.getRoomNo() == null ? "-" : booking.getRoomNo(),
+          booking.getCheckInDate(),
+          booking.getCheckOutDate(),
+          booking.getBookingStatus());
+    }
+
+    displayThinRule();
+    System.out.printf("  %d booking(s) with rooms assigned.%n",
+        bookings.getNumberOfEntries());
+    displayMessage("");
+    displayMessage("  Enter the number of the booking to move, or 0 to cancel.");
+
+    int position = inputListPosition(bookings.getNumberOfEntries(),
+        "Number of the booking to move");
+    if (position < 0) {
+      return null;
+    }
+    return bookings.getEntry(position).getBookingId();
+  }
+
   public String inputConfirmationNumber() {
     String code = MessageUI.readCode(scanner, "Confirmation number", 8);
     return MessageUI.isCancelled(code) ? null : code;
@@ -1323,6 +1379,13 @@ public class FrontDeskServiceUI {
     MessageUI.displayThinRule();
   }
 
+  /**
+   * Truncates text to fit in a table column.
+   *
+   * @param text the text to truncate
+   * @param width the maximum width
+   * @return the truncated text, or "-" if null
+   */
   private String truncate(String text, int width) {
     if (text == null) {
       return "-";

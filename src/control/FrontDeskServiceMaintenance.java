@@ -1620,36 +1620,66 @@ public class FrontDeskServiceMaintenance {
     return ROOM_NONE_READY;
   }
 
-  /** Moves a guest to a different room, keeping the history of both. */
+  /**
+   * Moves a guest to a different room, keeping the history of both.
+   *
+   * This version displays a list of movable bookings first so the officer
+   * can see which bookings have rooms assigned before choosing one.
+   */
   private void moveBookingToAnotherRoom() {
     ui.startAction("MOVE A BOOKING TO ANOTHER ROOM");
 
-    Booking booking = promptForBooking();
-    if (booking == null) {
-      return;
-    }
-    if (booking.getRoomNo() == null) {
-      ui.displayError("This booking has no room to move from.");
+    // Get all bookings that have a room assigned and are still active
+    ListInterface<Booking> movable = data.getBookingList().filter(booking ->
+        booking.getRoomNo() != null
+        && (Booking.STATUS_CONFIRMED.equals(booking.getBookingStatus())
+            || Booking.STATUS_CHECKED_IN.equals(booking.getBookingStatus())));
+
+    // Show the list and let the user pick one
+    String bookingId = ui.inputBookingId(movable, data);
+    if (bookingId == null) {
       ui.pause();
       return;
     }
-    if (!booking.holdsRoom()) {
-      ui.displayError("A " + booking.getBookingStatus() + " booking cannot be moved.");
+
+    Booking booking = data.findBooking(bookingId);
+    if (booking == null) {
+      ui.displayError("That booking no longer exists.");
+      ui.pause();
+      return;
+    }
+
+    // Double-check the booking still has a room
+    if (booking.getRoomNo() == null) {
+      ui.displayError("This booking no longer has a room to move from.");
       ui.pause();
       return;
     }
 
     ui.displayBooking(booking, data);
+    ui.displayMessage("");
 
+    // Find available rooms of the same type for the booking's dates
     ListInterface<Room> available = service.findAvailableRooms(
         booking.getTypeId(), booking.getCheckInDate(), booking.getCheckOutDate());
-    if (available.isEmpty()) {
-      ui.displayError("No other room of that type is ready.");
+
+    // Remove the current room from the list (can't move to the same room)
+    ListInterface<Room> otherRooms = new ArrayList<>();
+    for (int i = 1; i <= available.getNumberOfEntries(); i++) {
+      Room room = available.getEntry(i);
+      if (!room.getRoomNo().equals(booking.getRoomNo())) {
+        otherRooms.add(room);
+      }
+    }
+
+    if (otherRooms.isEmpty()) {
+      ui.displayError("No other room of that type is ready for those dates.");
       ui.pause();
       return;
     }
 
-    String roomNo = ui.chooseRoom(available);
+    ui.displaySectionHeading("Available rooms to move to");
+    String roomNo = ui.chooseRoom(otherRooms);
     if (roomNo == null) {
       ui.displayMessage("  Move cancelled.");
       ui.pause();
@@ -2467,6 +2497,13 @@ public class FrontDeskServiceMaintenance {
     ui.displayReportFooter();
   }
 
+  /**
+   * Truncates text to fit in a table column.
+   *
+   * @param text the text to truncate
+   * @param width the maximum width
+   * @return the truncated text, or "-" if null
+   */
   private String truncate(String text, int width) {
     if (text == null) {
       return "-";
